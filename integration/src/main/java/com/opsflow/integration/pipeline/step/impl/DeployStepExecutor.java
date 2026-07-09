@@ -1,6 +1,7 @@
 package com.opsflow.integration.pipeline.step.impl;
 
 import com.opsflow.integration.k8s.K8sClient;
+import com.opsflow.integration.pipeline.NodeCommandHelper;
 import com.opsflow.integration.pipeline.PipelineExecutionContext;
 import com.opsflow.integration.pipeline.step.StepExecutor;
 import com.opsflow.integration.pipeline.step.StepExecutionResult;
@@ -20,6 +21,9 @@ public class DeployStepExecutor implements StepExecutor {
     
     @Autowired
     private K8sClient k8sClient;
+
+    @Autowired
+    private NodeCommandHelper nodeCommandHelper;
     
     @Override
     public StepExecutionResult execute(String stepType, Map<String, String> stepParams, PipelineExecutionContext context) {
@@ -35,68 +39,42 @@ public class DeployStepExecutor implements StepExecutor {
                 result.setErrorMessage("镜像名称不能为空");
                 return result;
             }
-            
-            // 1. 上传镜像到Harbor（如果镜像还未推送）
-            boolean pushImage = Boolean.parseBoolean(stepParams.getOrDefault("pushImage", "true"));
-            if (pushImage) {
-                log.info("开始推送镜像到Harbor: {}", imageFullName);
-                
-                ProcessBuilder pushBuilder = new ProcessBuilder("docker", "push", imageFullName);
-                pushBuilder.redirectErrorStream(true);
-                
-                Process pushProcess = pushBuilder.start();
-                StringBuilder pushLog = new StringBuilder();
-                try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                        new java.io.InputStreamReader(pushProcess.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        pushLog.append(line).append("\n");
-                        log.debug("Docker push: {}", line);
-                    }
-                }
-                
-                int pushExitCode = pushProcess.waitFor();
-                result.setLog(pushLog.toString());
-                
-                if (pushExitCode != 0) {
-                    result.setErrorMessage("镜像推送失败，退出码: " + pushExitCode);
-                    return result;
-                }
-                
-                log.info("镜像推送成功: {}", imageFullName);
-            }
-            
-            // 2. 部署到K8s
+
             String namespace = context.getEnvironment().getK8sNamespace();
             String deployment = context.getService().getK8sDeployment();
-            
+
             if (namespace == null || namespace.isEmpty()) {
                 result.setErrorMessage("K8s命名空间不能为空");
                 return result;
             }
-            
+
             if (deployment == null || deployment.isEmpty()) {
                 result.setErrorMessage("K8s Deployment名称不能为空");
                 return result;
             }
-            
+
             String containerName = context.getService().getCode();
-            
-            log.info("部署到K8s: namespace={}, deployment={}, image={}, container={}", 
+            String nodeDesc = nodeCommandHelper.describeDeployNode(context);
+
+            log.info("开始部署到K8s: namespace={}, deployment={}, image={}, container={}",
                 namespace, deployment, imageFullName, containerName);
-            
-            // 使用K8sClient更新镜像
-            k8sClient.updateDeploymentImage(namespace, deployment, containerName, imageFullName);
-            
-            // 等待部署完成
-            boolean waitForRollout = Boolean.parseBoolean(stepParams.getOrDefault("waitForRollout", "true"));
-            if (waitForRollout) {
-                int timeoutSeconds = Integer.parseInt(stepParams.getOrDefault("timeoutSeconds", "300"));
-                k8sClient.waitForDeploymentRollout(namespace, deployment, timeoutSeconds);
+
+            if (nodeCommandHelper.resolveDeployNodeId(context) != null) {
+                String command = "kubectl -n " + NodeCommandHelper.shellQuote(namespace)
+                    + " set image " + NodeCommandHelper.shellQuote("deployment/" + deployment)
+                    + " " + NodeCommandHelper.shellQuote(containerName + "=" + imageFullName);
+                NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnDeployNode(context, command);
+                result.setLog("执行节点: " + nodeDesc + "\n" + (cmdResult.getOutput() == null ? "" : cmdResult.getOutput()));
+                if (!cmdResult.isSuccess()) {
+                    result.setErrorMessage(cmdResult.getErrorMessage() != null ? cmdResult.getErrorMessage() : "部署命令执行失败");
+                    return result;
+                }
+            } else {
+                k8sClient.updateDeploymentImage(namespace, deployment, containerName, imageFullName);
+                result.setLog(String.format("执行节点: %s\n已触发部署: %s/%s -> %s", nodeDesc, namespace, deployment, imageFullName));
             }
-            
             result.setSuccess(true);
-            log.info("部署成功");
+            log.info("部署指令已下发");
             
         } catch (Exception e) {
             log.error("部署失败", e);

@@ -14,9 +14,9 @@ NC='\033[0m'
 
 # 配置变量
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-JAR_NAME="admin-1.0.0.jar"
-# Maven 多模块项目的 JAR 文件在 admin/target/ 目录下
-JAR_PATH="${PROJECT_DIR}/admin/target/${JAR_NAME}"
+JAR_NAME="opsflow.jar"
+# 统一产物：项目根 target/opsflow.jar（mvn package 后由 app 模块复制）
+JAR_PATH="${PROJECT_DIR}/target/${JAR_NAME}"
 LOG_FILE="${PROJECT_DIR}/logs/app.log"
 CONFIG_FILE="${PROJECT_DIR}/config/application.yml"
 PORT=8080
@@ -39,13 +39,18 @@ print_error() {
 
 # 检查 JAR 文件是否存在
 if [ ! -f "$JAR_PATH" ]; then
-    print_error "JAR 文件不存在: $JAR_PATH"
-    print_info "请先执行编译: mvn clean package -DskipTests"
-    exit 1
+    alt_jar_path="${PROJECT_DIR}/app/target/${JAR_NAME}"
+    if [ -f "$alt_jar_path" ]; then
+        JAR_PATH="$alt_jar_path"
+    else
+        print_error "JAR 文件不存在: $JAR_PATH"
+        print_info "请先执行: mvn clean package -DskipTests"
+        exit 1
+    fi
 fi
 
-# 检查是否已在运行
-if lsof -i :${PORT} > /dev/null 2>&1; then
+# 检查是否已在运行（仅检测 LISTEN 状态，避免 CLOSED 连接误报）
+if lsof -iTCP:${PORT} -sTCP:LISTEN > /dev/null 2>&1; then
     print_warning "端口 ${PORT} 已被占用，应用可能已在运行"
     print_info "如需重启，请使用: ./scripts/deploy/restart.sh"
     exit 1
@@ -59,6 +64,12 @@ fi
 
 # 确保日志目录存在
 mkdir -p "$(dirname "$LOG_FILE")"
+
+# 增量数据库迁移（可选，拉取新代码且有表结构变更时执行）
+if [ "${OPSFLOW_RUN_MIGRATIONS:-0}" = "1" ] && [ -f "${PROJECT_DIR}/scripts/database/run_migrations.sh" ]; then
+    print_info "执行数据库迁移 (OPSFLOW_RUN_MIGRATIONS=1)..."
+    bash "${PROJECT_DIR}/scripts/database/run_migrations.sh" || print_warning "数据库迁移失败，请手动检查"
+fi
 
 # 备份旧日志
 if [ -f "$LOG_FILE" ]; then
@@ -78,11 +89,19 @@ else
     nohup java -jar "$JAR_PATH" > "$LOG_FILE" 2>&1 &
 fi
 
-# 等待启动
-sleep 3
+# 等待启动（Spring Boot 冷启动通常需要 10 秒以上）
+MAX_WAIT=30
+WAITED=0
+while [ $WAITED -lt $MAX_WAIT ]; do
+    if lsof -iTCP:${PORT} -sTCP:LISTEN > /dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+    WAITED=$((WAITED + 2))
+done
 
 # 检查是否启动成功
-if lsof -i :${PORT} > /dev/null 2>&1; then
+if lsof -iTCP:${PORT} -sTCP:LISTEN > /dev/null 2>&1; then
     print_info "应用启动成功！"
     print_info "  - 访问地址: http://localhost:${PORT}"
     print_info "  - 日志文件: $LOG_FILE"

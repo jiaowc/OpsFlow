@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>控制台 - OPSFLOW</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- 头部 -->
+        <div class="dashboard-header">
+            <h1>OPSFLOW</h1>
+            <div class="user-info">
+                <span class="username" id="username">用户</span>
+                <button class="btn-logout" onclick="logout()">退出登录</button>
+            </div>
+        </div>
+        
+        <!-- 主体内容区域 -->
+        <div class="dashboard-body">
+            <!-- 左侧菜单（20%） -->
+            <div class="sidebar">
+                <div class="menu-section">
+                    <div class="menu-item active" onclick="showSection('statistics', this)">
+                        <span class="menu-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M4 19h16"></path>
+                                <path d="M7 16V10"></path>
+                                <path d="M12 16V6"></path>
+                                <path d="M17 16v-3"></path>
+                            </svg>
+                        </span>
+                        <span>统计信息</span>
+                    </div>
+                    <div class="menu-item" onclick="showSection('pipeline', this)">
+                        <span class="menu-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="3" y="4" width="7" height="7" rx="1.5"></rect>
+                                <rect x="14" y="4" width="7" height="7" rx="1.5"></rect>
+                                <rect x="8.5" y="13" width="7" height="7" rx="1.5"></rect>
+                                <path d="M10 7.5h4"></path>
+                                <path d="M12 11v2"></path>
+                            </svg>
+                        </span>
+                        <span>流水线视图</span>
+                    </div>
+                    <div class="menu-item" onclick="showSection('tasks', this)">
+                        <span class="menu-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="5" y="4" width="14" height="16" rx="2"></rect>
+                                <path d="M9 8h6"></path>
+                                <path d="M9 12h6"></path>
+                                <path d="M9 16h4"></path>
+                            </svg>
+                        </span>
+                        <span>上线任务</span>
+                    </div>
+                    <div class="menu-item" onclick="showSection('services', this)">
+                        <span class="menu-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="4" y="5" width="16" height="5" rx="1.5"></rect>
+                                <rect x="4" y="14" width="16" height="5" rx="1.5"></rect>
+                                <path d="M8 7.5h.01"></path>
+                                <path d="M8 16.5h.01"></path>
+                            </svg>
+                        </span>
+                        <span>服务管理</span>
+                    </div>
+                    <div class="menu-item" onclick="showSection('environments', this)">
+                        <span class="menu-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 21s6-4.35 6-10a6 6 0 1 0-12 0c0 5.65 6 10 6 10Z"></path>
+                                <circle cx="12" cy="11" r="2.5"></circle>
+                            </svg>
+                        </span>
+                        <span>环境配置</span>
+                    </div>
+                    <div class="menu-item" onclick="showSection('clusters', this)">
+                        <span class="menu-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 3 4 7l8 4 8-4-8-4Z"></path>
+                                <path d="M4 12l8 4 8-4"></path>
+                                <path d="M4 17l8 4 8-4"></path>
+                            </svg>
+                        </span>
+                        <span>集群管理</span>
+                    </div>
+                    <div class="menu-item" onclick="showSection('approval', this)">
+                        <span class="menu-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M20 6 9 17l-5-5"></path>
+                            </svg>
+                        </span>
+                        <span>审批流程</span>
+                    </div>
+                    <div class="menu-item" onclick="showSection('nodes', this)">
+                        <span class="menu-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="4" y="4" width="16" height="6" rx="1.5"></rect>
+                                <rect x="4" y="14" width="16" height="6" rx="1.5"></rect>
+                                <path d="M8 7h.01"></path>
+                                <path d="M8 17h.01"></path>
+                            </svg>
+                        </span>
+                        <span>节点管理</span>
+                    </div>
+                    <div class="menu-item" onclick="showSection('users', this)">
+                        <span class="menu-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M16 19a4 4 0 0 0-8 0"></path>
+                                <circle cx="12" cy="11" r="3"></circle>
+                                <path d="M19 19a3.5 3.5 0 0 0-2.5-3.35"></path>
+                                <path d="M5 19a3.5 3.5 0 0 1 2.5-3.35"></path>
+                            </svg>
+                        </span>
+                        <span>用户管理</span>
+                    </div>
+                    <div class="menu-item" onclick="showSection('system', this)">
+                        <span class="menu-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path>
+                            </svg>
+                        </span>
+                        <span>系统设置</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧内容区域（80%） -->
+            <div class="main-content">
+                <!-- 平台原生 Pipeline 视图 -->
+                <div id="pipeline-section" class="content-section">
+                    <div class="section-header">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <h2 id="pipelineSectionTitle" style="margin:0;">流水线视图</h2>
+                            <button id="pipelineBackToListBtn" class="btn-secondary" style="display:none;" onclick="window.loadPipelineJobsView()">← 返回任务列表</button>
+                        </div>
+                        <div class="section-actions">
+                            <button id="pipelineCreateBtn" class="btn-primary" onclick="showCreatePipelineTaskModal()">新建 Job</button>
+                            <button id="pipelineHeaderRefreshBtn" class="btn-secondary" onclick="refreshPipelineView()">刷新</button>
+                            <button id="pipelineDetailRefreshBtn" class="btn-secondary" style="display:none;" onclick="refreshPipelineView()">刷新</button>
+                        </div>
+                    </div>
+                    <div id="pipelineJobsView">
+                        <!-- 流水线任务列表将通过 JavaScript 动态加载 -->
+                    </div>
+                </div>
+                
+                <!-- 任务列表区域 -->
+                <div id="tasks-section" class="content-section">
+                    <div class="section-header">
+                        <h2>上线任务管理</h2>
+                        <div class="section-actions">
+                            <button class="btn-secondary" onclick="loadTasks()">刷新</button>
+                            <button class="btn-primary" onclick="showCreateTaskModal()">创建上线任务</button>
+                        </div>
+                    </div>
+                    <div class="task-list-container">
+                        <div id="taskList">
+                            <!-- 任务列表将通过 JavaScript 动态加载 -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 服务管理区域 -->
+                <div id="services-section" class="content-section">
+                    <div class="section-header">
+                        <h2>服务管理</h2>
+                        <div class="section-actions">
+                            <button class="btn-primary" onclick="showCreateServiceModal()">添加服务</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>服务名称</th>
+                                    <th style="width: 90px;">服务类型</th>
+                                    <th style="width: 90px;">组件</th>
+                                    <th style="width: 90px;">对外端口</th>
+                                    <th>Git仓库</th>
+                                    <th style="width: 80px;">状态</th>
+                                    <th style="width: 150px;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="serviceList">
+                                <!-- 服务列表将通过 JavaScript 动态加载 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 环境配置区域 -->
+                <div id="environments-section" class="content-section">
+                    <div class="section-header">
+                        <h2>环境配置</h2>
+                        <div class="section-actions">
+                            <button class="btn-primary" onclick="showCreateEnvModal()">添加环境</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 120px;">环境名称</th>
+                                    <th>集群地址</th>
+                                    <th>命名空间</th>
+                                    <th style="width: 80px;">状态</th>
+                                    <th style="width: 120px;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="envList">
+                                <!-- 环境列表将通过 JavaScript 动态加载 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="clusters-section" class="content-section">
+                    <div class="section-header">
+                        <div>
+                            <h2>集群管理</h2>
+                            <div class="section-subtitle">基于现有环境配置自动汇总 K8s 集群信息</div>
+                        </div>
+                        <div class="section-actions">
+                            <button class="btn-primary" onclick="showCreateClusterModal()">添加集群</button>
+                            <button class="btn-secondary" onclick="loadClusters()">刷新</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 180px;">集群名称</th>
+                                    <th>集群地址</th>
+                                    <th>关联环境</th>
+                                    <th style="width: 100px;">环境数</th>
+                                    <th style="width: 120px;">状态</th>
+                                    <th>说明</th>
+                                    <th style="width: 130px;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clusterList">
+                                <tr>
+                                    <td colspan="7" style="text-align: center; padding: 40px; color: #999;">正在加载集群信息...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 审批流程区域 -->
+                <div id="approval-section" class="content-section">
+                    <div class="section-header">
+                        <h2>审批流程管理</h2>
+                        <div class="section-actions">
+                            <button class="btn-primary" onclick="showCreateApprovalModal()">创建审批流</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>流程名称</th>
+                                    <th>描述</th>
+                                    <th>审批步骤数</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="approvalList">
+                                <!-- 审批流列表将通过 JavaScript 动态加载 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 节点管理区域 -->
+                <div id="nodes-section" class="content-section">
+                    <div class="section-header">
+                        <h2>节点管理</h2>
+                        <div class="section-actions">
+                            <button class="btn-primary" onclick="showCreateNodeModal()">添加节点</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>节点名称</th>
+                                    <th>节点类型</th>
+                                    <th>标签</th>
+                                    <th>SSH地址</th>
+                                    <th>远程工作目录</th>
+                                    <th>认证方式</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="nodeList">
+                                <!-- 节点列表将通过 JavaScript 动态加载 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 用户管理区域 -->
+                <div id="users-section" class="content-section">
+                    <div class="section-header">
+                        <h2>用户管理</h2>
+                    </div>
+                    
+                    <!-- 标签页导航 -->
+                    <div class="tab-nav" style="border-bottom: 1px solid #e0e0e0; margin-bottom: 20px;">
+                        <button class="tab-btn active" onclick="showUserTab('user-list', this)">用户列表</button>
+                        <button class="tab-btn" onclick="showUserTab('role-management', this)">角色管理</button>
+                        <button class="tab-btn" onclick="showUserTab('permission-management', this)">权限管理</button>
+                    </div>
+                    
+                    <!-- 用户列表标签页 -->
+                    <div id="user-list-tab" class="user-tab-content active">
+                        <div class="section-actions" style="margin-bottom: 16px;">
+                            <button class="btn-primary" onclick="showAddUserModal()">添加用户</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>用户名</th>
+                                        <th>真实姓名</th>
+                                        <th>邮箱</th>
+                                        <th>手机号</th>
+                                        <th>角色</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="userList">
+                                    <!-- 用户列表将通过 JavaScript 动态加载 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- 角色管理标签页 -->
+                    <div id="role-management-tab" class="user-tab-content">
+                        <div class="section-actions" style="margin-bottom: 16px;">
+                            <button class="btn-primary" onclick="showAddRoleModal()">添加角色</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>角色名称</th>
+                                        <th>角色代码</th>
+                                        <th>描述</th>
+                                        <th>权限数量</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="roleList">
+                                    <!-- 角色列表将通过 JavaScript 动态加载 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- 权限管理标签页 -->
+                    <div id="permission-management-tab" class="user-tab-content">
+                        <div class="section-actions" style="margin-bottom: 16px;">
+                            <button class="btn-primary" onclick="showAddPermissionModal()">添加权限</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>权限名称</th>
+                                        <th>权限代码</th>
+                                        <th>资源路径</th>
+                                        <th>HTTP方法</th>
+                                        <th>描述</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="permissionList">
+                                    <!-- 权限列表将通过 JavaScript 动态加载 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 系统设置区域 -->
+                <div id="system-section" class="content-section">
+                    <div class="section-header">
+                        <h2>系统设置</h2>
+                    </div>
+                    <div class="system-config-tabs">
+                        <div class="tab-buttons">
+                            <button class="tab-btn active" data-tab="step-def">步骤管理</button>
+                            <button class="tab-btn" data-tab="pipeline-mgmt">流水线管理</button>
+                            <button class="tab-btn" data-tab="template">模版管理</button>
+                            <button class="tab-btn" data-tab="keychain">钥匙串管理</button>
+                            <button class="tab-btn" data-tab="component">组件管理</button>
+                            <button class="tab-btn" data-tab="sso">SSO登录</button>
+                            <button class="tab-btn" data-tab="ldap">LDAP</button>
+                        </div>
+                        <div class="tab-content">
+                            <div id="step-def-config" class="config-panel active">
+                                <div class="section-header" style="margin-bottom: 20px;">
+                                    <h3>步骤管理</h3>
+                                    <button class="btn-primary" id="addStepDefBtn">添加步骤</button>
+                                </div>
+                                <div class="table-container">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>步骤名称</th>
+                                                <th>步骤类型</th>
+                                                <th>阶段</th>
+                                                <th>描述</th>
+                                                <th>状态</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="stepDefList"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="pipeline-mgmt-config" class="config-panel">
+                                <div class="section-header" style="margin-bottom: 20px;">
+                                    <div class="section-subtitle">定义 CI/CD 流水线步骤与执行节点</div>
+                                    <button class="btn-primary" id="addPipelineBtn">添加模版</button>
+                                </div>
+                                <div class="table-container">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 140px;">模版名称</th>
+                                                <th>流水线</th>
+                                                <th style="width: 80px;">状态</th>
+                                                <th style="width: 130px;">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="pipelineList"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="template-config" class="config-panel">
+                                <div class="template-tabs">
+                                    <div class="template-tab-buttons">
+                                        <button type="button" class="template-tab-btn active" data-template-type="dockerfile">Dockerfile 模版</button>
+                                        <button type="button" class="template-tab-btn" data-template-type="deployment">Deployment 模版</button>
+                                        <button type="button" class="template-tab-btn" data-template-type="service">Service 模版</button>
+                                    </div>
+                                    <div class="template-tab-content">
+                                        <div id="dockerfile-template-panel" class="template-sub-panel active">
+                                            <div class="section-header" style="margin-bottom: 20px;">
+                                                <div class="section-subtitle">管理 Docker 镜像构建 Dockerfile 模版，供镜像制作步骤引用</div>
+                                                <button class="btn-primary" id="addDockerfileTemplateBtn" disabled title="即将上线">添加模版</button>
+                                            </div>
+                                            <div class="table-container">
+                                                <table class="data-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>模版名称</th>
+                                                            <th>描述</th>
+                                                            <th>基础镜像</th>
+                                                            <th>状态</th>
+                                                            <th>操作</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="dockerfileTemplateList">
+                                                        <tr>
+                                                            <td colspan="5" style="text-align: center; padding: 40px; color: #999;">暂无 Dockerfile 模版</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div id="deployment-template-panel" class="template-sub-panel">
+                                            <div class="section-header" style="margin-bottom: 20px;">
+                                                <div class="section-subtitle">管理 K8s Deployment 部署模版，供流水线部署阶段引用</div>
+                                                <button class="btn-primary" id="addDeploymentTemplateBtn" disabled title="即将上线">添加模版</button>
+                                            </div>
+                                            <div class="table-container">
+                                                <table class="data-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>模版名称</th>
+                                                            <th>描述</th>
+                                                            <th>关联环境</th>
+                                                            <th>状态</th>
+                                                            <th>操作</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="deploymentTemplateList">
+                                                        <tr>
+                                                            <td colspan="5" style="text-align: center; padding: 40px; color: #999;">暂无 Deployment 模版</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div id="service-template-panel" class="template-sub-panel">
+                                            <div class="section-header" style="margin-bottom: 20px;">
+                                                <div class="section-subtitle">管理 K8s Service 暴露模版，供流水线部署阶段引用</div>
+                                                <button class="btn-primary" id="addServiceTemplateBtn" disabled title="即将上线">添加模版</button>
+                                            </div>
+                                            <div class="table-container">
+                                                <table class="data-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>模版名称</th>
+                                                            <th>描述</th>
+                                                            <th>服务类型</th>
+                                                            <th>状态</th>
+                                                            <th>操作</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="serviceTemplateList">
+                                                        <tr>
+                                                            <td colspan="5" style="text-align: center; padding: 40px; color: #999;">暂无 Service 模版</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="keychain-config" class="config-panel">
+                                <div class="section-header" style="margin-bottom: 20px;">
+                                    <h3>钥匙串管理</h3>
+                                    <button class="btn-primary" id="addCredentialBtn">添加钥匙</button>
+                                </div>
+                                <div class="table-container">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>钥匙名称</th>
+                                                <th style="width: 120px;">凭证类型</th>
+                                                <th>描述</th>
+                                                <th style="width: 80px;">状态</th>
+                                                <th style="width: 130px;">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="credentialList"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="component-config" class="config-panel">
+                                <div class="section-header" style="margin-bottom: 20px;">
+                                    <h3>组件管理</h3>
+                                    <button class="btn-primary" id="addComponentBtn">添加组件</button>
+                                </div>
+                                <div class="table-container">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>组件名称</th>
+                                                <th>组件类型</th>
+                                                <th>访问地址</th>
+                                                <th>认证类型</th>
+                                                <th>状态</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="componentList">
+                                            <!-- 组件列表将通过 JavaScript 动态加载 -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="sso-config" class="config-panel">
+                                <div class="sso-tabs">
+                                    <div class="sso-tab-buttons">
+                                        <button class="sso-tab-btn active" data-sso-type="feishu">飞书</button>
+                                        <button class="sso-tab-btn" data-sso-type="dingtalk">钉钉</button>
+                                        <button class="sso-tab-btn" data-sso-type="wechatwork">企业微信</button>
+                                    </div>
+                                    <div class="sso-tab-content">
+                                        <div id="feishu-sso" class="sso-config-panel active">
+                                            <h3>飞书SSO配置</h3>
+                                            <form id="feishuForm" class="config-form">
+                                                <div class="form-item">
+                                                    <label>应用ID (App ID)</label>
+                                                    <input type="text" name="feishu.appId" placeholder="请输入飞书应用ID">
+                                                </div>
+                                                <div class="form-item">
+                                                    <label>应用密钥 (App Secret)</label>
+                                                    <input type="password" name="feishu.appSecret" placeholder="请输入飞书应用密钥">
+                                                </div>
+                                                <div class="form-item">
+                                                    <label>回调地址 (Redirect URI)</label>
+                                                    <input type="text" name="feishu.redirectUri" placeholder="例如: https://your-domain.com/auth/feishu/callback">
+                                                    <div style="margin-top: 4px; font-size: 12px; color: #666;">
+                                                        提示：需要在飞书开放平台配置此回调地址
+                                                    </div>
+                                                </div>
+                                                <div class="form-item">
+                                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                                        <input type="checkbox" name="feishu.enabled"> 启用飞书登录
+                                                    </label>
+                                                </div>
+                                                <button type="submit" class="btn-primary">保存配置</button>
+                                            </form>
+                                        </div>
+                                        <div id="dingtalk-sso" class="sso-config-panel">
+                                            <h3>钉钉SSO配置</h3>
+                                            <form id="dingtalkForm" class="config-form">
+                                                <div class="form-item">
+                                                    <label>应用Key (AppKey)</label>
+                                                    <input type="text" name="dingtalk.appKey" placeholder="请输入钉钉应用Key">
+                                                </div>
+                                                <div class="form-item">
+                                                    <label>应用密钥 (AppSecret)</label>
+                                                    <input type="password" name="dingtalk.appSecret" placeholder="请输入钉钉应用密钥">
+                                                </div>
+                                                <div class="form-item">
+                                                    <label>回调地址 (Redirect URI)</label>
+                                                    <input type="text" name="dingtalk.redirectUri" placeholder="例如: https://your-domain.com/auth/dingtalk/callback">
+                                                    <div style="margin-top: 4px; font-size: 12px; color: #666;">
+                                                        提示：需要在钉钉开放平台配置此回调地址
+                                                    </div>
+                                                </div>
+                                                <div class="form-item">
+                                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                                        <input type="checkbox" name="dingtalk.enabled"> 启用钉钉登录
+                                                    </label>
+                                                </div>
+                                                <button type="submit" class="btn-primary">保存配置</button>
+                                            </form>
+                                        </div>
+                                        <div id="wechatwork-sso" class="sso-config-panel">
+                                            <h3>企业微信SSO配置</h3>
+                                            <form id="wechatworkForm" class="config-form">
+                                                <div class="form-item">
+                                                    <label>企业ID (CorpId)</label>
+                                                    <input type="text" name="wechatwork.corpId" placeholder="请输入企业微信企业ID">
+                                                </div>
+                                                <div class="form-item">
+                                                    <label>应用ID (AgentId)</label>
+                                                    <input type="text" name="wechatwork.agentId" placeholder="请输入企业微信应用ID">
+                                                </div>
+                                                <div class="form-item">
+                                                    <label>应用密钥 (Secret)</label>
+                                                    <input type="password" name="wechatwork.secret" placeholder="请输入企业微信应用密钥">
+                                                </div>
+                                                <div class="form-item">
+                                                    <label>回调地址 (Redirect URI)</label>
+                                                    <input type="text" name="wechatwork.redirectUri" placeholder="例如: https://your-domain.com/auth/wechatwork/callback">
+                                                    <div style="margin-top: 4px; font-size: 12px; color: #666;">
+                                                        提示：需要在企业微信管理后台配置此回调地址
+                                                    </div>
+                                                </div>
+                                                <div class="form-item">
+                                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                                        <input type="checkbox" name="wechatwork.enabled"> 启用企业微信登录
+                                                    </label>
+                                                </div>
+                                                <button type="submit" class="btn-primary">保存配置</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="ldap-config" class="config-panel">
+                                <h3>LDAP配置</h3>
+                                <form id="ldapForm" class="config-form">
+                                    <div class="form-item">
+                                        <label>LDAP服务器地址</label>
+                                        <input type="text" name="ldap.url" placeholder="ldap://ldap.example.com:389">
+                                    </div>
+                                    <div class="form-item">
+                                        <label>Base DN</label>
+                                        <input type="text" name="ldap.baseDn" placeholder="dc=example,dc=com">
+                                    </div>
+                                    <div class="form-item">
+                                        <label>管理员DN</label>
+                                        <input type="text" name="ldap.adminDn" placeholder="cn=admin,dc=example,dc=com">
+                                    </div>
+                                    <div class="form-item">
+                                        <label>管理员密码</label>
+                                        <input type="password" name="ldap.adminPassword" placeholder="密码">
+                                    </div>
+                                    <button type="submit" class="btn-primary">保存配置</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 统计信息区域 -->
+                <div id="statistics-section" class="content-section active">
+                    <div class="section-header">
+                        <div>
+                            <h2>统计信息</h2>
+                            <div class="section-subtitle">登录后默认展示系统概览与常用入口</div>
+                        </div>
+                    </div>
+                    <div class="dashboard-cards">
+                        <div class="card">
+                            <div class="card-title">今日构建</div>
+                            <div class="card-content" style="font-size: 32px; font-weight: 600; color: #667eea;" id="todayBuildCount">0</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">成功构建</div>
+                            <div class="card-content" style="font-size: 32px; font-weight: 600; color: #059669;" id="successCount">0</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">失败构建</div>
+                            <div class="card-content" style="font-size: 32px; font-weight: 600; color: #dc2626;" id="failedCount">0</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">进行中</div>
+                            <div class="card-content" style="font-size: 32px; font-weight: 600; color: #2563eb;" id="buildingCount">0</div>
+                        </div>
+                    </div>
+                    <div class="stats-layout">
+                        <div class="card stats-summary-card">
+                            <div class="card-title">首页概览</div>
+                            <div class="stats-summary-grid">
+                                <div class="stats-summary-item">
+                                    <div class="stats-summary-label">默认首页</div>
+                                    <div class="stats-summary-value">统计信息</div>
+                                </div>
+                                <div class="stats-summary-item">
+                                    <div class="stats-summary-label">任务入口</div>
+                                    <div class="stats-summary-value">流水线 / 上线任务</div>
+                                </div>
+                                <div class="stats-summary-item">
+                                    <div class="stats-summary-label">配置入口</div>
+                                    <div class="stats-summary-value">服务 / 环境 / 节点</div>
+                                </div>
+                                <div class="stats-summary-item">
+                                    <div class="stats-summary-label">系统入口</div>
+                                    <div class="stats-summary-value">系统设置 / 用户管理</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card stats-actions-card">
+                            <div class="card-title">快捷入口</div>
+                            <div class="stats-actions">
+                                <button class="btn-primary" onclick="showSection('pipeline', document.querySelector('.menu-item[onclick*=\'pipeline\']'))">进入流水线</button>
+                                <button class="btn-secondary" onclick="showSection('services', document.querySelector('.menu-item[onclick*=\'services\']'))">服务管理</button>
+                                <button class="btn-secondary" onclick="showSection('environments', document.querySelector('.menu-item[onclick*=\'environments\']'))">环境配置</button>
+                                <button class="btn-secondary" onclick="showSection('system', document.querySelector('.menu-item[onclick*=\'system\']'))">系统设置</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="stats-layout" style="margin-top: 18px;">
+                        <div class="card">
+                            <div class="card-title">最近构建</div>
+                            <div id="recentBuildsList" class="stats-list-empty">加载中...</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">最近失败</div>
+                            <div id="recentFailuresList" class="stats-list-empty">加载中...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 模态框容器 -->
+    <div id="modalContainer"></div>
+    
+    <!-- 核心模块 -->
+    <script src="/js/core.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/dashboard.js"></script>
+    
+    <!-- 功能模块 -->
+    <script src="/js/modules/pipeline.js"></script>
+    <script src="/js/modules/tasks.js"></script>
+    <script src="/js/modules/services.js"></script>
+    <script src="/js/modules/environments.js"></script>
+    <script src="/js/modules/clusters.js"></script>
+    <script src="/js/modules/approval.js"></script>
+    <script src="/js/modules/nodes.js"></script>
+    <script src="/js/modules/users.js"></script>
+    <script src="/js/modules/keychain.js"></script>
+    <script src="/js/modules/step-def.js"></script>
+    <script src="/js/modules/system.js"></script>
+    <script src="/js/modules/statistics.js"></script>
+    
+</body>
+</html>

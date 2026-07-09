@@ -59,5 +59,35 @@ public class BuildHistoryDTO {
      * 总持续时间文本
      */
     private String totalDurationText;
+
+    /**
+     * 平台任务 ID
+     */
+    private Long jobId;
+
+    /**
+     * 平台任务编号
+     */
+    private String jobNumber;
+
+    /**
+     * 是否运行中
+     */
+    private Boolean building;
+
+    /**
+     * 错误信息
+     */
+    private String errorMessage;
+
+    /**
+     * 本次构建实际 CI 节点
+     */
+    private String buildNodeDisplay;
+
+    /**
+     * 本次构建实际 CD 节点
+     */
+    private String deployNodeDisplay;
 }
 

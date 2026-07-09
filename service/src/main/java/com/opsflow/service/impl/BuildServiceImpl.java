@@ -5,7 +5,7 @@ import com.opsflow.api.dto.BuildJobDTO;
 import com.opsflow.api.dto.BuildRequest;
 import com.opsflow.api.dto.BuildResponse;
 import com.opsflow.api.dto.EnvDTO;
-import com.opsflow.api.dto.JenkinsNodeDTO;
+import com.opsflow.api.dto.BuildNodeDTO;
 import com.opsflow.common.constant.BuildStatus;
 import com.opsflow.common.exception.BusinessException;
 import com.opsflow.common.util.JobNumberGenerator;
@@ -13,15 +13,21 @@ import com.opsflow.dao.mapper.*;
 import com.opsflow.dao.model.*;
 import com.opsflow.dao.model.Pipeline;
 import com.opsflow.integration.harbor.HarborClient;
-import com.opsflow.integration.jenkins.JenkinsClient;
+import com.opsflow.integration.git.GitRefService;
+import com.opsflow.service.PipelineRunService;
 import com.opsflow.service.BuildService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -42,16 +48,25 @@ public class BuildServiceImpl implements BuildService {
     private EnvMapper envMapper;
     
     @Autowired
-    private JenkinsNodeMapper jenkinsNodeMapper;
+    private BuildNodeMapper buildNodeMapper;
     
     @Autowired
     private PipelineMapper pipelineMapper;
     
     @Autowired
-    private JenkinsClient jenkinsClient;
+    private PipelineRunService pipelineRunService;
     
     @Autowired
     private HarborClient harborClient;
+
+    @Autowired
+    private GitRefService gitRefService;
+
+    @Autowired
+    private UserMapper userMapper;
+
+    @Value("${opsflow.dev-user-name:${user.name:admin}}")
+    private String devUserName;
 
     @Override
     @Transactional
@@ -74,6 +89,8 @@ public class BuildServiceImpl implements BuildService {
         if (service == null) {
             throw new BusinessException("服务不存在，ID: " + request.getServiceId());
         }
+
+        String taskName = resolveTaskName(request, service);
         
         Env env = envMapper.selectById(request.getEnvId());
         if (env == null) {
@@ -87,42 +104,39 @@ public class BuildServiceImpl implements BuildService {
         
         // 2. 获取Pipeline模板
         Pipeline pipeline = null;
-        String jenkinsNode = null;
+        String buildNodeName = null;
         if (request.getPipelineTemplateId() != null) {
             pipeline = pipelineMapper.selectById(request.getPipelineTemplateId());
             if (pipeline == null || pipeline.getStatus() != 1) {
                 throw new BusinessException("Pipeline模板不存在或已禁用");
             }
         } else {
-            // 如果没有指定Pipeline模板，从构建参数中获取节点
             if (request.getBuildParameters() != null && request.getBuildParameters().getNode() != null) {
-                JenkinsNode node = jenkinsNodeMapper.selectById(request.getBuildParameters().getNode());
+                BuildNode node = buildNodeMapper.selectById(request.getBuildParameters().getNode());
                 if (node != null) {
-                    jenkinsNode = node.getName();
+                    buildNodeName = node.getName();
                 }
             }
-            if (jenkinsNode == null || jenkinsNode.isEmpty()) {
-                jenkinsNode = selectRandomNode();
-                log.info("随机选择Jenkins节点: {}", jenkinsNode);
+            if (buildNodeName == null || buildNodeName.isEmpty()) {
+                buildNodeName = selectRandomNode();
+                log.info("随机选择构建节点: {}", buildNodeName);
             }
         }
         
         // 3. 创建构建任务记录
         BuildJob buildJob = new BuildJob();
         buildJob.setJobNumber(JobNumberGenerator.generateBuildJobNumber());
+        buildJob.setTaskName(taskName);
         buildJob.setServiceId(request.getServiceId());
         buildJob.setEnvId(request.getEnvId());
         buildJob.setBranch(request.getBranch());
+        buildJob.setGitType(normalizeGitType(request.getGitType()));
         
         // 保存Pipeline模板ID
         if (pipeline != null) {
             buildJob.setPipelineTemplateId(pipeline.getId());
-            // 使用Pipeline模板的Jenkins Job模板名称（兼容旧版本）
-            if (pipeline.getJenkinsJobTemplate() != null) {
-                buildJob.setJenkinsJobName(pipeline.getJenkinsJobTemplate());
-            }
-        } else if (jenkinsNode != null) {
-            buildJob.setJenkinsNode(jenkinsNode);
+        } else if (buildNodeName != null) {
+            buildJob.setBuildNode(buildNodeName);
         }
         
         // 保存构建参数（JSON格式）
@@ -140,98 +154,61 @@ public class BuildServiceImpl implements BuildService {
         buildJob.setCreatorId(getCurrentUserId());
         buildJobMapper.insert(buildJob);
         
-        // 4. 异步触发Jenkins构建
-        asyncTriggerJenkinsBuild(buildJob, service, env, request.getAutoDeploy());
+        // 4. 同步准备阶段 + 异步执行 Pipeline（保证前端立即能看到步骤）
+        pipelineRunService.prepareAndExecuteAsync(buildJob.getId());
         
-        // 5. 返回响应
+        // 5. 返回响应（重新读取状态：应为 BUILDING）
+        BuildJob fresh = buildJobMapper.selectById(buildJob.getId());
         BuildResponse response = new BuildResponse();
         response.setJobId(buildJob.getId());
         response.setJobNumber(buildJob.getJobNumber());
-        response.setStatus(buildJob.getStatus());
+        response.setTaskName(buildJob.getTaskName());
+        response.setStatus(fresh != null ? fresh.getStatus() : BuildStatus.BUILDING);
+        response.setStartTime(fresh != null ? fresh.getStartTime() : null);
         return response;
     }
     
     /**
-     * 随机选择Jenkins节点
+     * 随机选择构建节点（兼容旧参数）
      */
     private String selectRandomNode() {
-        List<JenkinsNode> nodes = jenkinsNodeMapper.selectList(
-            new QueryWrapper<JenkinsNode>()
+        List<BuildNode> nodes = buildNodeMapper.selectList(
+            new QueryWrapper<BuildNode>()
                 .eq("status", "ONLINE")
         );
-        
+
         if (nodes.isEmpty()) {
-            throw new BusinessException("没有可用的Jenkins节点");
+            throw new BusinessException("没有可用的构建节点");
         }
-        
-        // 随机选择一个
+
         int index = (int) (Math.random() * nodes.size());
         return nodes.get(index).getName();
     }
-    
-    /**
-     * 异步触发Jenkins构建
-     */
-    @Async
-    private void asyncTriggerJenkinsBuild(BuildJob buildJob, com.opsflow.dao.model.Service service, Env env, Boolean autoDeploy) {
-        try {
-            // 更新状态为构建中
-            buildJob.setStatus(BuildStatus.BUILDING);
-            buildJob.setStartTime(java.time.LocalDateTime.now());
-            buildJobMapper.updateById(buildJob);
-            
-            // 调用Jenkins API触发构建
-            String jenkinsJobName = env.getJenkinsJobTemplate() != null 
-                ? env.getJenkinsJobTemplate() 
-                : "build-and-deploy"; // 默认Job名称
-            
-            java.util.Map<String, String> params = new java.util.HashMap<>();
-            params.put("GIT_REPO", service.getGitRepo());
-            params.put("GIT_BRANCH", buildJob.getBranch());
-            params.put("SERVICE_NAME", service.getName());
-            params.put("SERVICE_CODE", service.getCode());
-            params.put("ENV_NAME", env.getName());
-            params.put("DOCKERFILE_PATH", service.getDockerfilePath());
-            params.put("BUILD_COMMAND", service.getBuildCommand());
-            params.put("K8S_NAMESPACE", env.getK8sNamespace());
-            params.put("K8S_DEPLOYMENT", service.getK8sDeployment());
-            params.put("HARBOR_PROJECT", env.getHarborProject());
-            params.put("JENKINS_NODE", buildJob.getJenkinsNode());
-            params.put("AUTO_DEPLOY", String.valueOf(autoDeploy != null && autoDeploy));
-            
-            // 触发Jenkins构建
-            int buildNumber = jenkinsClient.buildJob(jenkinsJobName, params);
-            
-            // 更新Jenkins构建信息
-            buildJob.setJenkinsBuildNumber(buildNumber);
-            buildJob.setJenkinsJobName(jenkinsJobName);
-            buildJob.setBuildLogUrl(jenkinsClient.getBuildLogUrl(jenkinsJobName, buildNumber));
-            
-            // 生成预期的镜像名称（与Jenkins Pipeline中的命名规则一致）
-            // 格式: harbor.example.com/project/service-code:branch-buildNumber-commitId
-            // 注意：实际镜像名称由Jenkins Pipeline生成，这里只是预估
-            String expectedImageTag = String.format("%s:%s-%d", 
-                service.getCode(), buildJob.getBranch(), buildNumber);
-            buildJob.setImageTag(expectedImageTag);
-            buildJobMapper.updateById(buildJob);
-            
-            log.info("Jenkins构建已触发: {} #{}", jenkinsJobName, buildNumber);
-            
-            // 如果启用了自动部署，可以在这里添加镜像验证逻辑
-            // 注意：由于镜像推送是异步的，实际验证应该在构建完成后进行
-            
-        } catch (Exception e) {
-            log.error("触发Jenkins构建失败", e);
-            buildJob.setStatus(BuildStatus.FAILED);
-            buildJob.setErrorMessage(e.getMessage());
-            buildJob.setEndTime(java.time.LocalDateTime.now());
-            buildJobMapper.updateById(buildJob);
-        }
-    }
-    
+
     private Long getCurrentUserId() {
-        // TODO: 从SecurityContext获取当前用户ID
-        return 1L; // 简化处理
+        String username = getCurrentUsername();
+        if (username == null || username.trim().isEmpty()) {
+            return null;
+        }
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", username.trim()).last("LIMIT 1"));
+        return user != null ? user.getId() : null;
+    }
+
+    private String getCurrentUsername() {
+        try {
+            RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
+            if (attrs instanceof ServletRequestAttributes) {
+                HttpServletRequest request = ((ServletRequestAttributes) attrs).getRequest();
+                HttpSession session = request != null ? request.getSession(false) : null;
+                Object user = session != null ? session.getAttribute("user") : null;
+                if (user != null && !String.valueOf(user).trim().isEmpty()) {
+                    return String.valueOf(user).trim();
+                }
+            }
+        } catch (Exception e) {
+            log.debug("读取当前登录用户名失败: {}", e.getMessage());
+        }
+        return devUserName;
     }
 
     @Override
@@ -259,6 +236,7 @@ public class BuildServiceImpl implements BuildService {
         BuildResponse response = new BuildResponse();
         response.setJobId(buildJob.getId());
         response.setJobNumber(buildJob.getJobNumber());
+        response.setTaskName(buildJob.getTaskName());
         response.setStatus(buildJob.getStatus());
         response.setImageTag(buildJob.getImageTag());
         response.setBuildLogUrl(buildJob.getBuildLogUrl());
@@ -270,15 +248,37 @@ public class BuildServiceImpl implements BuildService {
     }
 
     @Override
-    public List<String> getBranches(Long serviceId) {
+    public List<String> getBranches(Long serviceId, String type) {
         com.opsflow.dao.model.Service service = serviceMapper.selectById(serviceId);
         if (service == null) {
             throw new BusinessException("服务不存在");
         }
-        
-        // TODO: 调用Git API获取分支列表
-        // 这里简化处理，返回默认分支
-        return java.util.Arrays.asList(service.getDefaultBranch(), "develop", "test");
+        if (service.getGitRepo() == null || service.getGitRepo().trim().isEmpty()) {
+            return fallbackRefs(null);
+        }
+
+        String refType = normalizeGitType(type);
+        try {
+            List<String> refs = gitRefService.listRefs(service.getGitRepo(), refType);
+            if (refs.isEmpty()) {
+                return fallbackRefs(null);
+            }
+            return new java.util.ArrayList<>(refs);
+        } catch (Exception e) {
+            log.warn("获取服务 Git 引用失败: serviceId={}, type={}, error={}", serviceId, refType, e.getMessage());
+            return fallbackRefs(null);
+        }
+    }
+
+    private List<String> fallbackRefs(String defaultRef) {
+        java.util.LinkedHashSet<String> refs = new java.util.LinkedHashSet<>();
+        if (defaultRef != null && !defaultRef.trim().isEmpty()) {
+            refs.add(defaultRef.trim());
+        }
+        refs.add("develop");
+        refs.add("master");
+        refs.add("main");
+        return new java.util.ArrayList<>(refs);
     }
 
     @Override
@@ -294,26 +294,24 @@ public class BuildServiceImpl implements BuildService {
             dto.setId(env.getId());
             dto.setName(env.getName());
             dto.setK8sNamespace(env.getK8sNamespace());
-            dto.setHarborProject(env.getHarborProject());
             return dto;
         }).collect(Collectors.toList());
     }
 
     @Override
-    public List<JenkinsNodeDTO> getJenkinsNodes(Boolean random) {
-        List<JenkinsNode> nodes = jenkinsNodeMapper.selectList(
-            new QueryWrapper<JenkinsNode>()
+    public List<BuildNodeDTO> getBuildNodes(Boolean random) {
+        List<BuildNode> nodes = buildNodeMapper.selectList(
+            new QueryWrapper<BuildNode>()
                 .eq("status", "ONLINE")
         );
-        
+
         if (Boolean.TRUE.equals(random) && !nodes.isEmpty()) {
-            // 随机返回一个节点
             java.util.Collections.shuffle(nodes);
             nodes = nodes.subList(0, Math.min(1, nodes.size()));
         }
-        
+
         return nodes.stream().map(node -> {
-            JenkinsNodeDTO dto = new JenkinsNodeDTO();
+            BuildNodeDTO dto = new BuildNodeDTO();
             dto.setId(node.getId());
             dto.setName(node.getName());
             dto.setLabel(node.getLabel());
@@ -337,13 +335,14 @@ public class BuildServiceImpl implements BuildService {
             BuildJobDTO dto = new BuildJobDTO();
             dto.setId(job.getId());
             dto.setJobNumber(job.getJobNumber());
+            dto.setTaskName(job.getTaskName());
             dto.setServiceId(job.getServiceId());
             dto.setEnvId(job.getEnvId());
             dto.setBranch(job.getBranch());
-            dto.setJenkinsNode(job.getJenkinsNode());
+            dto.setBuildNode(job.getBuildNode());
             dto.setStatus(job.getStatus());
-            dto.setJenkinsJobUrl(job.getBuildLogUrl());
-            dto.setJenkinsBuildNumber(job.getJenkinsBuildNumber());
+            dto.setBuildLogUrl(job.getBuildLogUrl());
+            dto.setBuildNumber(job.getBuildNumber());
             dto.setCreateTime(job.getCreateTime());
             dto.setUpdateTime(job.getUpdateTime());
             dto.setStartTime(job.getStartTime());
@@ -367,6 +366,20 @@ public class BuildServiceImpl implements BuildService {
             
             return dto;
         }).collect(Collectors.toList());
+    }
+
+    private String resolveTaskName(BuildRequest request, com.opsflow.dao.model.Service service) {
+        if (request.getTaskName() != null && !request.getTaskName().trim().isEmpty()) {
+            return request.getTaskName().trim();
+        }
+        if (service != null && service.getName() != null && !service.getName().trim().isEmpty()) {
+            return service.getName().trim();
+        }
+        throw new BusinessException("服务名称不能为空，无法创建任务");
+    }
+
+    private String normalizeGitType(String gitType) {
+        return "tag".equalsIgnoreCase(gitType) ? "tag" : "branch";
     }
 }
 

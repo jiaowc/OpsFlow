@@ -13,6 +13,11 @@ public class PipelineStepDTO {
      * 步骤类型：checkout, build, deploy, clean, notify
      */
     private String stepType;
+
+    /**
+     * 关联的步骤定义 ID（引用 pipeline_step_def）
+     */
+    private Long stepTemplateId;
     
     /**
      * 步骤名称

@@ -8,7 +8,7 @@ DB_PORT="3306"
 DB_USER="root"
 DB_PASS="Y4djc+pAyEW=ANp"
 DB_NAME="opsflow"
-SCHEMA_FILE="admin/src/main/sql/schema.sql"
+SCHEMA_FILE="scripts/database/schema.sql"
 
 echo "=========================================="
 echo "开始初始化 OpsFlow 数据库..."
@@ -91,7 +91,7 @@ echo ""
 echo "数据库名称: $DB_NAME"
 echo "数据库地址: $DB_HOST:$DB_PORT"
 echo ""
-echo "配置文件位置: admin/src/main/resources/application.yml"
+echo "配置文件位置: web/src/main/resources/application.yml"
 echo "请确认配置文件中的数据库名称已更新为: $DB_NAME"
 
 

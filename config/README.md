@@ -4,7 +4,7 @@
 
 ## 使用方法
 
-1. **开发环境**：配置文件在 `admin/src/main/resources/application.yml`（已包含在项目中）
+1. **开发环境**：配置文件在 `web/src/main/resources/application.yml`（已包含在项目中）
 
 2. **生产环境**：
    - 将 `application.yml.example` 复制为 `application.yml`
@@ -15,11 +15,11 @@
 
 ```bash
 # 使用外部配置文件启动
-java -jar admin-1.0.0.jar --spring.config.location=file:./config/application.yml
+java -jar opsflow.jar --spring.config.location=file:./config/application.yml
 
 # 或者使用环境变量
 export SPRING_CONFIG_LOCATION=file:./config/application.yml
-java -jar admin-1.0.0.jar
+java -jar opsflow.jar
 ```
 
 ## 配置优先级

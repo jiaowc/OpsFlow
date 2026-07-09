@@ -19,7 +19,7 @@
         <module>integration</module>
         <module>service</module>
         <module>web</module>
-        <module>admin</module>
+        <module>app</module>
     </modules>
 
     <properties>
@@ -29,7 +29,6 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>2.7.14</spring-boot.version>
         <mybatis-plus.version>3.5.3.1</mybatis-plus.version>
-        <jenkins-client.version>0.3.8</jenkins-client.version>
         <kubernetes-client.version>18.0.0</kubernetes-client.version>
         <lombok.version>1.18.30</lombok.version>
     </properties>
@@ -47,11 +46,6 @@
                 <groupId>com.baomidou</groupId>
                 <artifactId>mybatis-plus-boot-starter</artifactId>
                 <version>${mybatis-plus.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.offbytwo.jenkins</groupId>
-                <artifactId>jenkins-client</artifactId>
-                <version>${jenkins-client.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.kubernetes</groupId>

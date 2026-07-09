@@ -15,9 +15,9 @@ NC='\033[0m' # No Color
 
 # 配置变量
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-JAR_NAME="admin-1.0.0.jar"
-# Maven 多模块项目的 JAR 文件在 admin/target/ 目录下
-JAR_PATH="${PROJECT_DIR}/admin/target/${JAR_NAME}"
+JAR_NAME="opsflow.jar"
+# 统一产物：项目根 target/opsflow.jar
+JAR_PATH="${PROJECT_DIR}/target/${JAR_NAME}"
 LOG_FILE="${PROJECT_DIR}/logs/app.log"
 CONFIG_FILE="${PROJECT_DIR}/config/application.yml"
 PORT=8080
@@ -118,16 +118,14 @@ build_project() {
     
     # 检查 JAR 文件是否存在
     if [ ! -f "$JAR_PATH" ]; then
-        # 尝试在根目录 target/ 查找（兼容其他可能的构建方式）
-        local alt_jar_path="${PROJECT_DIR}/target/${JAR_NAME}"
+        local alt_jar_path="${PROJECT_DIR}/app/target/${JAR_NAME}"
         if [ -f "$alt_jar_path" ]; then
             JAR_PATH="$alt_jar_path"
-            print_info "在根目录 target/ 找到 JAR 文件"
+            print_info "使用 app/target/ 下的 JAR（建议重新 mvn package 以生成 target/opsflow.jar）"
         else
-        print_error "JAR 文件不存在: $JAR_PATH"
+            print_error "JAR 文件不存在: ${PROJECT_DIR}/target/${JAR_NAME}"
             print_info "请先执行编译: mvn clean package -DskipTests"
-            print_info "JAR 文件应该在: ${PROJECT_DIR}/admin/target/${JAR_NAME}"
-        exit 1
+            exit 1
         fi
     fi
     

@@ -1,12 +1,14 @@
 package com.opsflow.integration.pipeline.step.impl;
 
+import com.opsflow.integration.pipeline.WorkspacePathHelper;
 import com.opsflow.integration.pipeline.PipelineExecutionContext;
+import com.opsflow.integration.pipeline.NodeCommandHelper;
 import com.opsflow.integration.pipeline.step.StepExecutor;
 import com.opsflow.integration.pipeline.step.StepExecutionResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -16,6 +18,9 @@ import java.util.Map;
 @Slf4j
 @Component
 public class CheckoutStepExecutor implements StepExecutor {
+
+    @Autowired
+    private NodeCommandHelper nodeCommandHelper;
     
     @Override
     public StepExecutionResult execute(String stepType, Map<String, String> stepParams, PipelineExecutionContext context) {
@@ -38,47 +43,29 @@ public class CheckoutStepExecutor implements StepExecutor {
                 return result;
             }
             
-            File workspaceDir = new File(workspace);
-            File gitDir = new File(workspaceDir, ".git");
-            
-            // 如果已存在Git仓库，执行pull，否则执行clone
-            ProcessBuilder processBuilder;
-            if (gitDir.exists()) {
-                log.info("Git仓库已存在，执行pull操作");
-                processBuilder = new ProcessBuilder("git", "pull", "origin", branch);
-            } else {
-                log.info("Git仓库不存在，执行clone操作: {} 分支: {}", gitRepo, branch);
-                processBuilder = new ProcessBuilder("git", "clone", "-b", branch, gitRepo, workspace);
-            }
-            
-            processBuilder.directory(workspaceDir.getParentFile());
-            processBuilder.redirectErrorStream(true);
-            
-            Process process = processBuilder.start();
-            int exitCode = process.waitFor();
-            
-            if (exitCode != 0) {
-                result.setErrorMessage("Git操作失败，退出码: " + exitCode);
+            String remoteWorkspace = WorkspacePathHelper.toRemoteShellPath(workspace);
+            String remoteParent = WorkspacePathHelper.toRemoteShellPath(parentPath(workspace));
+            String branchQuoted = NodeCommandHelper.shellQuote(branch);
+            String repoQuoted = NodeCommandHelper.shellQuote(gitRepo);
+            String commitMarker = "__OPSFLOW_COMMIT_ID__=";
+            String nodeDesc = nodeCommandHelper.describeBuildNode(context);
+
+            String command = "mkdir -p " + remoteParent
+                + " && if [ -d " + remoteWorkspace + "/.git ]; then "
+                + "cd " + remoteWorkspace + " && git fetch --all && git checkout " + branchQuoted + " && git pull origin " + branchQuoted
+                + "; else rm -rf " + remoteWorkspace + " && git clone -b " + branchQuoted + " " + repoQuoted + " " + remoteWorkspace
+                + "; fi && cd " + remoteWorkspace + " && printf '" + commitMarker + "' && git rev-parse HEAD";
+
+            NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnBuildNode(context, command);
+            result.setLog("执行节点: " + nodeDesc + "\n工作目录: " + workspace + "\n" + (cmdResult.getOutput() == null ? "" : cmdResult.getOutput()));
+            if (!cmdResult.isSuccess()) {
+                result.setErrorMessage(cmdResult.getErrorMessage() != null
+                    ? cmdResult.getErrorMessage()
+                    : "Git操作失败，退出码: " + cmdResult.getExitCode());
                 return result;
             }
-            
-            // 获取Commit ID
-            ProcessBuilder commitIdBuilder = new ProcessBuilder("git", "rev-parse", "HEAD");
-            commitIdBuilder.directory(workspaceDir);
-            commitIdBuilder.redirectErrorStream(true);
-            
-            Process commitIdProcess = commitIdBuilder.start();
-            StringBuilder commitIdOutput = new StringBuilder();
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(commitIdProcess.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    commitIdOutput.append(line);
-                }
-            }
-            commitIdProcess.waitFor();
-            
-            String commitId = commitIdOutput.toString().trim();
+
+            String commitId = extractCommitId(cmdResult.getOutput(), commitMarker);
             result.getOutputData().put("commitId", commitId);
             result.getOutputData().put("workspace", workspace);
             
@@ -96,6 +83,26 @@ public class CheckoutStepExecutor implements StepExecutor {
     @Override
     public boolean supports(String stepType) {
         return "checkout".equalsIgnoreCase(stepType);
+    }
+
+    private String extractCommitId(String output, String marker) {
+        if (output == null) {
+            return "";
+        }
+        int idx = output.lastIndexOf(marker);
+        if (idx < 0) {
+            return "";
+        }
+        return output.substring(idx + marker.length()).trim();
+    }
+
+    private String parentPath(String path) {
+        String normalized = path == null ? "" : path.trim();
+        int slash = normalized.lastIndexOf('/');
+        if (slash <= 0) {
+            return ".";
+        }
+        return normalized.substring(0, slash);
     }
 }
 

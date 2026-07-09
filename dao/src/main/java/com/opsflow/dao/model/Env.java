@@ -17,14 +17,12 @@ public class Env {
     private Long id;
     
     private String name;
+
+    private Long clusterId;
     
     private String k8sCluster;
     
     private String k8sNamespace;
-    
-    private String harborProject;
-    
-    private String jenkinsJobTemplate;
     
     private Integer status;
     

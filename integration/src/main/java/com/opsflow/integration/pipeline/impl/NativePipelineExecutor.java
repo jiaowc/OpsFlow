@@ -2,6 +2,8 @@ package com.opsflow.integration.pipeline.impl;
 
 import com.opsflow.api.dto.PipelineDTO;
 import com.opsflow.api.dto.PipelineStepDTO;
+import com.opsflow.dao.mapper.BuildNodeMapper;
+import com.opsflow.dao.model.BuildNode;
 import com.opsflow.integration.pipeline.*;
 import com.opsflow.integration.pipeline.step.StepExecutor;
 import com.opsflow.integration.pipeline.step.StepExecutionResult;
@@ -15,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * 原生Pipeline执行器（不使用Jenkins）
+ * 原生 Pipeline 执行器
  */
 @Slf4j
 @Component("nativePipelineExecutor")
@@ -23,6 +25,9 @@ public class NativePipelineExecutor implements PipelineExecutor {
     
     @Autowired
     private List<StepExecutor> stepExecutors;
+
+    @Autowired
+    private BuildNodeMapper buildNodeMapper;
     
     /**
      * 执行状态存储（实际应该使用Redis或数据库）
@@ -49,16 +54,16 @@ public class NativePipelineExecutor implements PipelineExecutor {
         result.setExecutionId(executionId);
         
         try {
-            // 创建工作目录
+            // 创建工作目录（按服务/环境/分支固定路径，便于清理空间步骤复用）
             String workspace = context.getWorkspace();
             if (workspace == null || workspace.isEmpty()) {
-                workspace = System.getProperty("java.io.tmpdir") + File.separator + "walle-workspace" + File.separator + executionId;
+                workspace = PipelineWorkspaceResolver.resolve(context, context.getParameters());
             }
-            File workspaceDir = new File(workspace);
+            context.setWorkspace(workspace);
+            File workspaceDir = new File(WorkspacePathHelper.toLocalPath(workspace));
             if (!workspaceDir.exists()) {
                 workspaceDir.mkdirs();
             }
-            context.setWorkspace(workspace);
             
             // 解析Pipeline步骤
             List<PipelineStepDTO> steps = pipeline.getSteps();
@@ -69,8 +74,9 @@ public class NativePipelineExecutor implements PipelineExecutor {
                 throw new RuntimeException("Pipeline步骤配置为空");
             }
             
-            // 按顺序排序
+            // 按顺序排序，跳过未启用步骤
             steps = steps.stream()
+                .filter(step -> step.getEnabled() == null || Boolean.TRUE.equals(step.getEnabled()))
                 .sorted(Comparator.comparing(PipelineStepDTO::getOrder))
                 .collect(Collectors.toList());
             
@@ -78,12 +84,22 @@ public class NativePipelineExecutor implements PipelineExecutor {
             Map<String, String> stepOutputs = new HashMap<>();
             int totalSteps = steps.size();
             int currentStepIndex = 0;
+            String defaultWorkspaceBase = context.getParameters() != null
+                ? context.getParameters().get("workspaceBase")
+                : null;
             
             for (PipelineStepDTO step : steps) {
                 currentStepIndex++;
                 status.setCurrentStep(step.getStepName());
                 status.setProgress((int) (currentStepIndex * 100.0 / totalSteps));
-                
+
+                int stepOrder = step.getOrder() != null ? step.getOrder() : currentStepIndex;
+                PipelineStageListener stageListener = context.getStageListener();
+                long stageStart = System.currentTimeMillis();
+                if (stageListener != null) {
+                    stageListener.onStageStart(stepOrder, step.getStepType(), step.getStepName());
+                }
+
                 log.info("执行步骤 [{}]: {}", step.getStepName(), step.getStepType());
                 
                 // 查找步骤执行器
@@ -103,10 +119,23 @@ public class NativePipelineExecutor implements PipelineExecutor {
                 }
                 // 添加步骤输出数据
                 stepParams.putAll(stepOutputs);
+
+                applyStepExecutionContext(step, context, stepParams, defaultWorkspaceBase);
                 
                 // 执行步骤
                 StepExecutionResult stepResult = executor.execute(step.getStepType(), stepParams, context);
-                
+                long stageDuration = System.currentTimeMillis() - stageStart;
+
+                if (stageListener != null) {
+                    stageListener.onStageComplete(
+                        stepOrder,
+                        Boolean.TRUE.equals(stepResult.getSuccess()),
+                        stepResult.getLog(),
+                        stepResult.getErrorMessage(),
+                        stageDuration
+                    );
+                }
+
                 if (!stepResult.getSuccess()) {
                     // 步骤失败
                     result.setSuccess(false);
@@ -148,6 +177,41 @@ public class NativePipelineExecutor implements PipelineExecutor {
         }
         
         return result;
+    }
+
+    private void applyStepExecutionContext(PipelineStepDTO step, PipelineExecutionContext context,
+            Map<String, String> stepParams, String defaultWorkspaceBase) {
+        if (context.getOptions() == null) {
+            context.setOptions(new PipelineExecutionContext.ExecutionOptions());
+        }
+
+        Long overrideNodeId = null;
+        if ("specific".equalsIgnoreCase(step.getNodeSelection()) && step.getNodeId() != null) {
+            overrideNodeId = step.getNodeId();
+        }
+        context.getOptions().setNodeId(overrideNodeId);
+
+        String workspaceBase = null;
+        if (stepParams != null && stepParams.get("workspaceBase") != null && !stepParams.get("workspaceBase").trim().isEmpty()) {
+            workspaceBase = stepParams.get("workspaceBase").trim();
+        } else if (overrideNodeId != null) {
+            BuildNode node = buildNodeMapper.selectById(overrideNodeId);
+            if (node != null && node.getWorkDir() != null && !node.getWorkDir().trim().isEmpty()) {
+                workspaceBase = node.getWorkDir().trim();
+            }
+        }
+        if (workspaceBase == null || workspaceBase.isEmpty()) {
+            workspaceBase = defaultWorkspaceBase;
+        }
+
+        if (context.getParameters() != null) {
+            if (workspaceBase != null && !workspaceBase.isEmpty()) {
+                context.getParameters().put("workspaceBase", workspaceBase);
+            } else {
+                context.getParameters().remove("workspaceBase");
+            }
+        }
+        context.setWorkspace(PipelineWorkspaceResolver.resolve(context, stepParams));
     }
     
     @Override

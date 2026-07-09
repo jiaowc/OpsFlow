@@ -1,9 +1,11 @@
 package com.opsflow.web.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.opsflow.api.dto.JenkinsNodeDTO;
-import com.opsflow.dao.mapper.JenkinsNodeMapper;
-import com.opsflow.dao.model.JenkinsNode;
+import com.opsflow.api.dto.BuildNodeDTO;
+import com.opsflow.api.dto.NodeEnvCheckResultDTO;
+import com.opsflow.dao.mapper.BuildNodeMapper;
+import com.opsflow.dao.model.BuildNode;
+import com.opsflow.service.NodeService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -19,84 +21,88 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/node")
 public class NodeController {
 
-    @Autowired
-    private JenkinsNodeMapper jenkinsNodeMapper;
+    public static final String DEFAULT_NODE_WORK_DIR = "~/opsflow";
 
-    /**
-     * 创建节点
-     */
+    @Autowired
+    private BuildNodeMapper buildNodeMapper;
+
+    @Autowired
+    private NodeService nodeService;
+
     @PostMapping("/create")
-    public JenkinsNodeDTO createNode(@RequestBody JenkinsNodeDTO request) {
-        JenkinsNode node = new JenkinsNode();
+    public BuildNodeDTO createNode(@RequestBody BuildNodeDTO request) {
+        BuildNode node = new BuildNode();
         BeanUtils.copyProperties(request, node);
+        if (node.getWorkDir() == null || node.getWorkDir().trim().isEmpty()) {
+            node.setWorkDir(DEFAULT_NODE_WORK_DIR);
+        } else {
+            node.setWorkDir(normalizeWorkDir(node.getWorkDir()));
+        }
         node.setCreateTime(LocalDateTime.now());
         node.setUpdateTime(LocalDateTime.now());
-        
-        jenkinsNodeMapper.insert(node);
-        
-        JenkinsNodeDTO dto = new JenkinsNodeDTO();
-        BeanUtils.copyProperties(node, dto);
-        return dto;
+
+        buildNodeMapper.insert(node);
+        return toDto(node);
     }
 
-    /**
-     * 查询节点列表
-     */
     @GetMapping("/list")
-    public List<JenkinsNodeDTO> listNodes(@RequestParam(required = false) String nodeType) {
-        QueryWrapper<JenkinsNode> wrapper = new QueryWrapper<>();
+    public List<BuildNodeDTO> listNodes(@RequestParam(required = false) String nodeType) {
+        QueryWrapper<BuildNode> wrapper = new QueryWrapper<>();
         if (nodeType != null && !nodeType.isEmpty()) {
             wrapper.eq("node_type", nodeType);
         }
-        
-        List<JenkinsNode> nodes = jenkinsNodeMapper.selectList(wrapper);
-        return nodes.stream().map(node -> {
-            JenkinsNodeDTO dto = new JenkinsNodeDTO();
-            BeanUtils.copyProperties(node, dto);
-            return dto;
-        }).collect(Collectors.toList());
+
+        return buildNodeMapper.selectList(wrapper).stream()
+            .map(this::toDto)
+            .collect(Collectors.toList());
     }
 
-    /**
-     * 查询节点详情
-     */
     @GetMapping("/{id}")
-    public JenkinsNodeDTO getNode(@PathVariable Long id) {
-        JenkinsNode node = jenkinsNodeMapper.selectById(id);
+    public BuildNodeDTO getNode(@PathVariable Long id) {
+        BuildNode node = buildNodeMapper.selectById(id);
         if (node == null) {
             return null;
         }
-        JenkinsNodeDTO dto = new JenkinsNodeDTO();
-        BeanUtils.copyProperties(node, dto);
-        return dto;
+        return toDto(node);
     }
 
-    /**
-     * 更新节点
-     */
     @PutMapping("/{id}")
-    public JenkinsNodeDTO updateNode(@PathVariable Long id, @RequestBody JenkinsNodeDTO request) {
-        JenkinsNode node = jenkinsNodeMapper.selectById(id);
+    public BuildNodeDTO updateNode(@PathVariable Long id, @RequestBody BuildNodeDTO request) {
+        BuildNode node = buildNodeMapper.selectById(id);
         if (node == null) {
             return null;
         }
-        
+
         BeanUtils.copyProperties(request, node, "id", "createTime");
+        node.setWorkDir(normalizeWorkDir(node.getWorkDir()));
         node.setUpdateTime(LocalDateTime.now());
-        jenkinsNodeMapper.updateById(node);
-        
-        JenkinsNodeDTO dto = new JenkinsNodeDTO();
-        BeanUtils.copyProperties(node, dto);
-        return dto;
+        buildNodeMapper.updateById(node);
+
+        return toDto(node);
     }
 
-    /**
-     * 删除节点
-     */
     @DeleteMapping("/{id}")
     public boolean deleteNode(@PathVariable Long id) {
-        return jenkinsNodeMapper.deleteById(id) > 0;
+        return buildNodeMapper.deleteById(id) > 0;
+    }
+
+    @PostMapping("/{id}/check-env")
+    public NodeEnvCheckResultDTO checkNodeEnvironment(@PathVariable Long id) {
+        return nodeService.checkEnvironment(id);
+    }
+
+    private BuildNodeDTO toDto(BuildNode node) {
+        BuildNodeDTO dto = new BuildNodeDTO();
+        BeanUtils.copyProperties(node, dto);
+        dto.setWorkDir(normalizeWorkDir(dto.getWorkDir()));
+        return dto;
+    }
+
+    private String normalizeWorkDir(String workDir) {
+        if (workDir == null || workDir.trim().isEmpty()
+            || "/tmp/opsflow-workspace".equals(workDir.trim())) {
+            return DEFAULT_NODE_WORK_DIR;
+        }
+        return workDir.trim();
     }
 }
-
-

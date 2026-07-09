@@ -24,7 +24,7 @@
 
 ### 方案一：项目内配置使用占位符（推荐）
 
-**项目内配置** (`admin/src/main/resources/application.yml`)：
+**项目内配置** (`web/src/main/resources/application.yml`)：
 ```yaml
 spring:
   datasource:
@@ -80,19 +80,19 @@ Spring Boot 配置加载顺序（从高到低）：
 ### 开发环境
 ```bash
 # 直接启动，使用项目内配置
-java -jar admin/target/admin-1.0.0.jar
+java -jar target/opsflow.jar
 ```
 
 ### 生产环境
 ```bash
 # 使用外部配置
-java -jar admin/target/admin-1.0.0.jar --spring.config.location=file:./config/application.yml
+java -jar target/opsflow.jar --spring.config.location=file:./config/application.yml
 ```
 
 ### 测试环境
 ```bash
 # 可以创建 config/application-test.yml
-java -jar admin/target/admin-1.0.0.jar --spring.profiles.active=test
+java -jar target/opsflow.jar --spring.profiles.active=test
 ```
 
 ## 安全建议

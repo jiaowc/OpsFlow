@@ -64,5 +64,45 @@ public class PipelineViewDTO {
      * 总页数
      */
     private Integer totalPages;
+
+    /**
+     * 当前高亮的构建任务 ID
+     */
+    private Long highlightJobId;
+
+    /**
+     * 任务名称
+     */
+    private String taskName;
+
+    /**
+     * 服务名称
+     */
+    private String serviceName;
+
+    /**
+     * 环境名称
+     */
+    private String envName;
+
+    /**
+     * 分支
+     */
+    private String branch;
+
+    /**
+     * Pipeline 模板名称
+     */
+    private String pipelineTemplateName;
+
+    /**
+     * CI 构建节点展示名
+     */
+    private String buildNodeDisplay;
+
+    /**
+     * CD 部署节点展示名
+     */
+    private String deployNodeDisplay;
 }
 

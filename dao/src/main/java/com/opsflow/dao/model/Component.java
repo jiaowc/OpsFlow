@@ -17,12 +17,12 @@ public class Component {
     private Long id;
     
     /**
-     * 组件名称，如：GitLab、Harbor、Jenkins等
+     * 组件名称，如：GitLab、Harbor、K8s 等
      */
     private String name;
     
     /**
-     * 组件类型，如：gitlab、harbor、jenkins等
+     * 组件类型，如：gitlab、github、harbor、k8s 等
      */
     private String type;
     
@@ -38,12 +38,13 @@ public class Component {
     
     /**
      * 认证信息（JSON格式存储，根据authType不同而不同）
-     * 例如：
-     * - api_key: {"apiKey": "xxx"}
-     * - username_password: {"username": "xxx", "password": "xxx"}
-     * - token: {"token": "xxx"}
      */
     private String authConfig;
+
+    /**
+     * 关联钥匙串 ID
+     */
+    private Long credentialId;
     
     /**
      * 描述

@@ -7,7 +7,7 @@
 - JDK 1.8+
 - Maven 3.6+
 - MySQL 5.7+
-- Jenkins（已配置）
+- 构建节点（SSH）
 - Kubernetes集群（已配置）
 
 ### 2. 数据库准备
@@ -52,17 +52,17 @@ vim config/application.yml
 mvn clean package -DskipTests
 
 # 2. 启动应用
-java -jar target/admin-1.0.0.jar --spring.config.location=file:./config/application.yml
+java -jar target/opsflow.jar --spring.config.location=file:./config/application.yml
 
 # 或使用默认配置
-java -jar target/admin-1.0.0.jar
+java -jar target/opsflow.jar
 ```
 
 ## 配置说明
 
 ### 配置文件位置
 
-- **开发环境**: `admin/src/main/resources/application.yml`
+- **开发环境**: `web/src/main/resources/application.yml`
 - **生产环境**: `config/application.yml`（外部配置，不提交到Git）
 
 ### 配置优先级
@@ -110,7 +110,7 @@ After=network.target mysql.service
 Type=simple
 User=opsflow
 WorkingDirectory=/opt/opsflow
-ExecStart=/usr/bin/java -jar /opt/opsflow/target/admin-1.0.0.jar --spring.config.location=file:/opt/opsflow/config/application.yml
+ExecStart=/usr/bin/java -jar /opt/opsflow/target/opsflow.jar --spring.config.location=file:/opt/opsflow/config/application.yml
 Restart=always
 RestartSec=10
 
@@ -136,7 +136,7 @@ sudo systemctl status opsflow
 lsof -i :8080
 
 # 检查进程
-ps aux | grep admin-1.0.0.jar
+ps aux | grep opsflow.jar
 
 # 检查API
 curl http://localhost:8080/api/build/envs

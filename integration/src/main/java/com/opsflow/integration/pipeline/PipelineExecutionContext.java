@@ -39,6 +39,16 @@ public class PipelineExecutionContext {
      * 执行选项
      */
     private ExecutionOptions options;
+
+    /**
+     * 关联的构建任务 ID
+     */
+    private Long buildJobId;
+
+    /**
+     * 阶段执行回调（持久化阶段状态）
+     */
+    private PipelineStageListener stageListener;
     
     /**
      * 服务信息
@@ -63,7 +73,6 @@ public class PipelineExecutionContext {
         private Long id;
         private String name;
         private String k8sNamespace;
-        private String harborProject;
         private String harborRegistry;
     }
     
@@ -78,7 +87,17 @@ public class PipelineExecutionContext {
         private Boolean autoDeploy;
         
         /**
-         * 节点ID（可选）
+         * CI 构建节点 ID
+         */
+        private Long buildNodeId;
+
+        /**
+         * CD 部署节点 ID
+         */
+        private Long deployNodeId;
+
+        /**
+         * 节点ID（兼容旧字段）
          */
         private Long nodeId;
     }

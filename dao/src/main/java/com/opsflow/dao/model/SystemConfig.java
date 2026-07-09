@@ -17,7 +17,7 @@ public class SystemConfig {
     private Long id;
     
     /**
-     * 配置类型：ldap, harbor, maven, jenkins
+     * 配置类型：ldap, harbor, maven 等
      */
     private String configType;
     

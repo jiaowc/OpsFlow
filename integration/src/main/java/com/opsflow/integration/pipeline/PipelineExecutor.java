@@ -3,8 +3,7 @@ package com.opsflow.integration.pipeline;
 import com.opsflow.api.dto.PipelineDTO;
 
 /**
- * Pipeline执行器接口
- * 支持原生执行和Jenkins执行两种方式
+ * Pipeline 执行器接口
  */
 public interface PipelineExecutor {
     

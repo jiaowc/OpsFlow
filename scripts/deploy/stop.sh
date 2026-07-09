@@ -13,7 +13,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # 配置变量
-JAR_NAME="admin-1.0.0.jar"
+JAR_NAME="opsflow.jar"
 PORT=8080
 APP_NAME="OpsFlow"
 

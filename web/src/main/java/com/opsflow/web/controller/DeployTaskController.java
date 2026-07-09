@@ -5,7 +5,6 @@ import com.opsflow.api.dto.DeployTaskDTO;
 import com.opsflow.dao.mapper.DeployTaskMapper;
 import com.opsflow.dao.mapper.ServiceMapper;
 import com.opsflow.dao.mapper.EnvMapper;
-import com.opsflow.dao.mapper.JenkinsNodeMapper;
 import com.opsflow.dao.mapper.ApprovalFlowMapper;
 import com.opsflow.dao.model.*;
 import org.springframework.beans.BeanUtils;
@@ -37,10 +36,6 @@ public class DeployTaskController {
     
     @Autowired
     private EnvMapper envMapper;
-    
-    @Autowired
-    @SuppressWarnings("unused")
-    private JenkinsNodeMapper jenkinsNodeMapper;
     
     @Autowired
     private ApprovalFlowMapper approvalFlowMapper;

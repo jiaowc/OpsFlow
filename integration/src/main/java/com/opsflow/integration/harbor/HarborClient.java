@@ -6,6 +6,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.opsflow.dao.mapper.ComponentMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.opsflow.integration.credential.ComponentAuthResolver;
+import com.opsflow.integration.credential.ResolvedAuth;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +30,9 @@ public class HarborClient {
 
     @Autowired
     private ComponentMapper componentMapper;
+
+    @Autowired
+    private ComponentAuthResolver componentAuthResolver;
     
     private ObjectMapper objectMapper = new ObjectMapper();
     
@@ -77,32 +82,29 @@ public class HarborClient {
             }
             
             harborUrl = component.getUrl();
-            
-            // 解析authConfig JSON
-            java.util.Map<String, String> authConfig = null;
-            try {
-                authConfig = objectMapper.readValue(
-                    component.getAuthConfig(),
-                    new TypeReference<java.util.Map<String, String>>() {}
-                );
-            } catch (Exception e) {
-                throw new RuntimeException("Harbor组件认证配置格式错误", e);
+
+            ResolvedAuth resolvedAuth = componentAuthResolver.resolve(component);
+            if (!resolvedAuth.hasAuth()) {
+                throw new RuntimeException("Harbor组件配置中认证信息不能为空");
             }
+
+            java.util.Map<String, String> authConfig = resolvedAuth.getAuthConfig();
+            String authType = resolvedAuth.getAuthType();
             
             // 根据认证类型获取用户名和密码
-            if ("username_password".equals(component.getAuthType())) {
+            if ("username_password".equals(authType)) {
                 harborUsername = authConfig.get("username");
                 harborPassword = authConfig.get("password");
-            } else if ("token".equals(component.getAuthType())) {
+            } else if ("token".equals(authType)) {
                 // Token认证时，username可以是任意值，password是token
                 harborUsername = authConfig.getOrDefault("username", "admin");
                 harborPassword = authConfig.get("token");
-            } else if ("api_key".equals(component.getAuthType())) {
+            } else if ("api_key".equals(authType)) {
                 // API Key认证时，username可以是任意值，password是apiKey
                 harborUsername = authConfig.getOrDefault("username", "admin");
                 harborPassword = authConfig.get("apiKey");
             } else {
-                throw new RuntimeException("Harbor组件不支持的认证类型: " + component.getAuthType());
+                throw new RuntimeException("Harbor组件不支持的认证类型: " + authType);
             }
             
             if (harborUsername == null || harborPassword == null) {

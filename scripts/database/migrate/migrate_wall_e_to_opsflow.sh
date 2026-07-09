@@ -9,7 +9,7 @@ DB_USER="root"
 DB_PASS="Y4djc+pAyEW=ANp"
 SOURCE_DB="wall_e"
 TARGET_DB="opsflow"
-SCHEMA_FILE="admin/src/main/sql/schema.sql"
+SCHEMA_FILE="scripts/database/schema.sql"
 
 echo "=========================================="
 echo "数据库迁移：wall_e -> opsflow"

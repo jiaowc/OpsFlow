@@ -23,6 +23,16 @@ public class ComponentDTO {
      * 认证配置（Map格式）
      */
     private Map<String, String> authConfig;
+
+    /**
+     * 关联钥匙串 ID
+     */
+    private Long credentialId;
+
+    /**
+     * 关联钥匙串名称（展示用）
+     */
+    private String credentialName;
     
     private String description;
     

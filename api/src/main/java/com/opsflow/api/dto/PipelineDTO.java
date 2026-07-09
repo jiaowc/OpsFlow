@@ -22,19 +22,39 @@ public class PipelineDTO {
     private List<PipelineStepDTO> steps;
     
     /**
-     * Pipeline脚本内容（Jenkinsfile，可选）
+     * Pipeline 脚本内容（可选）
      */
     private String script;
-    
-    /**
-     * Jenkins Job名称模板
-     */
-    private String jenkinsJobTemplate;
     
     /**
      * Pipeline参数定义（参数名称 -> 参数描述）
      */
     private Map<String, String> parameterDefinitions;
+
+    /**
+     * CI 构建节点 ID
+     */
+    private Long buildNodeId;
+
+    /**
+     * CI 构建节点 ID 列表（支持多选）
+     */
+    private List<Long> buildNodeIds;
+
+    /**
+     * CD 部署节点 ID
+     */
+    private Long deployNodeId;
+
+    /**
+     * CI 构建节点名称（展示用）
+     */
+    private String buildNodeName;
+
+    /**
+     * CD 部署节点名称（展示用）
+     */
+    private String deployNodeName;
     
     /**
      * 状态：1-启用 0-禁用

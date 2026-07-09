@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.opsflow.dao.mapper.ComponentMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.opsflow.integration.credential.ComponentAuthResolver;
+import com.opsflow.integration.credential.ResolvedAuth;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
@@ -24,6 +26,9 @@ public class K8sClient {
 
     @Autowired
     private ComponentMapper componentMapper;
+
+    @Autowired
+    private ComponentAuthResolver componentAuthResolver;
     
     private ObjectMapper objectMapper = new ObjectMapper();
     
@@ -66,21 +71,18 @@ public class K8sClient {
                 return;
             }
             
-            // 解析authConfig JSON
-            java.util.Map<String, String> authConfig = null;
-            if (component.getAuthConfig() != null && !component.getAuthConfig().trim().isEmpty()) {
-                try {
-                    authConfig = objectMapper.readValue(
-                        component.getAuthConfig(),
-                        new TypeReference<java.util.Map<String, String>>() {}
-                    );
-                } catch (Exception e) {
-                    log.warn("K8s组件认证配置格式错误，将使用默认配置", e);
-                }
-            }
+            // 解析认证配置（支持钥匙串）
+            ResolvedAuth resolvedAuth = componentAuthResolver.resolve(component);
+            java.util.Map<String, String> authConfig = resolvedAuth.getAuthConfig();
             
-            // 从authConfig中获取config-file路径
-            if (authConfig != null && authConfig.containsKey("configFile")) {
+            if (authConfig != null && authConfig.containsKey("configContent")
+                    && authConfig.get("configContent") != null
+                    && !authConfig.get("configContent").trim().isEmpty()) {
+                java.nio.file.Path tempFile = java.nio.file.Files.createTempFile("opsflow-kubeconfig-", ".yaml");
+                java.nio.file.Files.write(tempFile, authConfig.get("configContent").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                tempFile.toFile().deleteOnExit();
+                k8sConfigFile = tempFile.toString();
+            } else if (authConfig != null && authConfig.containsKey("configFile")) {
                 k8sConfigFile = authConfig.get("configFile");
             } else if (component.getUrl() != null && !component.getUrl().trim().isEmpty()) {
                 // 如果没有configFile，尝试使用url作为config-file路径
@@ -207,26 +209,67 @@ public class K8sClient {
     }
     
     /**
-     * 回滚Deployment
+     * 回滚 Deployment 到上一版本或指定 revision
      */
-    public void rollbackDeployment(String namespace, String deploymentName) {
+    public String rollbackDeployment(String namespace, String deploymentName, Integer toRevision) {
         try {
-            AppsV1Api api = getAppsV1Api();
-            // 获取当前Deployment信息
-            api.readNamespacedDeployment(deploymentName, namespace, null);
-            
-            // 获取当前revision，回滚到上一个版本
-            // 注意：K8s API没有直接的rollback方法，需要通过DeploymentRollback资源实现
-            // 这里简化处理，实际应该调用AppsV1Api的createNamespacedDeploymentRollback方法
-            // 或者使用kubectl命令：kubectl rollout undo deployment/{deploymentName} -n {namespace}
-            
-            log.info("回滚Deployment: {}/{}", namespace, deploymentName);
-            log.warn("回滚功能需要实现DeploymentRollback API调用");
-            
-        } catch (ApiException e) {
+            getAppsV1Api();
+
+            java.util.List<String> command = new java.util.ArrayList<>();
+            command.add("kubectl");
+            if (k8sConfigFile != null && !k8sConfigFile.isEmpty()) {
+                java.io.File configFile = new java.io.File(k8sConfigFile);
+                if (configFile.exists()) {
+                    command.add("--kubeconfig");
+                    command.add(k8sConfigFile);
+                }
+            }
+            command.add("rollout");
+            command.add("undo");
+            command.add("deployment/" + deploymentName);
+            command.add("-n");
+            command.add(namespace);
+            if (toRevision != null && toRevision > 0) {
+                command.add("--to-revision=" + toRevision);
+            }
+
+            ProcessBuilder processBuilder = new ProcessBuilder(command);
+            processBuilder.redirectErrorStream(true);
+            Process process = processBuilder.start();
+
+            StringBuilder output = new StringBuilder();
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append('\n');
+                }
+            }
+
+            int exitCode = process.waitFor();
+            String logText = output.toString().trim();
+            if (exitCode != 0) {
+                throw new RuntimeException(logText.isEmpty() ? "kubectl rollout undo 执行失败" : logText);
+            }
+
+            String revisionInfo = toRevision != null ? ("revision " + toRevision) : "上一版本";
+            String message = String.format("已回滚 Deployment %s/%s 到 %s", namespace, deploymentName, revisionInfo);
+            if (!logText.isEmpty()) {
+                message += "\n" + logText;
+            }
+            log.info(message);
+            return message;
+        } catch (Exception e) {
             log.error("回滚Deployment失败", e);
             throw new RuntimeException("回滚Deployment失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 回滚 Deployment（默认回滚到上一版本）
+     */
+    public void rollbackDeployment(String namespace, String deploymentName) {
+        rollbackDeployment(namespace, deploymentName, null);
     }
 }
 

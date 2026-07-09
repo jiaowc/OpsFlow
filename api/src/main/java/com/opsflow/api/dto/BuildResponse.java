@@ -18,6 +18,11 @@ public class BuildResponse {
      * 任务编号
      */
     private String jobNumber;
+
+    /**
+     * 任务名称
+     */
+    private String taskName;
     
     /**
      * 状态

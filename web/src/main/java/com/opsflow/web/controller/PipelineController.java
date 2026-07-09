@@ -6,14 +6,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.opsflow.api.dto.PipelineDTO;
 import com.opsflow.api.dto.PipelineStepDTO;
 import com.opsflow.dao.mapper.PipelineMapper;
+import com.opsflow.dao.mapper.BuildNodeMapper;
 import com.opsflow.dao.model.Pipeline;
+import com.opsflow.dao.model.BuildNode;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -25,6 +29,9 @@ public class PipelineController {
 
     @Autowired
     private PipelineMapper pipelineMapper;
+
+    @Autowired
+    private BuildNodeMapper buildNodeMapper;
     
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -35,6 +42,7 @@ public class PipelineController {
     public PipelineDTO createPipeline(@RequestBody PipelineDTO request) {
         Pipeline pipeline = new Pipeline();
         BeanUtils.copyProperties(request, pipeline, "steps", "parameterDefinitions");
+        applyBuildNodeSelections(pipeline, request);
         
         // 将steps转换为JSON字符串
         try {
@@ -99,6 +107,7 @@ public class PipelineController {
         }
         
         BeanUtils.copyProperties(request, pipeline, "id", "createTime", "steps", "parameterDefinitions");
+        applyBuildNodeSelections(pipeline, request);
         
         // 更新steps配置
         try {
@@ -161,8 +170,62 @@ public class PipelineController {
         } catch (Exception e) {
             // 忽略解析错误
         }
+
+        if (pipeline.getBuildNodeId() != null) {
+            BuildNode buildNode = buildNodeMapper.selectById(pipeline.getBuildNodeId());
+            if (buildNode != null) {
+                dto.setBuildNodeName(buildNode.getName());
+            }
+        }
+        dto.setBuildNodeIds(parseBuildNodeIds(pipeline.getBuildNodeIds(), pipeline.getBuildNodeId()));
+        if (pipeline.getDeployNodeId() != null) {
+            BuildNode deployNode = buildNodeMapper.selectById(pipeline.getDeployNodeId());
+            if (deployNode != null) {
+                dto.setDeployNodeName(deployNode.getName());
+            }
+        }
         
         return dto;
+    }
+
+    private void applyBuildNodeSelections(Pipeline pipeline, PipelineDTO request) {
+        List<Long> buildNodeIds = normalizeBuildNodeIds(request.getBuildNodeIds(), request.getBuildNodeId());
+        pipeline.setBuildNodeId(buildNodeIds.isEmpty() ? null : buildNodeIds.get(0));
+        pipeline.setBuildNodeIds(buildNodeIds.isEmpty()
+            ? null
+            : buildNodeIds.stream().map(String::valueOf).collect(Collectors.joining(",")));
+    }
+
+    private List<Long> normalizeBuildNodeIds(List<Long> buildNodeIds, Long buildNodeId) {
+        List<Long> ids = new ArrayList<>();
+        if (buildNodeIds != null) {
+            buildNodeIds.stream().filter(Objects::nonNull).distinct().forEach(ids::add);
+        }
+        if (ids.isEmpty() && buildNodeId != null) {
+            ids.add(buildNodeId);
+        }
+        return ids;
+    }
+
+    private List<Long> parseBuildNodeIds(String buildNodeIds, Long fallbackBuildNodeId) {
+        List<Long> ids = new ArrayList<>();
+        if (buildNodeIds != null && !buildNodeIds.trim().isEmpty()) {
+            for (String part : buildNodeIds.split(",")) {
+                String text = part == null ? "" : part.trim();
+                if (text.isEmpty()) continue;
+                try {
+                    Long id = Long.parseLong(text);
+                    if (!ids.contains(id)) {
+                        ids.add(id);
+                    }
+                } catch (NumberFormatException ignore) {
+                }
+            }
+        }
+        if (ids.isEmpty() && fallbackBuildNodeId != null) {
+            ids.add(fallbackBuildNodeId);
+        }
+        return ids;
     }
 }
 

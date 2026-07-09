@@ -9,6 +9,11 @@ import lombok.Data;
 public class BuildRequest {
     
     /**
+     * 任务名称
+     */
+    private String taskName;
+
+    /**
      * 服务ID
      */
     private Long serviceId;
@@ -19,9 +24,14 @@ public class BuildRequest {
     private Long envId;
     
     /**
-     * Git分支
+     * Git分支或Tag
      */
     private String branch;
+
+    /**
+     * Git 类型：branch / tag
+     */
+    private String gitType;
     
     /**
      * Pipeline模板ID

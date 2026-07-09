@@ -17,20 +17,28 @@ public class BuildJob {
     private Long id;
     
     private String jobNumber;
+
+    /**
+     * 任务名称（用户自定义）
+     */
+    private String taskName;
     
     private Long serviceId;
     
     private Long envId;
     
     private String branch;
+
+    /**
+     * Git 类型：branch / tag
+     */
+    private String gitType;
     
     private String commitId;
     
-    private Integer jenkinsBuildNumber;
-    
-    private String jenkinsJobName;
-    
-    private String jenkinsNode;
+    private Integer buildNumber;
+
+    private String buildNode;
     
     private String imageTag;
     

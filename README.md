@@ -8,12 +8,12 @@ OpsFlow 是一个基于 Spring Boot 的 DevOps 构建发布平台，支持非生
 
 - ✅ 非生产环境一键构建发布（dev/test/demo）
 - ✅ 支持手动选择分支和环境
-- ✅ 支持随机选择或手动选择Jenkins构建节点
-- ✅ 集成Jenkins进行代码构建
-- ✅ 自动构建Docker镜像并推送到Harbor
-- ✅ 自动部署到K8s集群
-- ✅ Jenkins视图管理（作业列表、Pipeline历史、阶段日志）
-- ✅ 组件管理（Jenkins、K8s、Harbor配置）
+- ✅ 支持随机选择或手动选择构建节点
+- ✅ 原生 Pipeline 流水线（拉代码、构建、部署）
+- ✅ 自动构建 Docker 镜像并推送到 Harbor
+- ✅ 自动部署到 K8s 集群
+- ✅ Pipeline 任务管理（作业列表、构建历史、阶段日志）
+- ✅ 组件管理（GitLab、K8s、Harbor 配置）
 - 🔄 生产环境上线任务和审批流程（待实现）
 
 ## 技术栈
@@ -21,7 +21,7 @@ OpsFlow 是一个基于 Spring Boot 的 DevOps 构建发布平台，支持非生
 - **后端框架**: Spring Boot 2.7.14
 - **数据库**: MySQL + MyBatis Plus
 - **构建工具**: Maven
-- **CI/CD**: Jenkins
+- **CI/CD**: 原生 Pipeline + SSH 远程节点
 - **容器化**: Docker + Kubernetes
 - **镜像仓库**: Harbor
 
@@ -32,10 +32,10 @@ OpsFlow/
 ├── api/              # API模块（DTO类）
 ├── common/           # 公共模块（工具类、常量）
 ├── dao/              # 数据访问层（Mapper、Model）
-├── integration/      # 集成模块（Jenkins/K8s/Harbor客户端）
+├── integration/      # 集成模块（K8s/Harbor/SSH/Pipeline）
 ├── service/          # 业务逻辑层
-├── web/              # Web层（Controller）
-├── admin/            # 启动模块（主应用）
+├── web/              # Web层（Controller + 静态前端）
+├── app/              # 启动模块（打出 opsflow.jar）
 ├── config/           # 配置文件目录（外部配置）
 ├── scripts/          # 脚本目录（部署、数据库、工具）
 ├── docs/             # 文档目录
@@ -52,7 +52,7 @@ OpsFlow/
 - JDK 1.8+
 - Maven 3.6+
 - MySQL 5.7+
-- Jenkins（已配置）
+- 构建节点（SSH，用于 Pipeline 执行）
 - Kubernetes集群（已配置）
 
 ### 2. 数据库初始化
@@ -69,7 +69,7 @@ mysql -u root -p opsflow < scripts/database/schema.sql
 ### 3. 配置文件
 
 #### 开发环境
-使用项目内默认配置：`admin/src/main/resources/application.yml`
+使用项目内默认配置：`web/src/main/resources/application.yml`
 
 #### 生产环境
 1. 复制配置模板：
@@ -106,10 +106,10 @@ mvn clean package -DskipTests
 #### 手动启动
 ```bash
 # 使用外部配置
-java -jar target/admin-1.0.0.jar --spring.config.location=file:./config/application.yml
+java -jar target/opsflow.jar --spring.config.location=file:./config/application.yml
 
 # 或使用默认配置
-java -jar target/admin-1.0.0.jar
+java -jar target/opsflow.jar
 ```
 
 ## 配置文件管理
@@ -142,7 +142,7 @@ Content-Type: application/json
   "serviceId": 1,
   "envId": 1,
   "branch": "develop",
-  "jenkinsNode": "node-1",  // 可选，不传则随机选择
+  "buildNode": "node-1",
   "autoDeploy": true
 }
 ```
@@ -171,43 +171,15 @@ GET /api/build/service/{serviceId}/branches
 GET /api/build/envs
 ```
 
-#### 6. 获取Jenkins节点列表
+#### 6. 获取构建节点列表
 
 ```http
 GET /api/build/nodes?random=true
 ```
 
-### Jenkins视图
+### Pipeline 任务
 
-#### 1. 获取Jenkins作业列表
-
-```http
-GET /api/jenkins/jobs?includeHealth=false
-```
-
-#### 2. 获取Pipeline构建历史
-
-```http
-GET /api/jenkins/pipeline/{jobName}?page=1&pageSize=10
-```
-
-#### 3. 获取构建阶段信息
-
-```http
-GET /api/jenkins/pipeline/{jobName}/build/{buildNumber}/stages
-```
-
-#### 4. 获取阶段日志
-
-```http
-GET /api/jenkins/pipeline/{jobName}/build/{buildNumber}/stage/{stageId}/log?stageName={stageName}
-```
-
-#### 5. 触发构建
-
-```http
-POST /api/jenkins/build/{jobName}
-```
+通过管理后台「Pipeline」页面管理任务、触发构建、查看阶段日志。
 
 ### 组件管理
 
@@ -222,12 +194,6 @@ GET /api/component/list
 ```http
 POST /api/component/{id}/test
 ```
-
-## Jenkins配置
-
-需要在Jenkins中创建一个Pipeline Job，名称为 `build-and-deploy`（可在环境配置中自定义）。
-
-Pipeline脚本示例请参考项目文档中的 `Jenkinsfile.example`。
 
 ## 开发计划
 
