@@ -24,12 +24,9 @@ mysql -u root -p opsflow < scripts/database/schema.sql
 ### 3. 配置文件准备
 
 ```bash
-# 复制配置模板
-cp config/application.yml.example config/application.yml
-
-# 编辑配置文件
-vim config/application.yml
-# 修改数据库连接、密码等配置
+# 默认配置：config/application.yml
+# 按环境覆盖，例如：
+vim config/application-dev.yml
 ```
 
 ## 部署步骤
@@ -39,6 +36,9 @@ vim config/application.yml
 ```bash
 # 编译并启动
 ./scripts/deploy/restart.sh
+
+# 按环境编译并启动（示例：dev）
+SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh
 
 # 或分步执行
 ./scripts/deploy/start.sh   # 启动
@@ -51,25 +51,31 @@ vim config/application.yml
 # 1. 编译打包
 mvn clean package -DskipTests
 
-# 2. 启动应用
-java -jar target/opsflow.jar --spring.config.location=file:./config/application.yml
+# 或按环境打包（示例：dev）
+mvn clean package -Pdev -DskipTests
 
-# 或使用默认配置
+# 2. 启动应用（默认使用 application.yml）
 java -jar target/opsflow.jar
+
+# 3. 启动应用（示例：dev）
+SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar --spring.config.additional-location=file:./config/
 ```
 
 ## 配置说明
 
 ### 配置文件位置
 
-- **开发环境**: `web/src/main/resources/application.yml`
-- **生产环境**: `config/application.yml`（外部配置，不提交到Git）
+- 默认配置：`config/application.yml`
+- 环境配置：`config/application-dev.yml`、`config/application-test.yml`、`config/application-prod.yml`
+- 不传参数默认使用 `application.yml`
+- 通过 `SPRING_PROFILES_ACTIVE` 选择环境覆盖配置
 
 ### 配置优先级
 
-1. 命令行参数 `--spring.config.location`
-2. 外部配置文件 `./config/application.yml`
-3. 项目内配置文件 `classpath:application.yml`
+1. `SPRING_PROFILES_ACTIVE` / `--spring.profiles.active`
+2. 外部配置目录 `./config/`
+3. `application.yml`
+4. `application-<profile>.yml`
 
 ## 日志管理
 
@@ -110,7 +116,8 @@ After=network.target mysql.service
 Type=simple
 User=opsflow
 WorkingDirectory=/opt/opsflow
-ExecStart=/usr/bin/java -jar /opt/opsflow/target/opsflow.jar --spring.config.location=file:/opt/opsflow/config/application.yml
+Environment=SPRING_PROFILES_ACTIVE=prod
+ExecStart=/usr/bin/java -jar /opt/opsflow/target/opsflow.jar --spring.config.additional-location=file:/opt/opsflow/config/
 Restart=always
 RestartSec=10
 

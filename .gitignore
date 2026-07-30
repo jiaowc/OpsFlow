@@ -99,3 +99,7 @@ Thumbs.db
 
 
 
+
+# License 私钥不得进入产品仓库（签发在独立 License 项目）
+*.private.pem
+**/private*.pem

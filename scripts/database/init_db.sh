@@ -34,5 +34,6 @@ mysql -h127.0.0.1 -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 "$DB
 mysql -h127.0.0.1 -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 "$DB_NAME" < "${MIGRATIONS_DIR}/migrate_pipeline_node.sql" 2>/dev/null || true
 mysql -h127.0.0.1 -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 "$DB_NAME" < "${MIGRATIONS_DIR}/migrate_pipeline_step_def.sql" 2>/dev/null || true
 mysql -h127.0.0.1 -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 "$DB_NAME" < "${SEEDS_DIR}/seed_pipeline_step_def.sql" 2>/dev/null || true
+mysql -h127.0.0.1 -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 "$DB_NAME" < "${SEEDS_DIR}/seed_nginx_dockerfile_template.sql" 2>/dev/null || true
 
 echo "数据库初始化完成: $DB_NAME"

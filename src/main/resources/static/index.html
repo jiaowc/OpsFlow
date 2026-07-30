@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPSFLOW</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <h1>OPSFLOW</h1>
+            </div>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="username">用户名</label>
+                    <input type="text" id="username" name="username" required placeholder="请输入用户名">
+                </div>
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input type="password" id="password" name="password" required placeholder="请输入密码">
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn-login">登录</button>
+                </div>
+                <div id="feishuLoginBox" class="sso-login-box" style="display:none;">
+                    <div class="sso-divider"><span>或</span></div>
+                    <a id="feishuLoginBtn" class="btn-feishu-login" href="/api/auth/feishu/login">使用飞书登录</a>
+                </div>
+                <div id="errorMsg" class="error-msg"></div>
+            </form>
+        </div>
+    </div>
+    <script src="/js/login.js"></script>
+</body>
+</html>
+
+
+

@@ -91,7 +91,7 @@ echo ""
 echo "数据库名称: $DB_NAME"
 echo "数据库地址: $DB_HOST:$DB_PORT"
 echo ""
-echo "配置文件位置: web/src/main/resources/application.yml"
+echo "配置文件位置: src/main/resources/application.yml"
 echo "请确认配置文件中的数据库名称已更新为: $DB_NAME"
 
 

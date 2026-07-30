@@ -3,7 +3,7 @@
 ## 配置文件说明
 
 ### 项目内配置文件（开发环境）
-- **位置**: `web/src/main/resources/application.yml`
+- **位置**: `src/main/resources/application.yml`
 - **用途**: 开发环境默认配置
 - **Git**: ✅ 提交到 Git（不包含敏感信息）
 
@@ -42,7 +42,7 @@ Spring Boot 配置加载优先级（从高到低）：
 
 ```bash
 # 1. 复制配置文件
-cp web/src/main/resources/application.yml config/application.yml
+cp src/main/resources/application.yml config/application.yml
 
 # 2. 编辑配置文件，修改敏感信息
 vim config/application.yml
@@ -118,7 +118,7 @@ spring:
 A: 是的。项目内配置作为默认配置和开发环境使用，外部配置用于生产环境。
 
 ### Q: 如果外部配置不存在会怎样？
-A: 应用会使用项目内的默认配置（`web/src/main/resources/application.yml`）。
+A: 应用会使用项目内的默认配置（`src/main/resources/application.yml`）。
 
 ### Q: 如何切换回项目内配置？
 A: 删除或重命名外部配置文件即可，应用会自动使用项目内配置。

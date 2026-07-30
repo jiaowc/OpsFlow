@@ -24,7 +24,7 @@
 
 ### 方案一：项目内配置使用占位符（推荐）
 
-**项目内配置** (`web/src/main/resources/application.yml`)：
+**项目内配置** (`src/main/resources/application.yml`)：
 ```yaml
 spring:
   datasource:

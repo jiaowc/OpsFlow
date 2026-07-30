@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.opsflow.dao.mapper.UserRoleMapper">
+    
+    <delete id="deleteByUserId">
+        DELETE FROM user_role WHERE user_id = #{userId}
+    </delete>
+    
+    <delete id="deleteByRoleId">
+        DELETE FROM user_role WHERE role_id = #{roleId}
+    </delete>
+    
+    <select id="selectRoleIdsByUserId" resultType="java.lang.Long">
+        SELECT role_id FROM user_role WHERE user_id = #{userId}
+    </select>
+
+    <select id="selectRoleCodesByUserId" resultType="java.lang.String">
+        SELECT DISTINCT r.code
+        FROM user_role ur
+        INNER JOIN role r ON r.id = ur.role_id
+        WHERE ur.user_id = #{userId}
+          AND (r.status IS NULL OR r.status = 1)
+    </select>
+
+    <select id="selectPermissionCodesByUserId" resultType="java.lang.String">
+        SELECT DISTINCT p.code
+        FROM user_role ur
+        INNER JOIN role r ON r.id = ur.role_id
+        INNER JOIN role_permission rp ON rp.role_id = ur.role_id
+        INNER JOIN permission p ON p.id = rp.permission_id
+        WHERE ur.user_id = #{userId}
+          AND (r.status IS NULL OR r.status = 1)
+          AND (p.status IS NULL OR p.status = 1)
+    </select>
+    
+</mapper>
+
+

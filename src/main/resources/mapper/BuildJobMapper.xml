@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.opsflow.dao.mapper.BuildJobMapper">
+
+    <!--
+      任务组规则（与 PipelineRunServiceImpl#buildTaskGroupKey 一致）：
+      - 上线 CD：deploy_task_id IS NOT NULL → 按 service_id + env_id + pipeline_template_id
+      - 手动：按 task_name + service_id + env_id + pipeline_template_id
+    -->
+    <sql id="pipelineJobGroupBy">
+        CASE WHEN deploy_task_id IS NOT NULL THEN 1 ELSE 0 END,
+        CASE WHEN deploy_task_id IS NOT NULL THEN '' ELSE IFNULL(TRIM(task_name), '') END,
+        service_id,
+        env_id,
+        pipeline_template_id
+    </sql>
+
+    <sql id="pipelineJobEnvFilter">
+        <if test="envId != null">
+            AND env_id = #{envId}
+        </if>
+        <if test="envId == null and envIds != null and envIds.size() &gt; 0">
+            AND env_id IN
+            <foreach collection="envIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+    </sql>
+
+    <select id="countPipelineJobGroups" resultType="long">
+        SELECT COUNT(1) FROM (
+            SELECT 1
+            FROM build_job
+            <where>
+                <include refid="pipelineJobEnvFilter"/>
+            </where>
+            GROUP BY
+            <include refid="pipelineJobGroupBy"/>
+        ) t
+    </select>
+
+    <select id="selectPipelineJobGroupPage" resultType="com.opsflow.dao.model.BuildJobGroupPageRow">
+        SELECT g.max_id AS latestId, g.min_id AS anchorId
+        FROM (
+            SELECT MAX(id) AS max_id, MIN(id) AS min_id, MAX(create_time) AS latest_time
+            FROM build_job
+            <where>
+                <include refid="pipelineJobEnvFilter"/>
+            </where>
+            GROUP BY
+            <include refid="pipelineJobGroupBy"/>
+        ) g
+        ORDER BY g.latest_time DESC, g.max_id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+</mapper>

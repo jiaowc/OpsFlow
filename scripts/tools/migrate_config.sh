@@ -16,7 +16,7 @@ NC='\033[0m'
 
 # 配置变量
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-INTERNAL_CONFIG="${PROJECT_DIR}/web/src/main/resources/application.yml"
+INTERNAL_CONFIG="${PROJECT_DIR}/src/main/resources/application.yml"
 EXTERNAL_CONFIG="${PROJECT_DIR}/config/application.yml"
 EXTERNAL_CONFIG_EXAMPLE="${PROJECT_DIR}/config/application.yml.example"
 

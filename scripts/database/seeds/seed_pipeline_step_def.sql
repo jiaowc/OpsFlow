@@ -8,7 +8,7 @@ DELETE FROM `pipeline_step_def`;
 INSERT INTO `pipeline_step_def` (`id`, `name`, `step_type`, `phase`, `description`, `content_config`, `status`) VALUES
 (1, '拉取代码', 'checkout', 'ci', '从 Git 仓库拉取代码', '{}', 1),
 (2, '代码构建', 'build', 'ci', 'Maven/Gradle 构建', '{"buildCommand":"mvn clean package -DskipTests"}', 1),
-(3, '镜像制作', 'docker_build', 'ci', 'Docker 镜像构建', '{"dockerfilePath":"Dockerfile","dockerfileContent":"FROM openjdk:8-jre-slim\\nWORKDIR /app\\nCOPY target/*.jar app.jar\\nEXPOSE 8080\\nCMD [\\"java\\", \\"-jar\\", \\"app.jar\\"]"}', 1),
+(3, '镜像制作', 'docker_build', 'ci', 'Docker 镜像构建', '{"dockerfilePath":"Dockerfile","dockerfileContent":"FROM openjdk:8-jre-slim\\nWORKDIR /app\\nCOPY target/*.jar app.jar\\nEXPOSE ${servicePort}\\nCMD [\\"java\\", \\"-jar\\", \\"app.jar\\"]"}', 1),
 (4, '上传镜像', 'push_image', 'ci', '推送镜像到 Harbor', '{}', 1),
 (5, '开始部署', 'deploy', 'cd', '更新 K8s 部署', '{}', 1),
 (6, '检查部署状态', 'check_deploy', 'cd', '等待部署滚动完成', '{"timeoutSeconds":"300"}', 1),

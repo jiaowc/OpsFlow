@@ -29,18 +29,13 @@ OpsFlow 是一个基于 Spring Boot 的 DevOps 构建发布平台，支持非生
 
 ```
 OpsFlow/
-├── api/              # API模块（DTO类）
-├── common/           # 公共模块（工具类、常量）
-├── dao/              # 数据访问层（Mapper、Model）
-├── integration/      # 集成模块（K8s/Harbor/SSH/Pipeline）
-├── service/          # 业务逻辑层
-├── web/              # Web层（Controller + 静态前端）
-├── app/              # 启动模块（打出 opsflow.jar）
-├── config/           # 配置文件目录（外部配置）
-├── scripts/          # 脚本目录（部署、数据库、工具）
-├── docs/             # 文档目录
-├── logs/             # 日志目录
-└── data/             # 数据目录
+├── src/main/java/com/opsflow/   # 启动类 + 按包分层（api/dao/service/web/integration）
+├── src/main/resources/          # application.yml、mapper、static
+├── config/                      # 外部配置（生产/本地）
+├── scripts/                     # 部署、数据库、工具脚本
+├── docs/                        # 文档
+├── logs/                        # 日志
+└── data/                        # 数据
 ```
 
 详细结构说明请查看 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
@@ -68,10 +63,10 @@ mysql -u root -p opsflow < scripts/database/schema.sql
 
 ### 3. 配置文件
 
-#### 开发环境
-使用项目内默认配置：`web/src/main/resources/application.yml`
+#### 默认配置
+使用 `config/application.yml` 作为默认完整配置。
 
-#### 生产环境
+#### 按环境覆盖
 1. 复制配置模板：
    ```bash
    cp config/application.yml.example config/application.yml
@@ -80,13 +75,21 @@ mysql -u root -p opsflow < scripts/database/schema.sql
 2. 修改配置：
    ```bash
    vim config/application.yml
-   # 修改数据库连接、密码等配置
-```
+   # 修改默认数据库连接、密码等配置
+   ```
+
+3. 如需独立环境配置，可编辑：
+   - `config/application-dev.yml`
+   - `config/application-test.yml`
+   - `config/application-prod.yml`
 
 ### 4. 编译打包
 
 ```bash
 mvn clean package -DskipTests
+
+# 或按环境打包（示例：dev）
+mvn clean package -Pdev -DskipTests
 ```
 
 ### 5. 运行
@@ -101,15 +104,18 @@ mvn clean package -DskipTests
 
 # 重启应用
 ./scripts/deploy/restart.sh
+
+# 指定环境重启（示例：dev）
+SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh
 ```
 
 #### 手动启动
 ```bash
-# 使用外部配置
-java -jar target/opsflow.jar --spring.config.location=file:./config/application.yml
-
-# 或使用默认配置
+# 使用默认配置
 java -jar target/opsflow.jar
+
+# 使用外部配置目录并指定环境
+SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar --spring.config.additional-location=file:./config/
 ```
 
 ## 配置文件管理
@@ -117,14 +123,14 @@ java -jar target/opsflow.jar
 ### 配置优先级
 
 Spring Boot 配置加载优先级（从高到低）：
-1. 命令行参数 `--spring.config.location`
-2. 外部配置文件 `./config/application.yml`
-3. 项目内配置文件 `classpath:application.yml`
+1. `SPRING_PROFILES_ACTIVE` / `--spring.profiles.active`
+2. 外部配置目录 `./config/`
+3. `application.yml`
+4. `application-<profile>.yml`
 
 ### 安全建议
 
-- ⚠️ **不要将包含密码的 `config/application.yml` 提交到 Git**
-- ✅ 将 `config/application.yml` 添加到 `.gitignore`
+- ⚠️ **不要将生产真实密码直接提交到 Git**
 - ✅ 使用 `config/application.yml.example` 作为模板
 - ✅ 生产环境建议使用环境变量或配置中心管理敏感信息
 
