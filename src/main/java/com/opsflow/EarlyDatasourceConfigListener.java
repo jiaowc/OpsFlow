@@ -6,38 +6,50 @@ import org.springframework.boot.logging.DeferredLog;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
 import java.util.Arrays;
 
 /**
- * 在数据源初始化前输出即将使用的数据库配置。
- * <p>
- * {@link ApplicationEnvironmentPreparedEvent} 发生时日志系统可能尚未就绪，
- * 因此使用 {@link DeferredLog} 缓存日志，并在 {@link ApplicationPreparedEvent} 时刷出。
- * </p>
+ * 打印数据源配置：环境准备时先打一次，配置全部加载后再打一次最终值。
  */
 public class EarlyDatasourceConfigListener implements ApplicationListener<ApplicationEvent> {
 
     private final DeferredLog log = new DeferredLog();
-    private boolean printed;
+    private boolean printedEarly;
+    private boolean printedFinal;
 
     @Override
     public void onApplicationEvent(ApplicationEvent event) {
         if (event instanceof ApplicationEnvironmentPreparedEvent) {
-            printDatasourceConfig(((ApplicationEnvironmentPreparedEvent) event).getEnvironment());
+            printDatasourceConfig(
+                ((ApplicationEnvironmentPreparedEvent) event).getEnvironment(),
+                "启动早期(profile 文档可能尚未完全合并)",
+                false);
             return;
         }
         if (event instanceof ApplicationPreparedEvent) {
-            // 日志系统已就绪，把缓存的日志刷到正式日志
+            printDatasourceConfig(
+                ((ApplicationPreparedEvent) event).getApplicationContext().getEnvironment(),
+                "配置加载完成(最终生效)",
+                true);
             log.switchTo(EarlyDatasourceConfigListener.class);
         }
     }
 
-    private void printDatasourceConfig(ConfigurableEnvironment environment) {
-        if (printed) {
-            return;
+    private void printDatasourceConfig(ConfigurableEnvironment environment, String stage, boolean finalStage) {
+        if (finalStage) {
+            if (printedFinal) {
+                return;
+            }
+            printedFinal = true;
+        } else {
+            if (printedEarly) {
+                return;
+            }
+            printedEarly = true;
         }
-        printed = true;
 
         String[] activeProfiles = environment.getActiveProfiles();
         String activeProfileText = activeProfiles.length == 0 ? "(default)" : Arrays.toString(activeProfiles);
@@ -45,18 +57,54 @@ public class EarlyDatasourceConfigListener implements ApplicationListener<Applic
         String url = maskJdbcUrl(environment.getProperty("spring.datasource.url"));
         String username = maskText(environment.getProperty("spring.datasource.username"));
         String driver = maskText(environment.getProperty("spring.datasource.driver-class-name"));
+        String configFiles = resolveConfigFiles();
 
-        // System.out 兜底：即使日志系统未初始化也能在容器 stdout 看到
-        System.out.println("[OpsFlow] 启动阶段环境信息: activeProfiles=" + activeProfileText
-            + ", spring.profiles.active=" + configuredActive);
-        System.out.println("[OpsFlow] 启动阶段数据库配置: url=" + url
+        String line1 = "[OpsFlow] " + stage + ": activeProfiles=" + activeProfileText
+            + ", spring.profiles.active=" + configuredActive;
+        String line2 = "[OpsFlow] " + stage + " 数据库配置: url=" + url
             + ", username=" + username
-            + ", driver=" + driver);
+            + ", driver=" + driver;
+        String line3 = "[OpsFlow] 可见配置文件: " + configFiles;
 
-        // DeferredLog 不支持 SLF4J 占位符，只能传单个 message
-        log.info("启动阶段环境信息: activeProfiles=" + activeProfileText
-            + ", spring.profiles.active=" + configuredActive);
-        log.info("启动阶段数据库配置: url=" + url + ", username=" + username + ", driver=" + driver);
+        System.out.println(line1);
+        System.out.println(line2);
+        System.out.println(line3);
+
+        log.info(line1);
+        log.info(line2);
+        log.info(line3);
+    }
+
+    private String resolveConfigFiles() {
+        try {
+            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+            StringBuilder sb = new StringBuilder();
+            for (String pattern : new String[]{
+                "classpath*:/application.yml",
+                "classpath*:/application-*.yml",
+                "classpath*:/application.properties",
+                "file:./config/application.yml",
+                "file:./config/application-*.yml"
+            }) {
+                Resource[] resources = resolver.getResources(pattern);
+                for (Resource resource : resources) {
+                    if (!resource.exists()) {
+                        continue;
+                    }
+                    if (sb.length() > 0) {
+                        sb.append(", ");
+                    }
+                    try {
+                        sb.append(resource.getURL());
+                    } catch (Exception e) {
+                        sb.append(resource.getDescription());
+                    }
+                }
+            }
+            return sb.length() == 0 ? "(none)" : sb.toString();
+        } catch (Exception e) {
+            return "resolve-failed: " + e.getMessage();
+        }
     }
 
     private String maskJdbcUrl(String url) {

@@ -89,7 +89,7 @@
                 <executions>
                     <execution>
                         <id>copy-profile-config-into-jar</id>
-                        <phase>process-resources</phase>
+                        <phase>prepare-package</phase>
                         <goals>
                             <goal>copy-resources</goal>
                         </goals>
@@ -118,6 +118,28 @@
                                     </includes>
                                 </resource>
                             </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>overlay-profile-application-yml</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <!-- -Pdev/-Ptest/-Pprod 时，用对应环境完整配置覆盖 jar 内 application.yml，避免被默认文件盖住 -->
+                                <copy file="${project.basedir}/config/application-${default.spring.profile}.yml"
+                                      tofile="${project.build.outputDirectory}/application.yml"
+                                      overwrite="true"
+                                      failonerror="false"/>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>
