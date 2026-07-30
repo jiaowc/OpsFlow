@@ -4,7 +4,7 @@ spring:
   datasource:
     url: "jdbc:mysql://172.16.50.183:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai"
     username: root
-    password: "${DB_PASSWORD}"
+    password: "JnSbNgERd)*HJ1wo"
     driver-class-name: com.mysql.cj.jdbc.Driver
   web:
     resources:
