@@ -7,6 +7,7 @@
 1. **默认配置**：`application.yml`
    - 作为默认完整配置使用
    - 不传环境参数时，默认使用它
+   - 注意：不要在这个文件里写 Maven 占位符 `@...@`，否则本地/外部挂载时 YAML 会解析失败
 
 2. **环境配置**：
    - `application-dev.yml`：开发环境
@@ -24,7 +25,7 @@
    - `mvn clean package -Ptest -DskipTests`
    - `mvn clean package -Pprod -DskipTests`
    - 不传 `-P`：默认使用 `application.yml`
-   - 传 `-Pdev/-Ptest/-Pprod`：默认激活对应环境配置
+   - 传 `-Pdev/-Ptest/-Pprod`：会把 `spring.profiles.active` 写入 jar 内 `application.properties`
    - 运行时仍可通过 `SPRING_PROFILES_ACTIVE` 覆盖
 
 ## 启动命令

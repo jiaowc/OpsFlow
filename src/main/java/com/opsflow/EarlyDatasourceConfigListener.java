@@ -41,18 +41,21 @@ public class EarlyDatasourceConfigListener implements ApplicationListener<Applic
 
         String[] activeProfiles = environment.getActiveProfiles();
         String activeProfileText = activeProfiles.length == 0 ? "(default)" : Arrays.toString(activeProfiles);
+        String configuredActive = maskText(environment.getProperty("spring.profiles.active"));
         String url = maskJdbcUrl(environment.getProperty("spring.datasource.url"));
         String username = maskText(environment.getProperty("spring.datasource.username"));
         String driver = maskText(environment.getProperty("spring.datasource.driver-class-name"));
 
         // System.out 兜底：即使日志系统未初始化也能在容器 stdout 看到
-        System.out.println("[OpsFlow] 启动阶段环境信息: activeProfiles=" + activeProfileText);
+        System.out.println("[OpsFlow] 启动阶段环境信息: activeProfiles=" + activeProfileText
+            + ", spring.profiles.active=" + configuredActive);
         System.out.println("[OpsFlow] 启动阶段数据库配置: url=" + url
             + ", username=" + username
             + ", driver=" + driver);
 
         // DeferredLog 不支持 SLF4J 占位符，只能传单个 message
-        log.info("启动阶段环境信息: activeProfiles=" + activeProfileText);
+        log.info("启动阶段环境信息: activeProfiles=" + activeProfileText
+            + ", spring.profiles.active=" + configuredActive);
         log.info("启动阶段数据库配置: url=" + url + ", username=" + username + ", driver=" + driver);
     }
 
