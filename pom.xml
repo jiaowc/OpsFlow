@@ -123,28 +123,6 @@
                 </executions>
             </plugin>
             <plugin>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <version>3.1.0</version>
-                <executions>
-                    <execution>
-                        <id>overlay-profile-application-yml</id>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                        <configuration>
-                            <target>
-                                <!-- -Pdev/-Ptest/-Pprod 时，用对应环境完整配置覆盖 jar 内 application.yml，避免被默认文件盖住 -->
-                                <copy file="${project.basedir}/config/application-${default.spring.profile}.yml"
-                                      tofile="${project.build.outputDirectory}/application.yml"
-                                      overwrite="true"
-                                      failonerror="false"/>
-                            </target>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
@@ -166,18 +144,90 @@
             <properties>
                 <default.spring.profile>dev</default.spring.profile>
             </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>overlay-dev-application-yml</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <copy file="${project.basedir}/config/application-dev.yml"
+                                              tofile="${project.build.outputDirectory}/application.yml"
+                                              overwrite="true"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
         <profile>
             <id>test</id>
             <properties>
                 <default.spring.profile>test</default.spring.profile>
             </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>overlay-test-application-yml</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <copy file="${project.basedir}/config/application-test.yml"
+                                              tofile="${project.build.outputDirectory}/application.yml"
+                                              overwrite="true"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
         <profile>
             <id>prod</id>
             <properties>
                 <default.spring.profile>prod</default.spring.profile>
             </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>overlay-prod-application-yml</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <copy file="${project.basedir}/config/application-prod.yml"
+                                              tofile="${project.build.outputDirectory}/application.yml"
+                                              overwrite="true"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
 </project>
