@@ -51,8 +51,9 @@ public class EarlyDatasourceConfigListener implements ApplicationListener<Applic
             + ", username=" + username
             + ", driver=" + driver);
 
-        log.info("启动阶段环境信息: activeProfiles={}", activeProfileText);
-        log.info("启动阶段数据库配置: url={}, username={}, driver={}", url, username, driver);
+        // DeferredLog 不支持 SLF4J 占位符，只能传单个 message
+        log.info("启动阶段环境信息: activeProfiles=" + activeProfileText);
+        log.info("启动阶段数据库配置: url=" + url + ", username=" + username + ", driver=" + driver);
     }
 
     private String maskJdbcUrl(String url) {
