@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: opsflow
+  datasource:
+    url: "jdbc:mysql://172.16.50.183:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai"
+    username: root
+    password: "${DB_PASSWORD}"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  web:
+    resources:
+      static-locations: classpath:/static/
+      add-mappings: true
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.opsflow.dao.model
+  configuration:
+    map-underscore-to-camel-case: true
+
+server:
+  port: 8080
+
+opsflow:
+  license:
+    enforcement-enabled: false
+  pipeline:
+    log-dir: ./data/pipeline-logs
+
+logging:
+  level:
+    com.opsflow: DEBUG
+    root: INFO

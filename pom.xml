@@ -108,6 +108,10 @@
                                         <include>application-dev.yml</include>
                                         <include>application-test.yml</include>
                                         <include>application-prod.yml</include>
+                                        <include>application.yml.example</include>
+                                        <include>application-dev.yml.example</include>
+                                        <include>application-test.yml.example</include>
+                                        <include>application-prod.yml.example</include>
                                     </includes>
                                 </resource>
                                 <resource>
@@ -118,6 +122,32 @@
                                     </includes>
                                 </resource>
                             </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>ensure-default-application-yml</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <!-- CI 上 application.yml 通常被 gitignore；用 example 兜底 -->
+                                <copy file="${project.basedir}/config/application.yml.example"
+                                      tofile="${project.build.outputDirectory}/application.yml"
+                                      overwrite="false"
+                                      failonerror="false"/>
+                                <copy file="${project.basedir}/config/application.yml"
+                                      tofile="${project.build.outputDirectory}/application.yml"
+                                      overwrite="true"
+                                      failonerror="false"/>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>
@@ -158,9 +188,19 @@
                                 </goals>
                                 <configuration>
                                     <target>
+                                        <!-- 先用可提交的 example，再用本地/仓库中的正式文件覆盖 -->
+                                        <copy file="${project.basedir}/config/application-dev.yml.example"
+                                              tofile="${project.build.outputDirectory}/application.yml"
+                                              overwrite="true"
+                                              failonerror="false"/>
                                         <copy file="${project.basedir}/config/application-dev.yml"
                                               tofile="${project.build.outputDirectory}/application.yml"
-                                              overwrite="true"/>
+                                              overwrite="true"
+                                              failonerror="false"/>
+                                        <available file="${project.build.outputDirectory}/application.yml"
+                                                   property="opsflow.dev.application.yml.ready"/>
+                                        <fail unless="opsflow.dev.application.yml.ready"
+                                              message="缺少 config/application-dev.yml(.example)，无法执行 -Pdev 打包。请提交环境配置后重试。"/>
                                     </target>
                                 </configuration>
                             </execution>
@@ -188,9 +228,18 @@
                                 </goals>
                                 <configuration>
                                     <target>
+                                        <copy file="${project.basedir}/config/application-test.yml.example"
+                                              tofile="${project.build.outputDirectory}/application.yml"
+                                              overwrite="true"
+                                              failonerror="false"/>
                                         <copy file="${project.basedir}/config/application-test.yml"
                                               tofile="${project.build.outputDirectory}/application.yml"
-                                              overwrite="true"/>
+                                              overwrite="true"
+                                              failonerror="false"/>
+                                        <available file="${project.build.outputDirectory}/application.yml"
+                                                   property="opsflow.test.application.yml.ready"/>
+                                        <fail unless="opsflow.test.application.yml.ready"
+                                              message="缺少 config/application-test.yml(.example)，无法执行 -Ptest 打包。请提交环境配置后重试。"/>
                                     </target>
                                 </configuration>
                             </execution>
@@ -218,9 +267,18 @@
                                 </goals>
                                 <configuration>
                                     <target>
+                                        <copy file="${project.basedir}/config/application-prod.yml.example"
+                                              tofile="${project.build.outputDirectory}/application.yml"
+                                              overwrite="true"
+                                              failonerror="false"/>
                                         <copy file="${project.basedir}/config/application-prod.yml"
                                               tofile="${project.build.outputDirectory}/application.yml"
-                                              overwrite="true"/>
+                                              overwrite="true"
+                                              failonerror="false"/>
+                                        <available file="${project.build.outputDirectory}/application.yml"
+                                                   property="opsflow.prod.application.yml.ready"/>
+                                        <fail unless="opsflow.prod.application.yml.ready"
+                                              message="缺少 config/application-prod.yml(.example)，无法执行 -Pprod 打包。请提交环境配置后重试。"/>
                                     </target>
                                 </configuration>
                             </execution>

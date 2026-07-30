@@ -52,6 +52,7 @@ Spring Boot 配置加载顺序（简化版）：
 
 ## 安全建议
 
-- ⚠️ 生产环境不要把真实密码直接写进 Git 里的 profile 文件
-- ✅ 推荐在 `application-dev.yml / application-prod.yml` 中使用 `${DB_PASSWORD}` 占位符
-- ✅ 通过环境变量或 K8s Secret 注入敏感信息
+- ⚠️ `config/application.yml` 默认不提交（本地敏感配置）
+- ✅ 提交 `application-*.yml` / `application-*.yml.example`，密码请用 `${DB_PASSWORD}` 占位符
+- ✅ 生产环境通过环境变量或 K8s Secret 注入敏感信息
+- ✅ CI/CD 使用 `-Pdev` 时，仓库中至少要有 `application-dev.yml` 或 `application-dev.yml.example`
