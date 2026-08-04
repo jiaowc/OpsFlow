@@ -124,6 +124,10 @@ SELECT '审批上线', 'deploy:approve', '通过/拒绝上线审批', 1 FROM DUA
 WHERE NOT EXISTS (SELECT 1 FROM `permission` WHERE `code` = 'deploy:approve');
 
 INSERT INTO `permission` (`name`, `code`, `description`, `status`)
+SELECT '解锁上线任务', 'deploy:unlock', '解除他人锁定的上线任务', 1 FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `permission` WHERE `code` = 'deploy:unlock');
+
+INSERT INTO `permission` (`name`, `code`, `description`, `status`)
 SELECT '查看服务', 'service:view', '查看服务列表', 1 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM `permission` WHERE `code` = 'service:view');
 

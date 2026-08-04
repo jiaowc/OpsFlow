@@ -30,9 +30,14 @@ public class DeployTaskDTO {
     private List<String> deployModules;
 
     /**
-     * 上线模块详情（含服务端口），供详情页展示及 CD 模版变量注入
+     * 上线模块详情（含服务端口、归属人），供详情页展示及 CD 模版变量注入
      */
     private List<DeployModuleDetailDTO> deployModuleDetails;
+
+    /**
+     * 带归属信息的上线模块列表（编辑/协作时优先使用）
+     */
+    private List<DeployModuleItemDTO> deployModuleItems;
     
     /**
      * 部署环境 ID 列表
@@ -110,6 +115,36 @@ public class DeployTaskDTO {
      * 任务状态：pending / deploying / success / failed 等
      */
     private String taskStatus;
+
+    /**
+     * 是否锁定（1=已锁定）
+     */
+    private Integer locked;
+
+    private String lockedBy;
+
+    private LocalDateTime lockedAt;
+
+    /** 当前用户是否可编辑（未锁定且有 create 权限） */
+    private Boolean canEdit;
+
+    /** 当前用户是否可锁定 */
+    private Boolean canLock;
+
+    /** 当前用户是否可解锁 */
+    private Boolean canUnlock;
+
+    /** 当前用户是否可提交审批（已锁定且尚未进入审批） */
+    private Boolean canSubmitApproval;
+
+    /**
+     * 当前用户是否可点击「发布」启动 CD（须审批已通过）。
+     * 未通过时前端仍展示按钮但置灰。
+     */
+    private Boolean canPublish;
+
+    /** 是否展示发布按钮（有 create 权限的用户可见，未审批通过时置灰） */
+    private Boolean showPublish;
     
     private String description;
     

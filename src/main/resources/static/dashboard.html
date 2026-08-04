@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>控制台 - OPSFLOW</title>
-    <link rel="stylesheet" href="/css/style.css?v=4">
+    <link rel="stylesheet" href="/css/style.css?v=5">
     <script>
         (function () {
             var sections = {
@@ -204,6 +204,9 @@
                         </a>
                     </div>
                 </div>
+                <div class="sidebar-footer" id="appVersionFooter" title="">
+                    <span class="sidebar-version" id="appVersionText">OpsFlow</span>
+                </div>
             </div>
             
             <!-- 右侧内容区域（80%） -->
@@ -241,6 +244,8 @@
                             <span>进度</span>
                             <select id="taskProgressFilter" onchange="applyTaskFilters()">
                                 <option value="">全部</option>
+                                <option value="editing">编辑中</option>
+                                <option value="locked">已锁定</option>
                                 <option value="pending_approval">待审批</option>
                                 <option value="approving">审批中</option>
                                 <option value="ready_to_deploy">待发布</option>
@@ -1034,11 +1039,11 @@
     <!-- 核心模块 -->
     <script src="/js/core.js?v=12"></script>
     <script src="/js/utils.js"></script>
-    <script src="/js/dashboard.js?v=9"></script>
+    <script src="/js/dashboard.js?v=10"></script>
     
     <!-- 功能模块 -->
     <script src="/js/modules/pipeline.js?v=5"></script>
-    <script src="/js/modules/tasks.js"></script>
+    <script src="/js/modules/tasks.js?v=11"></script>
     <script src="/js/modules/inbox.js"></script>
     <script src="/js/modules/services.js"></script>
     <script src="/js/modules/environments.js"></script>

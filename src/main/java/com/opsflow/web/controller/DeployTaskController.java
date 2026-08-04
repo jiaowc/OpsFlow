@@ -4,8 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.opsflow.api.dto.DeployModuleDetailDTO;
+import com.opsflow.api.dto.DeployModuleItemDTO;
 import com.opsflow.api.dto.DeployTaskDTO;
 import com.opsflow.common.exception.BusinessException;
+import com.opsflow.common.util.DeployModuleJson;
 import com.opsflow.dao.mapper.ApprovalFlowMapper;
 import com.opsflow.dao.mapper.ApprovalRecordMapper;
 import com.opsflow.dao.mapper.BuildJobMapper;
@@ -26,6 +28,8 @@ import com.opsflow.common.constant.DeployModes;
 import com.opsflow.common.constant.PipelineTypes;
 import com.opsflow.integration.harbor.HarborCredentialService;
 import com.opsflow.service.ApprovalService;
+import com.opsflow.service.DeployTaskEditService;
+import com.opsflow.service.PermissionService;
 import com.opsflow.service.impl.ApprovalNotifyDispatchServiceImpl;
 import com.opsflow.license.LicenseFeatures;
 import com.opsflow.service.LicenseService;
@@ -38,6 +42,7 @@ import javax.servlet.http.HttpSession;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import com.opsflow.web.security.RequiresPermission;
@@ -91,13 +96,19 @@ public class DeployTaskController {
     @Autowired
     private LicenseService licenseService;
 
+    @Autowired
+    private DeployTaskEditService deployTaskEditService;
+
+    @Autowired
+    private PermissionService permissionService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * 创建上线任务：完成业务校验、模块镜像规范化、落库并自动发起审批。
+     * 创建上线任务：完成业务校验、模块镜像规范化并落库，进入协作编辑态（未锁定、未审批）。
      * <p>
-     * <b>业务目的</b>：前端任务页的「提交上线」入口，将用户选择的模块、集群、Namespace、
-     * 审批流、CD 模版等组装为可持久化的 DeployTask，并交给 {@link ApprovalService#startApproval} 走审批或直接 CD。
+     * <b>业务目的</b>：前端任务页的「创建上线」入口；多人可在锁定前各自编辑自己的模块，
+     * 创建人锁定后由「发布」调用 {@link ApprovalService#startApproval} 进入审批与 CD。
      * </p>
      * <p>
      * <b>校验链</b>（按顺序，任一失败即抛 {@link BusinessException}）：
@@ -120,8 +131,8 @@ public class DeployTaskController {
      * 保证库内数据与 CD 执行、列表展示使用同一套完整镜像格式。
      * </p>
      * <p>
-     * <b>初始状态</b>：taskStatus/approvalStatus 均为 pending，insert 后调用 startApproval；
-     * 免审或空步骤流会在 startApproval 内立即改状态并触发 CD。返回 {@link #getTaskDTO} 含最新审批记录。
+     * <b>初始状态</b>：taskStatus=pending，approvalStatus=none，locked=0；不自动发起审批。
+     * 返回 {@link #getTaskDTO} 含模块归属与操作标志（可编辑/锁定/发布）。
      * </p>
      *
      * @param request 前端提交的任务配置
@@ -206,11 +217,15 @@ public class DeployTaskController {
         }
 
         List<String> normalizedModules = normalizeDeployModules(request.getDeployModules());
+        Long userId = (Long) session.getAttribute("userId");
+        List<DeployModuleItemDTO> moduleItems = DeployModuleJson.fromImages(normalizedModules, username, userId);
 
         DeployTask task = new DeployTask();
         BeanUtils.copyProperties(request, task, "deployModules", "deployEnvIds", "approvalRecords",
                 "clusterName", "notifyChannels", "pipelineTemplateName", "buildJobIds",
-                "pipelineParameters", "deployModuleDetails", "deployMode", "deployParallelism");
+                "pipelineParameters", "deployModuleDetails", "deployModuleItems", "deployMode", "deployParallelism",
+                "locked", "lockedBy", "lockedAt", "canEdit", "canLock", "canUnlock", "canPublish",
+                "canSubmitApproval", "showPublish");
         task.setClusterId(request.getClusterId());
         task.setK8sNamespace(request.getK8sNamespace().trim());
         task.setNotifyChannels(notifyChannels);
@@ -219,7 +234,7 @@ public class DeployTaskController {
         task.setDeployParallelism(deployParallelism);
 
         try {
-            task.setDeployModules(objectMapper.writeValueAsString(normalizedModules));
+            task.setDeployModules(DeployModuleJson.writeItems(moduleItems));
             task.setDeployEnvs(objectMapper.writeValueAsString(resolvedEnvIds));
         } catch (Exception e) {
             throw new BusinessException("任务配置格式错误");
@@ -228,16 +243,18 @@ public class DeployTaskController {
         String taskNumber = "TASK-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
         task.setTaskNumber(taskNumber);
         task.setTaskStatus("pending");
-        task.setApprovalStatus("pending");
+        // 创建后进入协作编辑态：未锁定、未发起审批；发布时再 startApproval
+        task.setApprovalStatus("none");
+        task.setLocked(0);
+        task.setCreatorId(userId);
         task.setCreatorName(username);
         task.setCreateTime(LocalDateTime.now());
         task.setUpdateTime(LocalDateTime.now());
 
         deployTaskMapper.insert(task);
-        approvalService.startApproval(task);
 
         DeployTask saved = deployTaskMapper.selectById(task.getId());
-        return getTaskDTO(saved != null ? saved : task, username);
+        return getTaskDTO(saved != null ? saved : task, session);
     }
 
     /**
@@ -255,9 +272,8 @@ public class DeployTaskController {
             wrapper.eq("task_status", status);
         }
         wrapper.orderByDesc("create_time");
-        String username = (String) session.getAttribute("user");
         return deployTaskMapper.selectList(wrapper).stream()
-                .map(task -> getTaskDTO(task, username))
+                .map(task -> getTaskDTO(task, session))
                 .collect(Collectors.toList());
     }
 
@@ -275,16 +291,11 @@ public class DeployTaskController {
         if (task == null) {
             return null;
         }
-        return getTaskDTO(task, (String) session.getAttribute("user"));
+        return getTaskDTO(task, session);
     }
 
     /**
-     * 更新上线任务（不修改审批状态与任务编号等系统字段）。
-     *
-     * @param id 任务 ID
-     * @param request 待更新字段
-     * @param session 当前登录会话
-     * @return 更新后的任务详情
+     * 更新上线任务。未锁定时可协作编辑：每人只能增删改自己的模块；任务元信息仅创建人可改。
      */
     @RequiresPermission("deploy:create")
     @PutMapping("/{id}")
@@ -293,24 +304,106 @@ public class DeployTaskController {
         if (task == null) {
             throw new BusinessException("任务不存在");
         }
+        deployTaskEditService.assertEditable(task);
 
-        BeanUtils.copyProperties(request, task, "id", "taskNumber", "createTime",
-                "deployModules", "deployEnvIds", "approvalRecords", "approvalStatus", "creatorName", "creatorId");
+        String username = (String) session.getAttribute("user");
+        Long userId = (Long) session.getAttribute("userId");
+        boolean creator = deployTaskEditService.isCreator(task, username, userId);
 
-        try {
-            if (request.getDeployModules() != null) {
-                task.setDeployModules(objectMapper.writeValueAsString(request.getDeployModules()));
+        if (creator) {
+            if (StringUtils.hasText(request.getTaskName())) {
+                task.setTaskName(request.getTaskName().trim());
+            }
+            if (request.getDescription() != null) {
+                task.setDescription(request.getDescription());
+            }
+            if (request.getClusterId() != null) {
+                task.setClusterId(request.getClusterId());
+            }
+            if (StringUtils.hasText(request.getK8sNamespace())) {
+                task.setK8sNamespace(request.getK8sNamespace().trim());
+            }
+            if (request.getApprovalFlowId() != null) {
+                task.setApprovalFlowId(request.getApprovalFlowId());
+            }
+            if (request.getPipelineTemplateId() != null) {
+                task.setPipelineTemplateId(request.getPipelineTemplateId());
+            }
+            if (StringUtils.hasText(request.getDeployMode())) {
+                String deployMode = DeployModes.normalize(request.getDeployMode());
+                task.setDeployMode(deployMode);
+                task.setDeployParallelism(DeployModes.resolveParallelism(deployMode, request.getDeployParallelism()));
+            }
+            if (request.getNotifyChannels() != null) {
+                String notifyChannels = ApprovalNotifyDispatchServiceImpl.normalizeChannels(request.getNotifyChannels());
+                if (StringUtils.hasText(notifyChannels)) {
+                    task.setNotifyChannels(notifyChannels);
+                }
             }
             if (request.getDeployEnvIds() != null) {
-                task.setDeployEnvs(objectMapper.writeValueAsString(request.getDeployEnvIds()));
+                try {
+                    task.setDeployEnvs(objectMapper.writeValueAsString(request.getDeployEnvIds()));
+                } catch (Exception e) {
+                    throw new BusinessException("环境配置格式错误");
+                }
             }
-        } catch (Exception e) {
-            throw new BusinessException("任务配置格式错误");
+        } else if (request.getTaskName() != null || request.getClusterId() != null
+                || request.getApprovalFlowId() != null || request.getPipelineTemplateId() != null
+                || request.getDeployEnvIds() != null || request.getDeployMode() != null) {
+            // 非创建人仅允许改模块；若误传元信息则忽略，不报错
+        }
+
+        if (request.getDeployModuleItems() != null || request.getDeployModules() != null) {
+            List<DeployModuleItemDTO> merged = deployTaskEditService.mergeModulesByOwnership(
+                    task, request.getDeployModuleItems(), request.getDeployModules(), username, userId);
+            List<String> normalized = normalizeDeployModules(DeployModuleJson.toImageList(merged));
+            for (int i = 0; i < merged.size(); i++) {
+                merged.get(i).setImage(normalized.get(i));
+            }
+            try {
+                task.setDeployModules(DeployModuleJson.writeItems(merged));
+            } catch (Exception e) {
+                throw new BusinessException("任务配置格式错误");
+            }
         }
 
         task.setUpdateTime(LocalDateTime.now());
         deployTaskMapper.updateById(task);
-        return getTaskDTO(task, (String) session.getAttribute("user"));
+        return getTaskDTO(task, session);
+    }
+
+    @RequiresPermission("deploy:create")
+    @PostMapping("/{id}/lock")
+    public DeployTaskDTO lockTask(@PathVariable Long id, HttpSession session) {
+        DeployTask task = deployTaskEditService.lock(id, sessionUsername(session), sessionUserId(session),
+                sessionHasUnlock(session));
+        return getTaskDTO(task, session);
+    }
+
+    @RequiresPermission({"deploy:create", "deploy:unlock"})
+    @PostMapping("/{id}/unlock")
+    public DeployTaskDTO unlockTask(@PathVariable Long id, HttpSession session) {
+        DeployTask task = deployTaskEditService.unlock(id, sessionUsername(session), sessionUserId(session),
+                sessionHasUnlock(session));
+        return getTaskDTO(task, session);
+    }
+
+    @RequiresPermission("deploy:create")
+    @PostMapping("/{id}/submit-approval")
+    public DeployTaskDTO submitApproval(@PathVariable Long id, HttpSession session) {
+        licenseService.requireFeature(LicenseFeatures.DEPLOY_APPROVAL);
+        DeployTask task = deployTaskEditService.submitApproval(id, sessionUsername(session), sessionUserId(session),
+                sessionHasUnlock(session));
+        return getTaskDTO(task, session);
+    }
+
+    @RequiresPermission("deploy:create")
+    @PostMapping("/{id}/publish")
+    public DeployTaskDTO publishTask(@PathVariable Long id, HttpSession session) {
+        licenseService.requireFeature(LicenseFeatures.DEPLOY_APPROVAL);
+        DeployTask task = deployTaskEditService.publish(id, sessionUsername(session), sessionUserId(session),
+                sessionHasUnlock(session));
+        return getTaskDTO(task, session);
     }
 
     /**
@@ -362,16 +455,31 @@ public class DeployTaskController {
      * @param currentUsername 当前用户，用于审批记录 canApprove → actionable
      * @return 前端展示用 DTO
      */
-    private DeployTaskDTO getTaskDTO(DeployTask task, String currentUsername) {
+    private DeployTaskDTO getTaskDTO(DeployTask task, HttpSession session) {
+        String currentUsername = sessionUsername(session);
+        Long userId = sessionUserId(session);
+        boolean hasCreate = sessionHasPerm(session, "deploy:create");
+        boolean hasUnlock = sessionHasUnlock(session);
+
         DeployTaskDTO dto = new DeployTaskDTO();
         BeanUtils.copyProperties(task, dto, "deployModules", "deployEnvs", "notifyChannels");
 
         try {
             if (task.getDeployModules() != null && !task.getDeployModules().isEmpty()) {
-                List<String> modules = objectMapper.readValue(
-                        task.getDeployModules(), new TypeReference<List<String>>() {});
-                dto.setDeployModules(normalizeDeployModules(modules));
-                dto.setDeployModuleDetails(buildDeployModuleDetails(dto.getDeployModules()));
+                List<DeployModuleItemDTO> items = DeployModuleJson.parseItems(task.getDeployModules());
+                for (DeployModuleItemDTO item : items) {
+                    if (!StringUtils.hasText(item.getOwnerName())) {
+                        item.setOwnerName(task.getCreatorName());
+                        item.setOwnerId(task.getCreatorId());
+                    }
+                }
+                List<String> images = normalizeDeployModules(DeployModuleJson.toImageList(items));
+                for (int i = 0; i < items.size() && i < images.size(); i++) {
+                    items.get(i).setImage(images.get(i));
+                }
+                dto.setDeployModuleItems(items);
+                dto.setDeployModules(images);
+                dto.setDeployModuleDetails(buildDeployModuleDetails(items));
             }
         } catch (Exception ignored) {
         }
@@ -428,7 +536,27 @@ public class DeployTaskController {
         }
 
         dto.setApprovalRecords(approvalService.listByTask(task.getId(), currentUsername));
+        deployTaskEditService.fillActionFlags(dto, task, currentUsername, userId, hasCreate, hasUnlock);
         return dto;
+    }
+
+    private String sessionUsername(HttpSession session) {
+        return session != null ? (String) session.getAttribute("user") : null;
+    }
+
+    private Long sessionUserId(HttpSession session) {
+        return session != null ? (Long) session.getAttribute("userId") : null;
+    }
+
+    private boolean sessionHasUnlock(HttpSession session) {
+        return sessionHasPerm(session, "deploy:unlock");
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean sessionHasPerm(HttpSession session, String code) {
+        Collection<String> perms = session != null
+                ? (Collection<String>) session.getAttribute("permissions") : null;
+        return permissionService.hasAnyPermission(perms, code);
     }
 
     /**
@@ -506,14 +634,17 @@ public class DeployTaskController {
      * @param modules 经 {@link #normalizeDeployModules} 处理后的完整镜像列表
      * @return 与 modules 顺序一致的详情列表；modules 为 null 时返回空列表
      */
-    private List<DeployModuleDetailDTO> buildDeployModuleDetails(List<String> modules) {
+    private List<DeployModuleDetailDTO> buildDeployModuleDetails(List<DeployModuleItemDTO> items) {
         List<DeployModuleDetailDTO> details = new java.util.ArrayList<>();
-        if (modules == null) {
+        if (items == null) {
             return details;
         }
-        for (String module : modules) {
+        for (DeployModuleItemDTO item : items) {
+            String module = item.getImage();
             DeployModuleDetailDTO detail = new DeployModuleDetailDTO();
             detail.setImageFullName(module);
+            detail.setOwnerName(item.getOwnerName());
+            detail.setOwnerId(item.getOwnerId());
             String serviceCode = extractServiceCode(module);
             detail.setServiceCode(serviceCode);
             if (StringUtils.hasText(serviceCode)) {

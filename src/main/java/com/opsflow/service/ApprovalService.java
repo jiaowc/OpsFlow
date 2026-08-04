@@ -50,4 +50,12 @@ public interface ApprovalService {
      * @param currentUsername 操作人用户名
      */
     ApprovalRecordDTO reject(Long recordId, ApprovalActionRequest request, String currentUsername);
+
+    /**
+     * 取消任务上未完成的审批（解锁重编时调用），将 pending/waiting 标为 cancelled，
+     * 并把任务审批状态重置为 none。
+     *
+     * @param task 上线任务
+     */
+    void cancelApprovalForEdit(DeployTask task);
 }

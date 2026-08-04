@@ -672,15 +672,7 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
      * @return 模块列表；解析失败时返回空列表
      */
     private List<String> parseModules(String json) {
-        if (!StringUtils.hasText(json)) {
-            return new ArrayList<>();
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
-        } catch (Exception e) {
-            log.warn("解析上线模块失败: {}", e.getMessage());
-            return new ArrayList<>();
-        }
+        return com.opsflow.common.util.DeployModuleJson.parseImages(json);
     }
 
     /**

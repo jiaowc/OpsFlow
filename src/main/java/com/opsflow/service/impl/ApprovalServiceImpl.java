@@ -123,10 +123,10 @@ public class ApprovalServiceImpl implements ApprovalService {
         approvalRecordMapper.delete(new QueryWrapper<ApprovalRecord>().eq("task_id", task.getId()));
 
         if (task.getApprovalFlowId() == null) {
-            task.setApprovalStatus(STATUS_NONE);
+            // 无审批流：标记为已通过，等待人工点击「发布」启动 CD（不再自动部署）
+            task.setApprovalStatus(STATUS_APPROVED);
             task.setUpdateTime(LocalDateTime.now());
             deployTaskMapper.updateById(task);
-            triggerCdAfterApproved(task);
             return;
         }
 
@@ -143,7 +143,6 @@ public class ApprovalServiceImpl implements ApprovalService {
             task.setApprovalStatus(STATUS_APPROVED);
             task.setUpdateTime(LocalDateTime.now());
             deployTaskMapper.updateById(task);
-            triggerCdAfterApproved(task);
             return;
         }
 
@@ -295,16 +294,12 @@ public class ApprovalServiceImpl implements ApprovalService {
         final ApprovalRecord nextPending = next;
         final DeployTask notifyTask = task;
         final String operator = currentUsername;
-        final boolean shouldStartCd = next == null;
         runAfterCommit(() -> {
             approvalNotifyDispatchService.notifyApproved(done, notifyTask, operator);
             if (nextPending != null) {
                 approvalNotifyDispatchService.notifyPending(nextPending, notifyTask);
             }
-            if (shouldStartCd) {
-                // CD 必须异步脱离当前 afterCommit：否则 launchJob 再注册 afterCommit 会丢失，Job 停在 BUILDING
-                scheduleCdAsync(notifyTask.getId(), "审批终审通过");
-            }
+            // 终审通过后不再自动 CD，等待有权限用户点击「发布」
         });
         return toDto(record, currentUsername, task);
     }
@@ -373,6 +368,27 @@ public class ApprovalServiceImpl implements ApprovalService {
         final String operator = currentUsername;
         runAfterCommit(() -> approvalNotifyDispatchService.notifyRejected(done, notifyTask, operator));
         return toDto(record, currentUsername, task);
+    }
+
+    @Override
+    @Transactional
+    public void cancelApprovalForEdit(DeployTask task) {
+        if (task == null || task.getId() == null) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        List<ApprovalRecord> open = approvalRecordMapper.selectList(
+                new QueryWrapper<ApprovalRecord>()
+                        .eq("task_id", task.getId())
+                        .in("status", STATUS_WAITING, STATUS_PENDING));
+        for (ApprovalRecord item : open) {
+            item.setStatus(STATUS_CANCELLED);
+            item.setUpdateTime(now);
+            approvalRecordMapper.updateById(item);
+        }
+        task.setApprovalStatus(STATUS_NONE);
+        task.setUpdateTime(now);
+        deployTaskMapper.updateById(task);
     }
 
     /**

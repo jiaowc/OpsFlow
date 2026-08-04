@@ -86,6 +86,17 @@ public class DeployTask {
      * 合法值：pending（待执行）、building、deploying（部署中）、success、failed、cancelled
      */
     private String taskStatus;
+
+    /**
+     * 是否锁定。锁定后不可编辑模块，需解锁后才能再改；发布前须先锁定。
+     */
+    private Integer locked;
+
+    /** 锁定操作人用户名 */
+    private String lockedBy;
+
+    /** 锁定时间 */
+    private LocalDateTime lockedAt;
     
     /** 任务描述或 CD 失败原因追加信息 */
     private String description;

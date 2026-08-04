@@ -47,6 +47,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             path.equals("/") ||
             path.equals("/health") ||
             path.startsWith("/api/health") ||
+            path.startsWith("/api/system/version") ||
             path.startsWith("/api/auth/login") ||
             path.startsWith("/api/auth/user") ||
             path.startsWith("/api/auth/feishu/") ||

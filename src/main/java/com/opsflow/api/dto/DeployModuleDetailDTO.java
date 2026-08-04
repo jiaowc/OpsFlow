@@ -31,4 +31,10 @@ public class DeployModuleDetailDTO {
      * 服务端口，写入 Deployment/Service 模版的 ${servicePort} / ${port}，默认 8080
      */
     private Integer servicePort;
+
+    /** 模块添加人用户名 */
+    private String ownerName;
+
+    /** 模块添加人用户 ID */
+    private Long ownerId;
 }

@@ -60,6 +60,7 @@ function resolveTaskProgress(task) {
     const approval = (task.approvalStatus || '').toLowerCase();
     const deploy = (task.taskStatus || task.status || '').toLowerCase();
     const records = task.approvalRecords || [];
+    const locked = task.locked === 1 || task.locked === true;
 
     // 终态：审批拒绝或任务取消
     if (approval === 'rejected' || deploy === 'cancelled') {
@@ -78,11 +79,15 @@ function resolveTaskProgress(task) {
     if (deploy === 'deploying' || deploy === 'building') {
         return { key: 'deploying', label: '发布中', tone: 'info' };
     }
-    // 审批已通过或无需审批，等待/准备发布
-    if (approval === 'approved' || approval === 'none') {
-        if (deploy === 'pending' || !deploy) {
-            return { key: 'ready_to_deploy', label: '待发布', tone: 'warn' };
+    // 协作编辑态：未发起审批
+    if (!approval || approval === 'none') {
+        if (locked) {
+            return { key: 'locked', label: '已锁定', tone: 'warn' };
         }
+        return { key: 'editing', label: '编辑中', tone: 'muted' };
+    }
+    // 审批已通过，等待/准备发布
+    if (approval === 'approved') {
         return { key: 'ready_to_deploy', label: '待发布', tone: 'warn' };
     }
     // 审批进行中：已有通过记录则为「审批中」，否则「待审批」
@@ -93,7 +98,7 @@ function resolveTaskProgress(task) {
         }
         return { key: 'pending_approval', label: '待审批', tone: 'warn' };
     }
-    return { key: deploy || 'pending', label: deploy || '等待中', tone: 'muted' };
+    return { key: 'editing', label: '编辑中', tone: 'muted' };
 }
 
 function resolveApproverLabel(record) {
@@ -298,6 +303,29 @@ function paintTaskTable(tasks) {
             ? `<button class="btn-success btn-sm" onclick="approveApprovalRecord(${actionableRecord.id})">通过</button>
                <button class="btn-danger btn-sm" onclick="rejectApprovalRecord(${actionableRecord.id})">拒绝</button>`
             : '';
+        const lockBtn = task.canLock
+            ? `<button class="btn-secondary btn-sm" onclick="lockDeployTask(${task.id})">锁定</button>`
+            : (task.canUnlock
+                ? `<button class="btn-secondary btn-sm" onclick="unlockDeployTask(${task.id})">解锁</button>`
+                : '');
+        const editBtn = task.canEdit
+            ? `<button class="btn-edit btn-sm" onclick="editTask(${task.id})">编辑</button>`
+            : '';
+        const submitApprovalBtn = task.canSubmitApproval
+            ? `<button class="btn-secondary btn-sm" onclick="submitDeployTaskApproval(${task.id})">提交审批</button>`
+            : '';
+        // 发布按钮：有权限用户始终可见；未审批通过时置灰不可点
+        let publishBtn = '';
+        if (task.showPublish || canCreate) {
+            if (task.canPublish) {
+                publishBtn = `<button class="btn-success btn-sm" onclick="publishDeployTask(${task.id})">发布</button>`;
+            } else {
+                const tip = (task.approvalStatus || '').toLowerCase() === 'approved'
+                    ? '当前不可发布'
+                    : '审批通过后才能发布';
+                publishBtn = `<button class="btn-success btn-sm" disabled title="${tip}" style="opacity:0.45;cursor:not-allowed;">发布</button>`;
+            }
+        }
         const taskName = escapeTaskHtml(task.taskName || '-');
         const taskNumber = escapeTaskHtml(task.taskNumber || task.jobNumber || '-');
         const creatorName = escapeTaskHtml(task.creatorName || '-');
@@ -316,9 +344,13 @@ function paintTaskTable(tasks) {
                 <td>${renderProgressBadge(progress)}</td>
                 <td>
                     <div class="table-actions task-row-actions">
+                        ${lockBtn}
+                        ${editBtn}
+                        ${submitApprovalBtn}
+                        ${publishBtn}
                         ${approvalActions}
                         <button class="btn-edit btn-sm" onclick="viewTask(${task.id})">详情</button>
-                        ${canCreate ? `<button class="btn-danger btn-sm" onclick="deleteTask(${task.id})">删除</button>` : ''}
+                        ${canCreate && task.canEdit ? `<button class="btn-danger btn-sm" onclick="deleteTask(${task.id})">删除</button>` : ''}
                     </div>
                 </td>
             </tr>
@@ -598,7 +630,7 @@ async function showCreateTaskModal() {
             });
             
             if (response.ok) {
-                alert('创建成功');
+                alert('创建成功：任务已进入协作编辑，锁定并提交审批通过后可发布');
                 loadTasks();
                 if (typeof refreshInboxBadge === 'function') refreshInboxBadge();
                 closeModal();
@@ -968,24 +1000,300 @@ async function refreshHarborImages() {
 }
 
 async function editTask(id) {
-    alert('编辑任务功能开发中，ID: ' + id);
+    if (typeof hasPermission === 'function' && !hasPermission('deploy:create')) {
+        alert('无权限编辑上线任务');
+        return;
+    }
+    try {
+        const response = await fetch(`/api/task/${id}`);
+        if (!response.ok) {
+            throw new Error(await response.text() || '加载失败');
+        }
+        const task = await response.json();
+        if (!task.canEdit) {
+            alert('当前任务不可编辑（可能已锁定或已进入审批）');
+            return;
+        }
+
+        let services = [];
+        let clusters = [];
+        let approvals = [];
+        let pipelines = [];
+        try {
+            const [svcRes, envRes, clusterRes, approvalRes, pipelineRes, harborRes] = await Promise.all([
+                fetch('/api/service/list'),
+                fetch('/api/env/list'),
+                fetch('/api/cluster/list'),
+                fetch('/api/approval/list'),
+                fetch('/api/pipeline/list?type=cd'),
+                fetch('/api/harbor/registry')
+            ]);
+            if (svcRes.ok) {
+                services = (await svcRes.json() || []).map(s => ({
+                    value: s.code || s.name,
+                    text: s.name ? `${s.name}${s.code ? ' (' + s.code + ')' : ''}` : (s.code || '')
+                })).filter(s => s.value);
+            }
+            if (envRes.ok) {
+                window._taskCreateEnvsCache = (await envRes.json() || []).filter(isProdTaskEnv);
+            }
+            if (clusterRes.ok) clusters = await clusterRes.json() || [];
+            if (approvalRes.ok) approvals = (await approvalRes.json() || []).filter(a => a.status !== 0);
+            if (pipelineRes.ok) pipelines = (await pipelineRes.json() || []).filter(p => p.status === 1);
+            if (harborRes.ok) {
+                const harbor = await harborRes.json();
+                window._taskCreateHarborRegistry = (harbor && (harbor.registry || harbor.host)) || '';
+            }
+        } catch (e) {
+            console.error(e);
+        }
+
+        const me = (currentUser && currentUser.username) || '';
+        const moduleItems = (task.deployModuleItems && task.deployModuleItems.length)
+            ? task.deployModuleItems
+            : (task.deployModules || []).map(img => ({ image: img, ownerName: task.creatorName }));
+
+        const moduleRows = moduleItems.map((m, idx) => {
+            const owner = m.ownerName || task.creatorName || '-';
+            const mine = me && owner && me.toLowerCase() === String(owner).toLowerCase();
+            const parsed = parseDeployImageParts(m.image || '');
+            if (!mine) {
+                return `
+                <div class="deploy-module-item others-module" data-readonly="1" data-image="${escapeTaskHtml(m.image || '')}"
+                     data-owner="${escapeTaskHtml(owner)}"
+                     style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap;background:#f9fafb;padding:8px;border-radius:6px;">
+                    <span class="module-order" style="min-width:20px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;">${idx + 1}</span>
+                    <code style="flex:1;font-size:12px;word-break:break-all;">${escapeTaskHtml(m.image || '-')}</code>
+                    <span style="font-size:12px;color:#6b7280;">归属: ${escapeTaskHtml(owner)}</span>
+                    <span style="font-size:11px;color:#9ca3af;">只读</span>
+                </div>`;
+            }
+            return `
+                <div class="deploy-module-item" data-owner="${escapeTaskHtml(owner)}"
+                     style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap;">
+                    <span class="module-order" style="min-width:20px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;">${idx + 1}</span>
+                    <div class="module-order-actions" style="display:flex;flex-direction:row;gap:4px;align-items:center;white-space:nowrap;">
+                        <button type="button" class="btn-secondary module-move-up" onclick="moveDeployModule(this, -1)" style="padding:2px 8px;font-size:11px;line-height:1;" title="上移">↑</button>
+                        <button type="button" class="btn-secondary module-move-down" onclick="moveDeployModule(this, 1)" style="padding:2px 8px;font-size:11px;line-height:1;" title="下移">↓</button>
+                    </div>
+                    <select name="serviceCode" class="module-service" style="flex:1;min-width:120px;" onchange="onDeployModuleServiceChange(this)">
+                        <option value="">请选择服务</option>
+                        ${services.map(s => `<option value="${s.value}" ${s.value === parsed.service ? 'selected' : ''}>${s.text}</option>`).join('')}
+                    </select>
+                    <span>/</span>
+                    <select name="harborProject" class="module-project" style="flex:1;min-width:120px;" onchange="onDeployModuleProjectChange(this)">
+                        <option value="${escapeTaskHtml(parsed.project || '')}">${escapeTaskHtml(parsed.project || '加载中...')}</option>
+                    </select>
+                    <span>:</span>
+                    <select name="version" class="module-version" style="flex:1;min-width:120px;">
+                        <option value="${escapeTaskHtml(parsed.version || '')}">${escapeTaskHtml(parsed.version || '加载中...')}</option>
+                    </select>
+                    <span style="font-size:12px;color:#6b7280;">我的</span>
+                    <button type="button" class="btn-danger" onclick="removeDeployModule(this)" style="padding:6px 12px;">删除</button>
+                </div>`;
+        }).join('');
+
+        const isCreator = me && task.creatorName && me.toLowerCase() === String(task.creatorName).toLowerCase();
+        const content = `
+        <form id="editTaskForm">
+            <div class="form-item">
+                <label>任务名称 *</label>
+                <input type="text" name="taskName" value="${escapeTaskHtml(task.taskName || '')}" ${isCreator ? 'required' : 'readonly'}>
+            </div>
+            <div class="form-item">
+                <label>上线模块 *</label>
+                <p style="font-size:12px;color:#6b7280;margin:0 0 8px;">仅可添加/修改/删除自己的模块；他人模块只读保留。</p>
+                <div id="deployModulesContainer">${moduleRows || buildDeployModuleRowHtml(services)}</div>
+                <button type="button" class="btn-secondary" onclick="addDeployModule()" style="margin-top:8px;font-size:12px;padding:6px 12px;">添加我的模块</button>
+            </div>
+            ${isCreator ? `
+            <div class="form-item">
+                <label>描述</label>
+                <textarea name="description" rows="2">${escapeTaskHtml(task.description || '')}</textarea>
+            </div>` : ''}
+        </form>`;
+
+        showModal('编辑上线任务', content, async () => {
+            const form = document.getElementById('editTaskForm');
+            const registry = (window._taskCreateHarborRegistry || '').replace(/\/+$/, '');
+            const deployModules = [];
+            form.querySelectorAll('.deploy-module-item').forEach(item => {
+                if (item.dataset.readonly === '1') {
+                    if (item.dataset.image) deployModules.push(item.dataset.image);
+                    return;
+                }
+                const serviceCode = item.querySelector('.module-service')?.value;
+                const project = item.querySelector('.module-project')?.value;
+                const version = item.querySelector('.module-version')?.value;
+                if (serviceCode && project && version) {
+                    if (!registry) {
+                        alert('Harbor 地址未知');
+                        throw new Error('no registry');
+                    }
+                    deployModules.push(`${registry}/${project}/${serviceCode}:${version}`);
+                }
+            });
+            if (!deployModules.length) {
+                alert('请至少保留一个上线模块');
+                return;
+            }
+            const payload = { deployModules };
+            if (isCreator) {
+                payload.taskName = form.querySelector('[name="taskName"]').value;
+                payload.description = form.querySelector('[name="description"]')?.value || '';
+            }
+            try {
+                const res = await fetch(`/api/task/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) {
+                    let errText = await res.text();
+                    try { errText = JSON.parse(errText).message || errText; } catch (e) {}
+                    alert('保存失败: ' + errText);
+                    return;
+                }
+                alert('保存成功');
+                loadTasks();
+                closeModal();
+            } catch (e) {
+                if (e.message !== 'no registry') alert('保存失败: ' + e.message);
+            }
+        });
+
+        refreshDeployModuleOrderButtons();
+        // 异步补全本人模块的 Harbor 项目/版本下拉
+        const editableRows = document.querySelectorAll('#deployModulesContainer .deploy-module-item:not([data-readonly="1"])');
+        for (const row of editableRows) {
+            const svc = row.querySelector('.module-service');
+            if (svc && svc.value) {
+                await onDeployModuleServiceChange(svc);
+                const parsed = parseDeployImageParts(
+                    moduleItems.find(m => {
+                        const p = parseDeployImageParts(m.image || '');
+                        return p.service === svc.value;
+                    })?.image || '');
+                const proj = row.querySelector('.module-project');
+                if (proj && parsed.project) {
+                    proj.value = parsed.project;
+                    await onDeployModuleProjectChange(proj);
+                    const ver = row.querySelector('.module-version');
+                    if (ver && parsed.version) ver.value = parsed.version;
+                }
+            }
+        }
+    } catch (error) {
+        alert('打开编辑失败: ' + error.message);
+    }
 }
+
+function parseDeployImageParts(image) {
+    const text = (image || '').trim();
+    const colon = text.lastIndexOf(':');
+    const version = colon > 0 ? text.substring(colon + 1) : '';
+    const left = colon > 0 ? text.substring(0, colon) : text;
+    const parts = left.split('/').filter(Boolean);
+    if (parts.length >= 3) {
+        return { registry: parts[0], project: parts[1], service: parts.slice(2).join('/') || parts[parts.length - 1], version };
+    }
+    if (parts.length === 2) {
+        return { registry: '', project: parts[0], service: parts[1], version };
+    }
+    return { registry: '', project: '', service: parts[0] || '', version };
+}
+
+async function lockDeployTask(id) {
+    if (!confirm('锁定后将无法编辑模块，确定锁定？')) return;
+    try {
+        const res = await fetch(`/api/task/${id}/lock`, { method: 'POST' });
+        if (!res.ok) {
+            let t = await res.text();
+            try { t = JSON.parse(t).message || t; } catch (e) {}
+            alert('锁定失败: ' + t);
+            return;
+        }
+        alert('已锁定');
+        loadTasks();
+    } catch (e) {
+        alert('锁定失败: ' + e.message);
+    }
+}
+
+async function unlockDeployTask(id) {
+    if (!confirm('解锁后可继续编辑；若已在审批中将取消未完成审批。确定解锁？')) return;
+    try {
+        const res = await fetch(`/api/task/${id}/unlock`, { method: 'POST' });
+        if (!res.ok) {
+            let t = await res.text();
+            try { t = JSON.parse(t).message || t; } catch (e) {}
+            alert('解锁失败: ' + t);
+            return;
+        }
+        alert('已解锁');
+        loadTasks();
+    } catch (e) {
+        alert('解锁失败: ' + e.message);
+    }
+}
+
+async function submitDeployTaskApproval(id) {
+    if (!confirm('提交后将进入审批流程，确定提交审批？')) return;
+    try {
+        const res = await fetch(`/api/task/${id}/submit-approval`, { method: 'POST' });
+        if (!res.ok) {
+            let t = await res.text();
+            try { t = JSON.parse(t).message || t; } catch (e) {}
+            alert('提交审批失败: ' + t);
+            return;
+        }
+        alert('已提交审批');
+        loadTasks();
+        if (typeof refreshInboxBadge === 'function') refreshInboxBadge();
+    } catch (e) {
+        alert('提交审批失败: ' + e.message);
+    }
+}
+
+async function publishDeployTask(id) {
+    if (!confirm('审批已通过，确定开始发布部署？')) return;
+    try {
+        const res = await fetch(`/api/task/${id}/publish`, { method: 'POST' });
+        if (!res.ok) {
+            let t = await res.text();
+            try { t = JSON.parse(t).message || t; } catch (e) {}
+            alert('发布失败: ' + t);
+            return;
+        }
+        alert('已开始发布');
+        loadTasks();
+        if (typeof refreshInboxBadge === 'function') refreshInboxBadge();
+    } catch (e) {
+        alert('发布失败: ' + e.message);
+    }
+}
+
+window.lockDeployTask = lockDeployTask;
+window.unlockDeployTask = unlockDeployTask;
+window.submitDeployTaskApproval = submitDeployTaskApproval;
+window.publishDeployTask = publishDeployTask;
+window.editTask = editTask;
 
 async function viewTask(id) {
     try {
         const response = await fetch(`/api/task/${id}`);
         if (response.ok) {
             const task = await response.json();
-            // 详情中展示模块：优先 deployModuleDetails（含端口），否则纯镜像字符串
             const modulesHtml = (task.deployModuleDetails && task.deployModuleDetails.length)
                 ? `<p><strong>上线模块（按部署顺序）:</strong></p>
                 <ul style="margin: 8px 0; padding-left: 20px;">
                     ${task.deployModuleDetails.map((m, idx) => `
                         <li style="font-size: 13px; margin: 6px 0;">
-                            <div style="font-family: monospace;">${idx + 1}. ${m.imageFullName || '-'}</div>
+                            <div style="font-family: monospace;">${idx + 1}. ${escapeTaskHtml(m.imageFullName || '-')}</div>
                             <div style="color:#6b7280;font-size:12px;margin-top:2px;">
-                                服务: ${m.serviceName || m.serviceCode || '-'}
+                                服务: ${escapeTaskHtml(m.serviceName || m.serviceCode || '-')}
                                 · 端口: ${m.servicePort != null ? m.servicePort : '-'}
+                                · 归属: ${escapeTaskHtml(m.ownerName || '-')}
                             </div>
                         </li>
                     `).join('')}
@@ -993,12 +1301,12 @@ async function viewTask(id) {
                 : (task.deployModules && task.deployModules.length > 0 ?
                 `<p><strong>上线模块（按部署顺序）:</strong></p>
                 <ul style="margin: 8px 0; padding-left: 20px;">
-                    ${task.deployModules.map((module, idx) => `<li style="font-family: monospace; font-size: 13px; margin: 4px 0;">${idx + 1}. ${module}</li>`).join('')}
+                    ${task.deployModules.map((module, idx) => `<li style="font-family: monospace; font-size: 13px; margin: 4px 0;">${idx + 1}. ${escapeTaskHtml(module)}</li>`).join('')}
                 </ul>` :
                 '<p><strong>上线模块:</strong> 无</p>');
             
-            const clusterHtml = `<p><strong>上线集群:</strong> ${task.clusterName || '-'}</p>
-                <p><strong>Namespace:</strong> ${task.k8sNamespace || '-'}</p>`;
+            const clusterHtml = `<p><strong>上线集群:</strong> ${escapeTaskHtml(task.clusterName || '-')}</p>
+                <p><strong>Namespace:</strong> ${escapeTaskHtml(task.k8sNamespace || '-')}</p>`;
 
             const approvalStatus = (typeof renderApprovalStatusText === 'function')
                 ? renderApprovalStatusText(task.approvalStatus)
@@ -1006,24 +1314,28 @@ async function viewTask(id) {
             const recordsHtml = (typeof renderApprovalRecordsHtml === 'function')
                 ? renderApprovalRecordsHtml(task.approvalRecords || [])
                 : '';
+            const lockText = (task.locked === 1 || task.locked === true)
+                ? `已锁定（${escapeTaskHtml(task.lockedBy || '-')}${task.lockedAt ? ' · ' + new Date(task.lockedAt).toLocaleString('zh-CN') : ''}）`
+                : '未锁定';
             
             const content = `
                 <div style="max-height:70vh;overflow-y:auto;">
-                    <p><strong>任务编号:</strong> ${task.taskNumber}</p>
-                    <p><strong>任务名称:</strong> ${task.taskName || '-'}</p>
+                    <p><strong>任务编号:</strong> ${escapeTaskHtml(task.taskNumber)}</p>
+                    <p><strong>任务名称:</strong> ${escapeTaskHtml(task.taskName || '-')}</p>
+                    <p><strong>锁定状态:</strong> ${lockText}</p>
                     ${modulesHtml}
                     ${clusterHtml}
-                    <p><strong>审批流:</strong> ${task.approvalFlowName || '-'}</p>
-                    <p><strong>CD 流水线:</strong> ${task.pipelineTemplateName || '-'}</p>
+                    <p><strong>审批流:</strong> ${escapeTaskHtml(task.approvalFlowName || '-')}</p>
+                    <p><strong>CD 流水线:</strong> ${escapeTaskHtml(task.pipelineTemplateName || '-')}</p>
                     <p><strong>部署策略:</strong> ${formatDeployModeText(task.deployMode, task.deployParallelism)}</p>
                     <p><strong>通知方式:</strong> ${formatNotifyChannelsText(task.notifyChannels)}</p>
-                    <p><strong>任务状态:</strong> ${task.taskStatus}</p>
+                    <p><strong>任务状态:</strong> ${escapeTaskHtml(task.taskStatus)}</p>
                     <p><strong>审批状态:</strong> ${approvalStatus}</p>
-                    <p><strong>描述:</strong> ${task.description || '-'}</p>
-                    <p><strong>创建人:</strong> ${task.creatorName || '-'}</p>
+                    <p><strong>描述:</strong> ${escapeTaskHtml(task.description || '-')}</p>
+                    <p><strong>创建人:</strong> ${escapeTaskHtml(task.creatorName || '-')}</p>
                     <p><strong>创建时间:</strong> ${task.createTime ? new Date(task.createTime).toLocaleString('zh-CN') : '-'}</p>
                     ${task.buildJobIds && task.buildJobIds.length ? `
-                    <p><strong>CD 执行任务:</strong> ${task.buildJobIds.map(id => `#${id}`).join(', ')}</p>` : ''}
+                    <p><strong>CD 执行任务:</strong> ${task.buildJobIds.map(jid => `#${jid}`).join(', ')}</p>` : ''}
                     <div style="margin-top:16px;">
                         <strong>审批进度</strong>
                         ${recordsHtml}

@@ -45,6 +45,37 @@ async function loadPipelineParameters(pipelineId) {
 }
 window.loadPipelineParameters = loadPipelineParameters;
 
+async function loadAppVersion() {
+    const textEl = document.getElementById('appVersionText');
+    const footerEl = document.getElementById('appVersionFooter');
+    if (!textEl) {
+        return;
+    }
+    try {
+        const response = await fetch('/api/system/version');
+        if (!response.ok) {
+            throw new Error('version api failed');
+        }
+        const info = await response.json();
+        const version = info.version || 'unknown';
+        const name = info.name || 'OpsFlow';
+        textEl.textContent = name + ' v' + version;
+        if (footerEl) {
+            const tips = [];
+            if (info.buildTime) {
+                tips.push('构建时间: ' + info.buildTime);
+            }
+            if (info.artifact) {
+                tips.push('产物: ' + info.artifact);
+            }
+            footerEl.title = tips.length ? tips.join('\n') : ('当前版本 ' + version);
+        }
+    } catch (e) {
+        textEl.textContent = 'OpsFlow';
+    }
+}
+window.loadAppVersion = loadAppVersion;
+
 // ============================================
 // Dashboard页面初始化
 // ============================================
@@ -59,6 +90,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (typeof window.loadEnvs === 'function') window.loadEnvs();
     if (typeof window.loadServicesForSelect === 'function') window.loadServicesForSelect();
     if (typeof window.loadNodesForSelect === 'function') window.loadNodesForSelect();
+    loadAppVersion();
     
     // 延迟检查 system.js 函数，确保所有脚本都已执行
     // 使用多个时机检查，确保捕获到 system.js 的加载状态

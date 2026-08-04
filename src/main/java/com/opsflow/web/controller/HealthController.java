@@ -1,5 +1,6 @@
 package com.opsflow.web.controller;
 
+import com.opsflow.service.AppVersionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +26,9 @@ public class HealthController {
     @Autowired
     private DataSource dataSource;
 
+    @Autowired
+    private AppVersionService appVersionService;
+
     /**
      * 应用健康检查。
      * <p>
@@ -43,6 +47,7 @@ public class HealthController {
         boolean overallUp = dbOk;
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", overallUp ? "UP" : "DOWN");
+        body.put("version", appVersionService.getVersion());
         body.put("checks", checks);
         body.put("timestamp", LocalDateTime.now().format(TS));
 
