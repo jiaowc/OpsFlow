@@ -1004,6 +1004,7 @@ function buildPipelineNodeSectionHtml(pipeline) {
             </div>
         </div>
         <p style="margin:12px 0 0;font-size:13px;color:#6b7280;">CI / CD 至少配置其中一个阶段（例如仅 CD：直接发布已有镜像，无需构建）</p>
+        <p style="margin:6px 0 0;font-size:12px;color:#64748b;">每个步骤下方可按需填写「差异配置」；留空则使用步骤定义中的默认（Dockerfile / Deployment·Service 模版、构建命令、超时等）</p>
     `;
 }
 
@@ -1118,12 +1119,18 @@ async function loadPipelineStepsFromConfig(steps) {
         if (step.stepTemplateId) {
             const def = (window.pipelineStepDefCache || []).find(d => d.id === step.stepTemplateId);
             const stepPhase = def ? def.phase : (PIPELINE_CI_STEP_TYPE_KEYS.includes(step.stepType) ? 'ci' : 'cd');
-            await window.addPipelineStepRef(stepPhase, step.stepTemplateId);
+            await window.addPipelineStepRef(stepPhase, step.stepTemplateId, {
+                parameters: step.parameters || {},
+                timeoutSeconds: step.timeoutSeconds != null ? step.timeoutSeconds : null
+            });
         } else if (step.stepType) {
             const phase = PIPELINE_CI_STEP_TYPE_KEYS.includes(step.stepType) ? 'ci' : 'cd';
             const def = (window.pipelineStepDefCache || []).find(d => d.stepType === step.stepType && d.phase === phase);
             if (def) {
-                await window.addPipelineStepRef(phase, def.id);
+                await window.addPipelineStepRef(phase, def.id, {
+                    parameters: step.parameters || {},
+                    timeoutSeconds: step.timeoutSeconds != null ? step.timeoutSeconds : null
+                });
             }
         }
     }
@@ -1524,8 +1531,8 @@ window.showEditPipelineModal = showEditPipelineModal;
 // Pipeline步骤计数器
 // pipelineStepCounter 已在 core.js 中声明，这里不需要重复声明
 
-// 关联 Pipeline 步骤（引用步骤定义）
-async function addPipelineStepRef(phase, selectedTemplateId) {
+// 关联 Pipeline 步骤（引用步骤定义；可选差异覆盖）
+async function addPipelineStepRef(phase, selectedTemplateId, preservedOverrides) {
     phase = phase || 'ci';
     const containerId = phase === 'cd' ? 'pipelineCdStepsContainer' : 'pipelineCiStepsContainer';
     const container = document.getElementById(containerId);
@@ -1551,18 +1558,32 @@ async function addPipelineStepRef(phase, selectedTemplateId) {
             </div>
             <div class="form-item" style="margin:0;">
                 <label style="font-size:12px;display:block;margin-bottom:4px;">选择步骤定义 *</label>
-                <select name="stepTemplateId_${stepId}" required style="width:100%;" onchange="window.updateStepNumbers()">
+                <select name="stepTemplateId_${stepId}" required style="width:100%;"
+                        onchange="window.onPipelineStepDefChange('${stepId}')">
                     ${optionsHtml}
                 </select>
             </div>
+            <div class="pipeline-step-override-host"></div>
             <input type="hidden" name="stepOrder_${stepId}" value="1">
         </div>
     `;
     container.insertAdjacentHTML('beforeend', stepHtml);
     window.updateStepNumbers();
+    if (typeof window.refreshPipelineStepOverridePanel === 'function') {
+        await window.refreshPipelineStepOverridePanel(stepId, preservedOverrides || null);
+    }
 }
 window.addPipelineStepRef = addPipelineStepRef;
 window.addPipelineStep = addPipelineStepRef;
+
+async function onPipelineStepDefChange(stepId) {
+    window.updateStepNumbers();
+    if (typeof window.refreshPipelineStepOverridePanel === 'function') {
+        // 切换步骤定义时清空旧覆盖，避免串类型配置
+        await window.refreshPipelineStepOverridePanel(stepId, null);
+    }
+}
+window.onPipelineStepDefChange = onPipelineStepDefChange;
 
 async function addPipelineCiStep() {
     await window.addPipelineStepRef('ci');
@@ -1646,7 +1667,7 @@ function updateStepNumbers() {
 }
 window.updateStepNumbers = updateStepNumbers;
 
-// 收集Pipeline步骤（步骤定义引用）
+// 收集Pipeline步骤（步骤定义引用 + 可选差异覆盖）
 function collectPipelineSteps() {
     const steps = [];
     const ciContainer = document.getElementById('pipelineCiStepsContainer');
@@ -1660,11 +1681,21 @@ function collectPipelineSteps() {
             const orderInput = item.querySelector(`[name="stepOrder_${stepId}"]`);
 
             if (templateSelect && templateSelect.value) {
-                steps.push({
+                const step = {
                     stepTemplateId: parseInt(templateSelect.value, 10),
                     order: parseInt(orderInput?.value, 10) || 1,
                     enabled: true
-                });
+                };
+                if (typeof window.collectPipelineStepOverrides === 'function') {
+                    const ov = window.collectPipelineStepOverrides(item, stepId);
+                    if (ov.parameters && Object.keys(ov.parameters).length > 0) {
+                        step.parameters = ov.parameters;
+                    }
+                    if (ov.timeoutSeconds != null) {
+                        step.timeoutSeconds = ov.timeoutSeconds;
+                    }
+                }
+                steps.push(step);
             }
         });
     });

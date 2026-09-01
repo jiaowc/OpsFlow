@@ -11,7 +11,10 @@ LABEL maintainer="OpsFlow" \
 
 WORKDIR /app
 
-RUN mkdir -p /app/config /app/logs /app/data \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app/config /app/logs /app/data \
     && groupadd -r opsflow \
     && useradd -r -g opsflow -d /app -s /sbin/nologin opsflow \
     && chown -R opsflow:opsflow /app
@@ -21,6 +24,9 @@ COPY target/opsflow.jar /app/opsflow.jar
 ENV TZ=Asia/Shanghai
 
 EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=8 \
+  CMD curl -fsS http://127.0.0.1:8080/api/health >/dev/null || exit 1
 
 USER opsflow
 

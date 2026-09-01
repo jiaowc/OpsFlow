@@ -938,7 +938,7 @@ function renderMiniStagesForJob(job) {
         return `<span style="font-size:12px;color:#9ca3af;">暂无构建记录</span>`;
     }
     return `
-        <div style="display:flex;flex-wrap:nowrap;gap:4px;align-items:center;white-space:nowrap;overflow:hidden;">
+        <div style="display:flex;flex-wrap:nowrap;gap:6px;align-items:center;white-space:nowrap;overflow-x:auto;overflow-y:hidden;">
             <span style="font-size:11px;color:#6b7280;white-space:nowrap;margin-right:2px;"
                   title="构建 ${escapeHtml(job.jobNumber || buildId)} · ${escapeHtml(job.lastDurationText || '-')}">
                 ${getStatusIcon(job.status, job.building)}
@@ -949,9 +949,9 @@ function renderMiniStagesForJob(job) {
                      data-job-id="${escapeHtml(buildId)}"
                      data-stage-id="${escapeHtml(stage.id)}"
                      data-stage-name="${escapeHtml(stage.name || '阶段')}"
-                     style="flex:0 0 auto;min-width:44px;max-width:64px;padding:3px 4px;border-radius:4px;font-size:10px;text-align:center;
+                     style="flex:0 0 auto;min-width:76px;max-width:120px;padding:5px 6px;border-radius:6px;font-size:11px;text-align:center;
                             background:${getStageBg(stage.status)};border:1px solid #e5e7eb;cursor:pointer;">
-                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:clip;line-height:1.2;">
                         ${escapeHtml(stage.name || '阶段')}
                     </div>
                     <div style="margin-top:2px;line-height:1;">${getStageStatusIcon(stage.status)}</div>

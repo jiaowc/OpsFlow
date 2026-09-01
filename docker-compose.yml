@@ -1,0 +1,69 @@
+# OpsFlow 一键启动：MySQL（含当前配置数据） + 应用
+#
+# 前置：先打包
+#   mvn clean package -DskipTests
+#
+# 启动：
+#   docker compose up -d --build
+#
+# 访问：http://localhost:8080
+# 默认账号见 scripts/database/init.sql 中的 user 表（本地多为 123456）
+#
+# 停止：
+#   docker compose down
+# 清空数据后重新初始化（会重新导入 init.sql）：
+#   docker compose down -v && docker compose up -d --build
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: opsflow-mysql
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-authentication-plugin=mysql_native_password
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-opsflow}
+      MYSQL_DATABASE: opsflow
+      MYSQL_USER: opsflow
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-opsflow}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - opsflow-mysql:/var/lib/mysql
+      - ./scripts/database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-opsflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  opsflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${OPSFLOW_DOCKER_IMAGE:-opsflow:1.0.0}
+    container_name: opsflow
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "${OPSFLOW_PORT:-8080}:8080"
+    environment:
+      TZ: Asia/Shanghai
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: opsflow
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-opsflow}
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  opsflow-mysql:

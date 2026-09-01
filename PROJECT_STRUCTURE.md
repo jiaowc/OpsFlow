@@ -65,3 +65,5 @@ java -jar target/opsflow.jar --spring.config.location=file:./config/application.
 - 采用 **Spring Boot 单模块标准目录**（`src/main/java` + `src/main/resources`）
 - 包内仍按职责分层：`api` / `dao` / `service` / `web` / `integration`
 - 数据库脚本按 `schema` / `migrations` / `seeds` 分类存放
+- 新环境一键初始化：`scripts/database/init.sql`（由 `export_init.sh` 从当前库导出）
+- Docker Compose：`docker-compose.yml`（MySQL 自动导入 init.sql + 应用）

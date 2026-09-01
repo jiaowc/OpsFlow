@@ -556,3 +556,215 @@ function renderStepDefSelectOptions(phase, selectedId) {
     return html;
 }
 window.renderStepDefSelectOptions = renderStepDefSelectOptions;
+
+// ============================================
+// 方案 A：流水线步骤差异覆盖（第一期）
+// 步骤定义 = 默认；流水线只写差异项；空值 = 不覆盖
+// ============================================
+
+/** 第一期允许在流水线侧覆盖的 content_config 键 */
+const PIPELINE_STEP_OVERRIDE_KEYS = {
+    build: ['buildCommand'],
+    docker_build: ['dockerfileTemplateId', 'dockerfileContent'],
+    render_template: [
+        'deploymentTemplateId', 'deploymentTemplateContent',
+        'serviceTemplateId', 'serviceTemplateContent'
+    ]
+};
+
+function getStepDefById(id) {
+    if (id == null || id === '') return null;
+    return (window.pipelineStepDefCache || pipelineStepDefCache || [])
+        .find(d => String(d.id) === String(id)) || null;
+}
+
+function findStepContentField(stepType, key) {
+    const fields = STEP_CONTENT_FIELDS[stepType] || [];
+    return fields.find(f => f.key === key) || null;
+}
+
+/**
+ * 构建流水线步骤「差异配置」面板 HTML。
+ * @param {string} stepId DOM step id
+ * @param {string} stepType 步骤类型
+ * @param {object} overrides 已有 parameters
+ * @param {number|null} timeoutOverride 引擎超时覆盖
+ * @param {object} defaults 步骤定义默认 contentConfig（作 placeholder）
+ * @param {number|null} defaultTimeout 步骤定义默认超时
+ */
+async function buildPipelineStepOverrideHtml(stepId, stepType, overrides, timeoutOverride, defaults, defaultTimeout) {
+    overrides = overrides || {};
+    defaults = defaults || {};
+    const keys = PIPELINE_STEP_OVERRIDE_KEYS[stepType] || [];
+    const parts = [];
+
+    parts.push(`
+        <div class="pipeline-step-override" data-step-id="${escStepHtml(stepId)}"
+             style="margin-top:10px;padding:10px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <strong style="font-size:12px;color:#334155;">差异配置（可选）</strong>
+                <span style="font-size:11px;color:#64748b;">留空则使用步骤默认</span>
+            </div>
+            <div class="form-item" style="margin:0 0 8px;">
+                <label style="font-size:12px;">执行超时（秒）</label>
+                <input type="number" name="override_timeout_${escStepHtml(stepId)}" min="1"
+                       value="${timeoutOverride != null && timeoutOverride >= 1 ? timeoutOverride : ''}"
+                       placeholder="默认 ${defaultTimeout != null ? defaultTimeout : 60}"
+                       style="width:100%;box-sizing:border-box;font-size:13px;">
+            </div>
+    `);
+
+    if (!keys.length) {
+        parts.push(`<div style="font-size:12px;color:#94a3b8;">此步骤类型第一期暂无其它可覆盖项</div></div>`);
+        return parts.join('');
+    }
+
+    for (const key of keys) {
+        const field = findStepContentField(stepType, key) || { key, label: key, type: 'text' };
+        const value = overrides[key] != null ? overrides[key] : '';
+        const hintDefault = defaults[key] != null ? String(defaults[key]) : '';
+        const label = (field.label || key).replace(/\s*\*\s*$/, '') + '（覆盖）';
+
+        if (field.type === 'template-select') {
+            const templates = await loadStepTemplates(field.templateType);
+            parts.push(`
+                <div class="form-item" style="margin:0 0 8px;">
+                    <label style="font-size:12px;">${escStepHtml(label)}</label>
+                    <select name="override_${escStepHtml(key)}_${escStepHtml(stepId)}"
+                            data-override-key="${escStepHtml(key)}"
+                            data-content-key="${escStepHtml(field.contentKey || '')}"
+                            data-template-type="${escStepHtml(field.templateType || '')}"
+                            onchange="onPipelineOverrideTemplateChange(this, '${escStepHtml(stepId)}')"
+                            style="width:100%;font-size:13px;">
+                        ${renderTemplateSelectOptions(templates, value, '不覆盖（用步骤默认）')}
+                    </select>
+                </div>
+            `);
+            continue;
+        }
+
+        if (field.type === 'textarea' || key.endsWith('Content') || key === 'buildCommand') {
+            const ph = hintDefault
+                ? `不覆盖则用步骤默认（当前默认已配置）`
+                : (field.placeholder || '留空不覆盖');
+            parts.push(`
+                <div class="form-item" style="margin:0 0 8px;">
+                    <label style="font-size:12px;">${escStepHtml(label)}</label>
+                    <textarea name="override_${escStepHtml(key)}_${escStepHtml(stepId)}"
+                              data-override-key="${escStepHtml(key)}"
+                              rows="${field.rows || 4}" placeholder="${escStepHtml(ph)}"
+                              style="width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;">${escStepHtml(value)}</textarea>
+                </div>
+            `);
+            continue;
+        }
+
+        parts.push(`
+            <div class="form-item" style="margin:0 0 8px;">
+                <label style="font-size:12px;">${escStepHtml(label)}</label>
+                <input type="text" name="override_${escStepHtml(key)}_${escStepHtml(stepId)}"
+                       data-override-key="${escStepHtml(key)}"
+                       value="${escStepHtml(value)}"
+                       placeholder="${escStepHtml(hintDefault || field.placeholder || '留空不覆盖')}"
+                       style="width:100%;box-sizing:border-box;font-size:13px;">
+            </div>
+        `);
+    }
+
+    parts.push('</div>');
+    return parts.join('');
+}
+
+async function onPipelineOverrideTemplateChange(selectEl, stepId) {
+    const contentKey = selectEl.getAttribute('data-content-key');
+    if (!contentKey) return;
+    const stepItem = document.querySelector(`[data-step-id="${stepId}"]`);
+    if (!stepItem) return;
+    const contentInput = stepItem.querySelector(`[name="override_${contentKey}_${stepId}"]`);
+    if (!contentInput) return;
+    const templateId = selectEl.value;
+    if (!templateId) {
+        // 不覆盖模版时，也不强制清空已手写正文（用户可单独覆盖正文）
+        return;
+    }
+    try {
+        const response = await fetch(`/api/pipeline-template/${templateId}`);
+        if (!response.ok) {
+            alert('加载模版失败');
+            return;
+        }
+        const template = await response.json();
+        contentInput.value = template.content || '';
+    } catch (e) {
+        alert('加载模版失败: ' + e.message);
+    }
+}
+window.onPipelineOverrideTemplateChange = onPipelineOverrideTemplateChange;
+
+/**
+ * 根据所选步骤定义刷新差异配置面板。
+ */
+async function refreshPipelineStepOverridePanel(stepId, preserved) {
+    const stepItem = document.querySelector(`[data-step-id="${stepId}"]`);
+    if (!stepItem) return;
+    const select = stepItem.querySelector(`[name="stepTemplateId_${stepId}"]`);
+    let panel = stepItem.querySelector('.pipeline-step-override-host');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.className = 'pipeline-step-override-host';
+        stepItem.appendChild(panel);
+    }
+
+    const defId = select ? select.value : '';
+    const def = getStepDefById(defId);
+    if (!def) {
+        panel.innerHTML = '';
+        return;
+    }
+
+    const overrides = (preserved && preserved.parameters) || {};
+    const timeoutOverride = preserved && preserved.timeoutSeconds != null ? preserved.timeoutSeconds : null;
+    panel.innerHTML = await buildPipelineStepOverrideHtml(
+        stepId,
+        def.stepType,
+        overrides,
+        timeoutOverride,
+        def.contentConfig || {},
+        def.timeoutSeconds
+    );
+}
+window.refreshPipelineStepOverridePanel = refreshPipelineStepOverridePanel;
+
+/**
+ * 从步骤 DOM 收集差异覆盖（仅非空值）。
+ * @returns {{ parameters: Object, timeoutSeconds: number|null }}
+ */
+function collectPipelineStepOverrides(stepItem, stepId) {
+    const parameters = {};
+    const inputs = stepItem.querySelectorAll('[data-override-key]');
+    inputs.forEach(input => {
+        const key = input.getAttribute('data-override-key');
+        if (!key) return;
+        const val = (input.value || '').trim();
+        if (val) {
+            parameters[key] = val;
+        }
+    });
+
+    let timeoutSeconds = null;
+    const timeoutInput = stepItem.querySelector(`[name="override_timeout_${stepId}"]`);
+    if (timeoutInput) {
+        const raw = (timeoutInput.value || '').trim();
+        if (raw) {
+            const n = parseInt(raw, 10);
+            if (Number.isFinite(n) && n >= 1) {
+                timeoutSeconds = n;
+            }
+        }
+    }
+    return { parameters, timeoutSeconds };
+}
+window.collectPipelineStepOverrides = collectPipelineStepOverrides;
+window.PIPELINE_STEP_OVERRIDE_KEYS = PIPELINE_STEP_OVERRIDE_KEYS;
+window.getStepDefById = getStepDefById;
+

@@ -52,12 +52,22 @@ OpsFlow/
 
 ### 2. 数据库初始化
 
-```bash
-# 创建数据库
-mysql -u root -p
-CREATE DATABASE opsflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+新环境推荐直接导入「结构 + 当前配置数据」（不含构建/上线历史）：
 
-# 导入表结构
+```bash
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS opsflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -u root -p opsflow < scripts/database/init.sql
+```
+
+从本机库重新导出初始化脚本：
+
+```bash
+bash scripts/database/export_init.sh
+```
+
+仅导入空表结构（不含业务数据）时仍可用：
+
+```bash
 mysql -u root -p opsflow < scripts/database/schema.sql
 ```
 
@@ -116,6 +126,19 @@ java -jar target/opsflow.jar
 
 # 使用外部配置目录并指定环境
 SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar --spring.config.additional-location=file:./config/
+```
+
+#### Docker Compose（应用 + MySQL，自动导入 init.sql）
+```bash
+mvn clean package -DskipTests
+docker compose up -d --build
+# 浏览器打开 http://localhost:8080
+```
+
+仅清空数据库并重新初始化：
+```bash
+docker compose down -v
+docker compose up -d
 ```
 
 ## 配置文件管理
