@@ -13,6 +13,11 @@ public class ServiceDTO {
     private String name;
 
     /**
+     * 所属项目，用于服务分类与筛选
+     */
+    private String projectName;
+
+    /**
      * 内部标识（由服务名称自动生成，不在表单中维护）
      */
     private String code;

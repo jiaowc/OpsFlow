@@ -60,7 +60,9 @@ public class ServiceController {
     @RequiresPermission({"service:view", "service:manage", "deploy:create", "pipeline:view"})
     @GetMapping("/list")
     public List<ServiceDTO> listServices() {
-        List<Service> services = serviceMapper.selectList(new QueryWrapper<>());
+        QueryWrapper<Service> wrapper = new QueryWrapper<>();
+        wrapper.orderByAsc("project_name").orderByAsc("name").orderByAsc("id");
+        List<Service> services = serviceMapper.selectList(wrapper);
         return services.stream().map(this::toDto).collect(Collectors.toList());
     }
 
@@ -161,6 +163,10 @@ public class ServiceController {
     private void applyServiceFields(Service service, ServiceDTO request, boolean isCreate) {
         if (request.getName() != null) {
             service.setName(request.getName().trim());
+        }
+        if (request.getProjectName() != null) {
+            String project = request.getProjectName().trim();
+            service.setProjectName(project.isEmpty() ? null : project);
         }
         if (isCreate) {
             service.setCode(resolveUniqueServiceCode(service.getName()));

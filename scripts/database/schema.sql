@@ -31,6 +31,7 @@ CREATE TABLE `cluster` (
 CREATE TABLE `service` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL COMMENT '服务名称',
+  `project_name` varchar(100) DEFAULT NULL COMMENT '所属项目',
   `code` varchar(50) NOT NULL COMMENT '服务代码',
   `git_repo` varchar(500) COMMENT 'Git仓库地址',
   `component_id` bigint COMMENT '关联 Git 组件ID',

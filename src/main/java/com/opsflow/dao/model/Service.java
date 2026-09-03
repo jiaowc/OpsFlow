@@ -17,6 +17,9 @@ public class Service {
     private Long id;
     
     private String name;
+
+    /** 所属项目，用于服务分类 */
+    private String projectName;
     
     private String code;
     

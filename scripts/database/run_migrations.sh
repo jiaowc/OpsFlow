@@ -155,6 +155,7 @@ run_sql "${MIGRATIONS_DIR}/migrate_credential.sql" "credential + component.crede
 run_sql "${MIGRATIONS_DIR}/migrate_cluster_credential.sql" "cluster.credential_id"
 run_sql "${MIGRATIONS_DIR}/migrate_service_component.sql" "service.component_id + git_repo_path"
 run_sql "${MIGRATIONS_DIR}/migrate_service_port.sql" "service.service_port"
+run_sql "${MIGRATIONS_DIR}/migrate_service_project_name.sql" "service.project_name 所属项目"
 run_sql "${MIGRATIONS_DIR}/migrate_build_job_git_type.sql" "build_job.git_type"
 run_sql "${MIGRATIONS_DIR}/migrate_pipeline_build_node_ids.sql" "pipeline.build_node_ids"
 run_sql "${MIGRATIONS_DIR}/migrate_drop_jenkins_legacy.sql" "清理 Jenkins 遗留命名"
