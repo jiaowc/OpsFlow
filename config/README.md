@@ -52,7 +52,7 @@ Spring Boot 配置加载顺序（简化版）：
 
 ## 安全建议
 
-- ⚠️ `config/application.yml` 默认不提交（本地敏感配置）
-- ✅ 提交 `application-*.yml` / `application-*.yml.example`，密码请用 `${DB_PASSWORD}` 占位符
+- `config/application.yml` 会随仓库提交；密码请用 `${DB_PASSWORD}` 占位符，不要写入真实口令
+- 也可提交 `application-*.yml` / `application-*.yml.example`
 - ✅ 生产环境通过环境变量或 K8s Secret 注入敏感信息
 - ✅ CI/CD 使用 `-Pdev` 时，仓库中至少要有 `application-dev.yml` 或 `application-dev.yml.example`

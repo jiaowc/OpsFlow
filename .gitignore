@@ -66,11 +66,7 @@ logs/
 data/
 uploads/
 
-# 配置文件（本地默认配置含敏感信息，不提交）
-config/application.yml
-# 环境配置可提交（建议密码使用 ${DB_PASSWORD} 占位符）
-# config/application-*.yml
-!config/application.yml.example
+# 配置示例与打包目录
 !config/*.example
 !config/packaging/
 

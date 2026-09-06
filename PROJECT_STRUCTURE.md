@@ -56,9 +56,9 @@ java -jar target/opsflow.jar --spring.config.location=file:./config/application.
 
 ## Git 管理
 
-**提交到 Git**：源码、`config/*.example`、`scripts/`、`docs/`
+**提交到 Git**：源码、`config/`、`scripts/`、`docs/`
 
-**不提交到 Git**：`config/application.yml`、`target/`、`logs/`、`data/`
+**不提交到 Git**：`target/`、`logs/`、`data/`
 
 ## 说明
 

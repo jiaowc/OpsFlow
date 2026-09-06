@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: opsflow
+  # 默认不写 spring.profiles.active：
+  # - 本地/外部 config 直接用本文件
+  # - 打包 -Pdev/-Ptest/-Pprod 时由 jar 内 application.properties 注入
+  # - 运行时也可通过 SPRING_PROFILES_ACTIVE 覆盖
+  datasource:
+    url: "jdbc:mysql://127.0.0.1:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai"
+    username: root
+    password: "Y4djc+pAyEW=ANp"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  web:
+    resources:
+      static-locations: classpath:/static/
+      add-mappings: true
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.opsflow.dao.model
+  configuration:
+    map-underscore-to-camel-case: true
+
+server:
+  port: 8080
+
+# 飞书 / LDAP 等集成配置已迁移到「系统设置」页面（写入 system_config 表），此处不再维护。
+
+opsflow:
+  # License 强校验：false=关闭（功能全开）；后期改为 true 重新启用
+  license:
+    enforcement-enabled: false
+  pipeline:
+    log-dir: ./data/pipeline-logs
+
+logging:
+  level:
+    com.opsflow: DEBUG
+    root: INFO
