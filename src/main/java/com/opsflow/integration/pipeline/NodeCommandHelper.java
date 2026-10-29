@@ -21,6 +21,11 @@ import java.util.function.Consumer;
 @Component
 public class NodeCommandHelper {
 
+    /**
+     * 本地等待比远端 timeout 多出的余量
+     */
+    private static final int REMOTE_TIMEOUT_GRACE_MS = 15000;
+
     @Autowired
     private BuildNodeMapper buildNodeMapper;
 
@@ -39,8 +44,8 @@ public class NodeCommandHelper {
             BuildNode node = buildNodeMapper.selectById(nodeId);
             if (node != null) {
                 log.info("在构建节点 {}@{} 执行命令", node.getUsername(), node.getHost());
-                SshCommandResult result = sshClient.execute(
-                    node, wrapCommandWithWorkDir(command, workDir, true), commandTimeoutMs, lineListener);
+                SshCommandResult result = executeRemote(node, wrapCommandWithWorkDir(command, workDir, true),
+                    commandTimeoutMs, lineListener);
                 return CommandResult.fromSsh(result);
             }
             log.warn("构建节点不存在: {}", nodeId);
@@ -62,8 +67,8 @@ public class NodeCommandHelper {
             BuildNode node = buildNodeMapper.selectById(nodeId);
             if (node != null) {
                 log.info("在部署节点 {}@{} 执行命令", node.getUsername(), node.getHost());
-                SshCommandResult result = sshClient.execute(
-                    node, wrapCommandWithWorkDir(command, workDir, true), commandTimeoutMs, lineListener);
+                SshCommandResult result = executeRemote(node, wrapCommandWithWorkDir(command, workDir, true),
+                    commandTimeoutMs, lineListener);
                 return CommandResult.fromSsh(result);
             }
             log.warn("部署节点不存在: {}", nodeId);
@@ -71,6 +76,16 @@ public class NodeCommandHelper {
 
         log.info("未配置部署节点，在本地执行命令");
         return runLocal(command, WorkspacePathHelper.toLocalPath(workDir), commandTimeoutMs, lineListener);
+    }
+
+    /**
+     * 流水线命令在节点上执行：远端 timeout 负责到点终止进程，本地等待时间多留一点余量以拿到远端的超时退出码
+     */
+    private SshCommandResult executeRemote(BuildNode node, String command, int commandTimeoutMs,
+                                           Consumer<String> lineListener) {
+        long timeoutSeconds = Math.max(1, commandTimeoutMs / 1000);
+        return sshClient.execute(node, SshClient.wrapWithRemoteTimeout(command, timeoutSeconds),
+            commandTimeoutMs + REMOTE_TIMEOUT_GRACE_MS, lineListener);
     }
 
     public Long resolveBuildNodeId(PipelineExecutionContext context) {

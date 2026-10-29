@@ -52,7 +52,7 @@ public class CheckoutStepExecutor implements StepExecutor {
 
             String remoteWorkspace = WorkspacePathHelper.toRemoteShellPath(workspace);
             String remoteParent = WorkspacePathHelper.toRemoteShellPath(parentPath(workspace));
-            String branchQuoted = NodeCommandHelper.shellQuote(branch);
+            boolean isTag = "tag".equalsIgnoreCase(stepParams.get("gitType"));
             String repoQuoted = NodeCommandHelper.shellQuote(authenticatedRepo);
             String commitMarker = "__OPSFLOW_COMMIT_ID__=";
             String nodeDesc = nodeCommandHelper.describeBuildNode(context);
@@ -63,17 +63,28 @@ public class CheckoutStepExecutor implements StepExecutor {
             StageLogHelper.appendKv(logBuilder, context, "仓库", gitRepo);
             StageLogHelper.appendKv(logBuilder, context, "分支/Tag", branch);
             StageLogHelper.appendKv(logBuilder, context, "操作",
-                "若目录已有 .git 则 fetch/checkout/pull，否则 clone");
+                "若目录无 .git 则 clone；然后 fetch 并强制切到远端最新提交，清理未跟踪文件");
             // 不回显带凭据的完整命令，避免密码进入日志
             StageLogHelper.appendCommand(logBuilder, context,
-                "git fetch/checkout/pull 或 git clone -b " + branch + " <repo> " + workspace);
+                "git fetch --prune --force --tags && git checkout -f " + (isTag ? "tag " : "") + branch + " && git clean -ffd");
             StageLogHelper.appendSection(logBuilder, context, "命令输出");
 
-            String command = "mkdir -p " + remoteParent
-                + " && if [ -d " + remoteWorkspace + "/.git ]; then "
-                + "cd " + remoteWorkspace + " && git fetch --all && git checkout " + branchQuoted + " && git pull origin " + branchQuoted
-                + "; else rm -rf " + remoteWorkspace + " && git clone -b " + branchQuoted + " " + repoQuoted + " " + remoteWorkspace
-                + "; fi && cd " + remoteWorkspace + " && printf '" + commitMarker + "' && git rev-parse HEAD";
+            // 幂等拉取：复用已有仓库只做 fetch，然后强制切到远端最新提交并清理未跟踪文件，
+            // 不依赖本地分支状态，远端强推、工作区残留改动都不会导致失败；被 .gitignore 忽略的构建缓存保留
+            String checkoutCommand = isTag
+                ? "git checkout -f --detach " + NodeCommandHelper.shellQuote("refs/tags/" + branch)
+                : "git checkout -f -B " + NodeCommandHelper.shellQuote(branch) + " " + NodeCommandHelper.shellQuote("refs/remotes/origin/" + branch);
+
+            String command = "set -e; mkdir -p " + remoteParent + "; "
+                + "if [ ! -d " + remoteWorkspace + "/.git ]; then rm -rf " + remoteWorkspace + " && git clone --no-checkout " + repoQuoted + " " + remoteWorkspace + "; fi; "
+                + "cd " + remoteWorkspace + "; "
+                + "git remote set-url origin " + repoQuoted + "; "
+                + "rm -f .git/index.lock; "
+                + "git fetch --prune --force --tags origin '+refs/heads/*:refs/remotes/origin/*'; "
+                + checkoutCommand + "; "
+                + "git reset --hard HEAD; "
+                + "git clean -ffd; "
+                + "printf '" + commitMarker + "' && git rev-parse HEAD";
 
             NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnBuildNode(context, command);
             StageLogHelper.appendCommandResult(logBuilder, context, cmdResult);

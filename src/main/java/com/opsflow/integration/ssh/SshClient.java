@@ -23,6 +23,21 @@ public class SshClient {
     private static final int CONNECT_TIMEOUT_MS = 15000;
     private static final int DEFAULT_COMMAND_TIMEOUT_MS = 60000;
 
+    /**
+     * 远端 timeout 发出 TERM 后，再等待多久发送 KILL
+     */
+    private static final int KILL_AFTER_SECONDS = 10;
+
+    /**
+     * 单行超过该长度（如无换行的进度输出）时强制切分，防止缓冲无限增长
+     */
+    private static final int MAX_LINE_BYTES = 64 * 1024;
+
+    /**
+     * GNU timeout 超时退出码
+     */
+    public static final int TIMEOUT_EXIT_CODE = 124;
+
     public SshCommandResult execute(BuildNode node, String command) {
         return execute(node, command, DEFAULT_COMMAND_TIMEOUT_MS, null);
     }
@@ -81,8 +96,8 @@ public class SshClient {
 
             ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
             ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
-            StringBuilder outLine = new StringBuilder();
-            StringBuilder errLine = new StringBuilder();
+            ByteArrayOutputStream outLine = new ByteArrayOutputStream();
+            ByteArrayOutputStream errLine = new ByteArrayOutputStream();
 
             int waitTimeoutMs = commandTimeoutMs > 0 ? commandTimeoutMs : DEFAULT_COMMAND_TIMEOUT_MS;
             long deadline = System.currentTimeMillis() + waitTimeoutMs;
@@ -109,6 +124,13 @@ public class SshClient {
             }
 
             int exitCode = channel.getExitStatus();
+            if (exitCode == TIMEOUT_EXIT_CODE) {
+                String partial = combineOutput(outBuf, errBuf);
+                SshCommandResult timeout = SshCommandResult.of(exitCode,
+                    "命令执行超时，已在节点上终止" + (partial.isEmpty() ? "" : "\n--- 超时前已捕获输出 ---\n" + partial));
+                timeout.setOutput(partial);
+                return timeout;
+            }
             String out = new String(outBuf.toByteArray(), StandardCharsets.UTF_8).trim();
             String err = new String(errBuf.toByteArray(), StandardCharsets.UTF_8).trim();
             String combined = combineText(out, err);
@@ -144,8 +166,23 @@ public class SshClient {
         return execute(node, wrapped);
     }
 
+    /**
+     * 远端有 timeout 命令时用它限制执行时间（TERM 后 KILL_AFTER_SECONDS 秒再 KILL，作用于整个进程组），
+     * 这样即使本地因超时断开连接，节点上的构建进程也会被终止，不会失控继续运行。
+     * stderr 合并到 stdout，保持日志顺序。
+     */
+    public static String wrapWithRemoteTimeout(String command, long timeoutSeconds) {
+        String quoted = "'" + command.replace("'", "'\\''") + "'";
+        return "if command -v timeout >/dev/null 2>&1; then "
+            + "timeout -k " + KILL_AFTER_SECONDS + " " + timeoutSeconds + " bash -c " + quoted + "; "
+            + "else bash -c " + quoted + "; fi 2>&1";
+    }
+
+    /**
+     * 按字节切分行，整行再按 UTF-8 解码，避免多字节字符被读缓冲边界截断成乱码
+     */
     private void drainStream(InputStream in, ByteArrayOutputStream sink,
-                             StringBuilder lineBuf, Consumer<String> lineListener) throws Exception {
+                             ByteArrayOutputStream lineBuf, Consumer<String> lineListener) throws Exception {
         if (in == null) {
             return;
         }
@@ -159,24 +196,29 @@ public class SshClient {
             if (lineListener == null) {
                 continue;
             }
-            String chunk = new String(buf, 0, n, StandardCharsets.UTF_8);
-            for (int i = 0; i < chunk.length(); i++) {
-                char c = chunk.charAt(i);
-                if (c == '\n') {
-                    lineListener.accept(lineBuf.toString());
-                    lineBuf.setLength(0);
-                } else if (c != '\r') {
-                    lineBuf.append(c);
+            for (int i = 0; i < n; i++) {
+                byte b = buf[i];
+                if (b == '\n') {
+                    emitLine(lineBuf, lineListener);
+                } else if (b != '\r') {
+                    lineBuf.write(b);
+                    if (lineBuf.size() >= MAX_LINE_BYTES) {
+                        emitLine(lineBuf, lineListener);
+                    }
                 }
             }
         }
     }
 
-    private void flushLine(StringBuilder lineBuf, Consumer<String> lineListener) {
-        if (lineListener != null && lineBuf.length() > 0) {
-            lineListener.accept(lineBuf.toString());
-            lineBuf.setLength(0);
+    private void flushLine(ByteArrayOutputStream lineBuf, Consumer<String> lineListener) {
+        if (lineListener != null && lineBuf.size() > 0) {
+            emitLine(lineBuf, lineListener);
         }
+    }
+
+    private void emitLine(ByteArrayOutputStream lineBuf, Consumer<String> lineListener) {
+        lineListener.accept(new String(lineBuf.toByteArray(), StandardCharsets.UTF_8));
+        lineBuf.reset();
     }
 
     private String combineOutput(ByteArrayOutputStream outBuf, ByteArrayOutputStream errBuf) {

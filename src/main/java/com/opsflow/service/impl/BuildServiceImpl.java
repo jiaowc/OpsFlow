@@ -128,6 +128,9 @@ public class BuildServiceImpl implements BuildService {
         if (env.isProdEnv()) {
             throw new BusinessException("生产环境请使用上线任务流程");
         }
+
+        // 同一服务 + 环境共用工作目录和 Deployment，禁止并发构建
+        pipelineRunService.assertNoRunningBuild(request.getServiceId(), request.getEnvId());
         
         // 2. 获取Pipeline模板
         Pipeline pipeline = null;

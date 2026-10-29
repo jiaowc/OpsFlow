@@ -267,14 +267,29 @@ public class DockerBuildStepExecutor implements StepExecutor {
     private String buildImageTag(Map<String, String> stepParams) {
         String customTag = stepParams.get("tag");
         if (customTag != null && !customTag.trim().isEmpty()) {
-            return customTag.trim();
+            return sanitizeImageTag(customTag.trim());
         }
         String tagFormat = stepParams.get("tagFormat");
         String timestamp = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
         if (tagFormat != null && !tagFormat.trim().isEmpty()) {
-            return String.format(tagFormat, timestamp);
+            return sanitizeImageTag(String.format(tagFormat, timestamp));
         }
         return timestamp;
+    }
+
+    /**
+     * Docker tag 只允许 [A-Za-z0-9_.-]，不能以 . 或 - 开头，最长 128 字符。
+     * 如自定义 tag 含分支名 feature/login 会变成 feature-login；超长时保留末尾（通常是时间戳）。
+     */
+    static String sanitizeImageTag(String raw) {
+        String tag = raw.replaceAll("[^A-Za-z0-9_.-]", "-")
+            .replaceAll("-{2,}", "-")
+            .replaceAll("^[.-]+", "")
+            .replaceAll("[.-]+$", "");
+        if (tag.length() > 128) {
+            tag = tag.substring(tag.length() - 128).replaceAll("^[.-]+", "");
+        }
+        return tag.isEmpty() ? new SimpleDateFormat("yyyyMMddHHmmss").format(new Date()) : tag;
     }
 
     @Override

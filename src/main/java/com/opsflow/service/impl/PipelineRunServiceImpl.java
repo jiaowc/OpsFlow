@@ -824,6 +824,28 @@ public class PipelineRunServiceImpl implements PipelineRunService {
     }
 
     @Override
+    @Transactional
+    public void assertNoRunningBuild(Long serviceId, Long envId) {
+        // 先锁服务行，让同一服务的并发提交排队；再用当前读（FOR UPDATE）查运行中任务，
+        // 避免可重复读隔离级别下读到事务开始前的旧快照
+        serviceMapper.selectOne(
+            new QueryWrapper<com.opsflow.dao.model.Service>().eq("id", serviceId).last("FOR UPDATE")
+        );
+        List<BuildJob> running = buildJobMapper.selectList(
+            new QueryWrapper<BuildJob>()
+                .eq("service_id", serviceId)
+                .eq("env_id", envId)
+                .in("status", BuildStatus.BUILDING, BuildStatus.DEPLOYING)
+                .last("FOR UPDATE")
+        );
+        for (BuildJob job : running) {
+            if (isJobRunning(job)) {
+                throw new BusinessException("该服务在此环境已有任务在运行（" + job.getJobNumber() + "），请等待完成后再试");
+            }
+        }
+    }
+
+    @Override
     public String getStageLog(Long buildJobId, Long stageId) {
         Map<String, Object> detail = getStageLogDetail(buildJobId, stageId, 0L);
         Object log = detail.get("log");
@@ -967,6 +989,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         if (isGroupRunning(anchor)) {
             throw new BusinessException("任务正在构建中，请稍后再试");
         }
+        self.assertNoRunningBuild(configSource.getServiceId(), configSource.getEnvId());
 
         BuildJob newJob = new BuildJob();
         newJob.setJobNumber(JobNumberGenerator.generateBuildJobNumber());
@@ -1054,6 +1077,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         if (isGroupRunning(anchor)) {
             throw new BusinessException("任务正在运行中，请稍后再试");
         }
+        self.assertNoRunningBuild(latest.getServiceId(), latest.getEnvId());
 
         Pipeline origin = pipelineMapper.selectById(latest.getPipelineTemplateId());
         if (origin == null || origin.getStatus() == null || origin.getStatus() != 1) {
@@ -1769,6 +1793,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         Map<String, String> params = new HashMap<>();
         params.put("gitRepo", service.getGitRepo());
         params.put("branch", buildJob.getBranch());
+        params.put("gitType", resolveJobGitType(buildJob));
         params.put("serviceName", service.getCode());
         params.put("serviceCode", service.getCode());
         params.put("envName", env.getName());

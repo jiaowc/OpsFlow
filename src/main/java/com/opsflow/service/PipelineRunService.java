@@ -51,6 +51,12 @@ public interface PipelineRunService {
     List<PipelineStageDTO> getBuildStages(Long buildJobId);
 
     /**
+     * 同一服务 + 环境同时只允许一个任务在运行，有则抛出 BusinessException。
+     * 必须在创建任务的同一事务中调用：会锁住服务行直到事务提交，保证并发提交时串行判断。
+     */
+    void assertNoRunningBuild(Long serviceId, Long envId);
+
+    /**
      * 查询阶段日志
      */
     String getStageLog(Long buildJobId, Long stageId);
