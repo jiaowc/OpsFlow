@@ -78,7 +78,20 @@ public class NodeController {
             return null;
         }
 
+        // 密码/私钥留空表示不修改；Jackson 缺省字段为 null，BeanUtils 会误覆盖成空
+        String oldPassword = node.getPassword();
+        String oldPrivateKey = node.getPrivateKey();
+        String oldPassphrase = node.getPrivateKeyPassphrase();
         BeanUtils.copyProperties(request, node, "id", "createTime");
+        if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+            node.setPassword(oldPassword);
+        }
+        if (request.getPrivateKey() == null || request.getPrivateKey().trim().isEmpty()) {
+            node.setPrivateKey(oldPrivateKey);
+        }
+        if (request.getPrivateKeyPassphrase() == null || request.getPrivateKeyPassphrase().trim().isEmpty()) {
+            node.setPrivateKeyPassphrase(oldPassphrase);
+        }
         node.setWorkDir(normalizeWorkDir(node.getWorkDir()));
         node.setUpdateTime(LocalDateTime.now());
         buildNodeMapper.updateById(node);

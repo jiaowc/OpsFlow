@@ -84,6 +84,9 @@ public class SshClient {
 
             Properties config = new Properties();
             config.put("StrictHostKeyChecking", "no");
+            // 新版 JSch 默认不再启用 SHA1 的 ssh-rsa；放在末位兜底，兼容 OpenSSH 7.2 以前的老节点
+            config.put("server_host_key", JSch.getConfig("server_host_key") + ",ssh-rsa");
+            config.put("PubkeyAcceptedAlgorithms", JSch.getConfig("PubkeyAcceptedAlgorithms") + ",ssh-rsa");
             session.setConfig(config);
             session.connect(CONNECT_TIMEOUT_MS);
 
@@ -153,9 +156,8 @@ public class SshClient {
     }
 
     public SshCommandResult testConnection(BuildNode node) {
-        // 返回远程 OpenSSH 版本；若无 sshd 则回退为系统信息
-        return execute(node,
-                "bash -lc 'out=$(sshd -V 2>&1 | head -n 1); if [ -n \"$out\" ]; then echo \"$out\"; else uname -sr; fi'");
+        // 只验证能执行远程命令；sshd -V 在不少发行版无效且易误导
+        return execute(node, "echo SSH_OK; uname -sr 2>/dev/null || true");
     }
 
     /**

@@ -6,7 +6,7 @@ async function loadClusters() {
     const clusterList = document.getElementById('clusterList');
     if (!clusterList) return;
 
-    clusterList.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#999;">正在加载集群信息...</td></tr>';
+    clusterList.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-4);">正在加载集群信息...</td></tr>';
 
     try {
         const [clusterResp, envResp] = await Promise.all([
@@ -49,7 +49,7 @@ function renderClusterList(clusters) {
     if (!clusterList) return;
 
     if (!clusters.length) {
-        clusterList.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#999;">暂无集群数据，请先添加集群</td></tr>';
+        clusterList.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-4);">暂无集群数据，请先添加集群</td></tr>';
         return;
     }
 
@@ -66,9 +66,9 @@ function renderClusterList(clusters) {
             <td>${escapeClusterHtml(cluster.remark)}</td>
             <td>
                 <div class="table-actions">
-                    <button class="${getClusterTestButtonClass(cluster.id)} cluster-test-btn" data-cluster-id="${cluster.id}" data-cluster-name="${escapeClusterHtml(cluster.clusterName)}" title="${clusterTestPassCache[String(cluster.id)] ? '最近检测通过' : '点击检测集群连通性'}">检测</button>
+                    ${hasPermission('cluster:manage') ? `<button class="${getClusterTestButtonClass(cluster.id)} cluster-test-btn" data-cluster-id="${cluster.id}" data-cluster-name="${escapeClusterHtml(cluster.clusterName)}" title="${clusterTestPassCache[String(cluster.id)] ? '最近检测通过' : '点击检测集群连通性'}">检测</button>
                     <button class="btn-edit cluster-edit-btn" data-cluster-id="${cluster.id}">修改</button>
-                    <button class="btn-danger cluster-delete-btn" data-cluster-id="${cluster.id}">删除</button>
+                    <button class="btn-danger cluster-delete-btn" data-cluster-id="${cluster.id}">删除</button>` : ''}
                 </div>
             </td>
         </tr>
@@ -93,17 +93,13 @@ function escapeClusterHtml(value) {
 
 async function loadKubeconfigCredentialOptions(selectedId) {
     let credentials = [];
-    if (typeof window.fetchCredentialsList === 'function') {
-        credentials = await window.fetchCredentialsList();
-    } else {
-        try {
-            const response = await fetch('/api/credential/list');
-            if (response.ok) {
-                credentials = await response.json();
-            }
-        } catch (e) {
-            console.warn('Load credentials for cluster failed', e);
+    try {
+        const response = await fetch('/api/credential/options?type=kubeconfig');
+        if (response.ok) {
+            credentials = await response.json();
         }
+    } catch (e) {
+        console.warn('Load credentials for cluster failed', e);
     }
     const kubeOnes = (credentials || []).filter(c =>
         c.credentialType === 'kubeconfig' && (c.status === 1 || c.status == null));
@@ -446,7 +442,7 @@ function renderClusterCheckResult(result) {
                         <th>说明</th>
                     </tr>
                 </thead>
-                <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#999;">无检测项</td></tr>'}</tbody>
+                <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-4);">无检测项</td></tr>'}</tbody>
             </table>
         </div>
     `;

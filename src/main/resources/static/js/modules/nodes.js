@@ -38,7 +38,7 @@ function renderNodeList(nodes) {
     if (!nodeList) return;
     
     if (nodes.length === 0) {
-        nodeList.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #999;">暂无节点</td></tr>';
+        nodeList.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-4);">暂无节点</td></tr>';
         return;
     }
     
@@ -57,9 +57,9 @@ function renderNodeList(nodes) {
                 <td>${authTypeText}</td>
                 <td>${node.status === '在线' ? '<span style="color: #059669;">在线</span>' : '<span style="color: #dc2626;">离线</span>'}</td>
                 <td>
-                    ${(node.nodeType === 'build' || node.nodeType === 'deploy') ? `<button class="btn-secondary" onclick="checkNodeEnvironment(${node.id}, '${(node.name || '').replace(/'/g, "\\'")}', '${node.nodeType}')" style="margin-right:6px;">环境检测</button>` : ''}
-                    <button class="btn-edit" onclick="editNode(${node.id})">修改</button>
-                    <button class="btn-danger" onclick="deleteNode(${node.id})">删除</button>
+                    ${(hasPermission('node:manage') && (node.nodeType === 'build' || node.nodeType === 'deploy')) ? `<button class="btn-secondary" onclick="checkNodeEnvironment(${node.id}, '${(node.name || '').replace(/'/g, "\\'")}', '${node.nodeType}')" style="margin-right:6px;">环境检测</button>` : ''}
+                    ${hasPermission('node:manage') ? `<button class="btn-edit" onclick="editNode(${node.id})">修改</button>
+                    <button class="btn-danger" onclick="deleteNode(${node.id})">删除</button>` : ''}
                 </td>
             </tr>
         `;
@@ -97,7 +97,7 @@ function showCreateNodeModal() {
             <div class="form-item">
                 <label>远程工作目录</label>
                 <input type="text" name="workDir" value="${DEFAULT_NODE_WORK_DIR}" placeholder="${DEFAULT_NODE_WORK_DIR}">
-                <small style="color:#666;display:block;margin-top:4px;">SSH 登录用户家目录下的工作根目录，默认 ~/opsflow；实际任务目录为：根目录/服务/环境/分支</small>
+                <small style="color:var(--text-3);display:block;margin-top:4px;">SSH 登录用户家目录下的工作根目录，默认 ~/opsflow；实际任务目录为：根目录/服务/环境/分支</small>
             </div>
             <div class="form-item">
                 <label>SSH端口</label>
@@ -123,7 +123,7 @@ function showCreateNodeModal() {
                 <div class="form-item">
                     <label>SSH私钥 *</label>
                     <textarea name="privateKey" rows="8" placeholder="请输入SSH私钥内容（支持RSA、DSA、ECDSA、Ed25519格式）"></textarea>
-                    <div style="margin-top: 4px; font-size: 12px; color: #666;">
+                    <div style="margin-top: 4px; font-size: 12px; color: var(--text-3);">
                         提示：请粘贴完整的私钥内容，包括 -----BEGIN ... PRIVATE KEY----- 和 -----END ... PRIVATE KEY-----
                     </div>
                 </div>
@@ -259,7 +259,7 @@ async function editNode(id) {
                 <div class="form-item">
                     <label>远程工作目录</label>
                     <input type="text" name="workDir" value="${normalizeNodeWorkDir(node.workDir)}" placeholder="${DEFAULT_NODE_WORK_DIR}">
-                    <small style="color:#666;display:block;margin-top:4px;">SSH 登录用户家目录下的工作根目录，默认 ~/opsflow；实际任务目录为：根目录/服务/环境/分支</small>
+                    <small style="color:var(--text-3);display:block;margin-top:4px;">SSH 登录用户家目录下的工作根目录，默认 ~/opsflow；实际任务目录为：根目录/服务/环境/分支</small>
                 </div>
                 <div class="form-item">
                     <label>SSH端口</label>
@@ -285,7 +285,7 @@ async function editNode(id) {
                     <div class="form-item">
                         <label>SSH私钥</label>
                         <textarea name="privateKey" rows="8" placeholder="留空则不修改私钥">${node.privateKey || ''}</textarea>
-                        <div style="margin-top: 4px; font-size: 12px; color: #666;">
+                        <div style="margin-top: 4px; font-size: 12px; color: var(--text-3);">
                             提示：留空则不修改私钥，如需修改请粘贴完整的私钥内容
                         </div>
                     </div>
@@ -391,7 +391,7 @@ async function checkNodeEnvironment(id, nodeName, nodeType) {
     const modalTitle = isDeploy ? '部署环境检测' : '构建环境检测';
 
     const loadingContent = `
-        <div id="nodeEnvCheckResult" style="padding: 24px; text-align: center; color: #666;">
+        <div id="nodeEnvCheckResult" style="padding: 24px; text-align: center; color: var(--text-3);">
             正在检测节点 <strong>${escapeNodeHtml(nodeName || '')}</strong> 的${envLabel}环境，请稍候...
         </div>
     `;
@@ -414,6 +414,16 @@ async function checkNodeEnvironment(id, nodeName, nodeType) {
 
         const result = await response.json();
         box.innerHTML = renderNodeEnvCheckResult(result);
+        // 后端已按 SSH 连通性回写在线/离线，刷新列表
+        if (typeof loadNodes === 'function') {
+            loadNodes();
+        }
+        if (typeof loadNodesForSelect === 'function') {
+            loadNodesForSelect();
+        }
+        if (typeof refreshGlobalNodes === 'function') {
+            refreshGlobalNodes();
+        }
     } catch (error) {
         const box = document.getElementById('nodeEnvCheckResult');
         if (box) {
@@ -426,6 +436,8 @@ function renderNodeEnvCheckResult(result) {
     const passed = result.passed === true;
     const summaryColor = passed ? '#059669' : '#dc2626';
     const items = result.items || [];
+    const nodeStatus = result.status || '';
+    const statusOnline = nodeStatus === '在线';
 
     const rows = items.map(item => {
         const ok = item.passed === true;
@@ -446,12 +458,17 @@ function renderNodeEnvCheckResult(result) {
 
     const isDeploy = result.nodeType === 'deploy';
     const hint = isDeploy
-        ? '必检项：SSH 连接、kubectl；K8s 集群连通为可选项（需正确配置 kubeconfig）。'
-        : '必检项：SSH 连接、JDK、Maven、Git；Docker 为可选项（镜像构建需要）。';
+        ? '必检项：SSH 连接、kubectl；K8s 集群连通为可选项（需正确配置 kubeconfig）。节点状态按 SSH 能否连通更新为在线/离线。'
+        : '必检项：SSH 连接、JDK、Maven、Git；Docker 为可选项（镜像构建需要）。节点状态按 SSH 能否连通更新为在线/离线。';
+
+    const statusLine = nodeStatus
+        ? `<div style="margin-top:8px;font-size:13px;">节点状态已更新为：<strong style="color:${statusOnline ? '#059669' : '#dc2626'};">${escapeNodeHtml(nodeStatus)}</strong></div>`
+        : '';
 
     return `
         <div style="margin-bottom: 16px; padding: 12px; border-radius: 6px; background: ${passed ? '#ecfdf5' : '#fef2f2'}; color: ${summaryColor};">
             <strong>${escapeNodeHtml(result.summary || (passed ? '检测通过' : '检测未通过'))}</strong>
+            ${statusLine}
         </div>
         <div class="table-container">
             <table class="data-table">

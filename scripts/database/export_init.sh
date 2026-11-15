@@ -23,66 +23,9 @@ for arg in "$@"; do
   esac
 done
 
-if [ -z "${DB_HOST:-}" ] || [ -z "${DB_USER:-}" ] || [ -z "${DB_PASS:-}" ]; then
-  if [ -n "$PROFILE" ]; then
-    CONFIG_FILE="${PROJECT_DIR}/config/application-${PROFILE}.yml"
-  else
-    CONFIG_FILE="${PROJECT_DIR}/config/application.yml"
-  fi
-  if [ ! -f "$CONFIG_FILE" ]; then
-    echo "配置文件不存在: $CONFIG_FILE" >&2
-    exit 1
-  fi
-  strip_yaml_value() {
-    local v="$1"
-    v="${v#"${v%%[![:space:]]*}"}"
-    v="${v%"${v##*[![:space:]]}"}"
-    if [[ "$v" == \"*\" && "$v" == *\" ]]; then
-      v="${v:1:${#v}-2}"
-    elif [[ "$v" == \'*\' && "$v" == *\' ]]; then
-      v="${v:1:${#v}-2}"
-    fi
-    printf '%s' "$v"
-  }
-  extract_ds() {
-    local key="$1"
-    awk -v key="$key" '
-      BEGIN { in_ds=0 }
-      /^[[:space:]]*datasource:[[:space:]]*$/ { in_ds=1; next }
-      in_ds && /^[^[:space:]#]/ { in_ds=0 }
-      in_ds && $0 ~ "^[[:space:]]*" key ":" {
-        sub("^[[:space:]]*" key ":[[:space:]]*", "", $0)
-        print $0
-        exit
-      }
-    ' "$CONFIG_FILE"
-  }
-  DB_URL="${DB_URL:-$(strip_yaml_value "$(extract_ds url)")}"
-  DB_USER="${DB_USER:-$(strip_yaml_value "$(extract_ds username)")}"
-  DB_PASS="${DB_PASS:-$(strip_yaml_value "$(extract_ds password)")}"
-  local_jdbc="${DB_URL#jdbc:mysql://}"
-  local_jdbc="${local_jdbc#mysql://}"
-  hostport="${local_jdbc%%/*}"
-  pathdb="${local_jdbc#*/}"
-  dbname="${pathdb%%\?*}"
-  DB_HOST="${DB_HOST:-${hostport%%:*}}"
-  if [[ "$hostport" == *:* ]]; then
-    DB_PORT="${DB_PORT:-${hostport##*:}}"
-  else
-    DB_PORT="${DB_PORT:-3306}"
-  fi
-  DB_NAME="${DB_NAME:-$dbname}"
-fi
-
-DB_HOST="${DB_HOST:-127.0.0.1}"
-DB_PORT="${DB_PORT:-3306}"
-DB_USER="${DB_USER:-root}"
-DB_NAME="${DB_NAME:-opsflow}"
-
-if [ -z "${DB_PASS:-}" ]; then
-  echo "未解析到数据库密码" >&2
-  exit 1
-fi
+# shellcheck source=db_env.sh
+source "${SCRIPT_DIR}/db_env.sh"
+resolve_db_env "$PROFILE" || exit 1
 
 # 配置类数据：用户/权限、环境/集群/服务、流水线/步骤/模版、组件/钥匙、节点、系统配置
 # 不含运行时历史：build_job / build_job_stage / deploy_task / approval_record / inbox_message

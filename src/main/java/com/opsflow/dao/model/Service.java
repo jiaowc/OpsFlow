@@ -18,9 +18,9 @@ public class Service {
     
     private String name;
 
-    /** 所属项目，用于服务分类 */
-    private String projectName;
-    
+    /** 所属项目 */
+    private Long projectId;
+
     private String code;
     
     private String gitRepo;
@@ -68,6 +68,4 @@ public class Service {
     
     private LocalDateTime updateTime;
 }
-
-
 

@@ -1,0 +1,17 @@
+services:
+  nexus:
+    image: sonatype/nexus3:3.76.1
+    container_name: opsflow-nexus
+    restart: unless-stopped
+    ports:
+      - "${NEXUS_HTTP_PORT:-8081}:8081"
+    volumes:
+      - "${NEXUS_DATA_DIR:-./.data/nexus}:/nexus-data"
+    environment:
+      - INSTALL4J_ADD_VM_PARAMS=-Xms512m -Xmx1024m -XX:MaxDirectMemorySize=1024m
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/service/rest/v1/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 90s

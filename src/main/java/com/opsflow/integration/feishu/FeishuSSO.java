@@ -1,7 +1,6 @@
 package com.opsflow.integration.feishu;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -89,7 +88,7 @@ public class FeishuSSO {
 
     private String exchangeViaOauthV2(String code) {
         try {
-            JSONObject requestBody = new JSONObject();
+            ObjectNode requestBody = FeishuJson.newObject();
             requestBody.put("grant_type", "authorization_code");
             requestBody.put("client_id", feishuSsoConfig.getAppId());
             requestBody.put("client_secret", feishuSsoConfig.getAppSecret());
@@ -98,7 +97,7 @@ public class FeishuSSO {
 
             Request request = new Request.Builder()
                     .url(feishuSsoConfig.getApiUrl() + "/authen/v2/oauth/token")
-                    .post(RequestBody.create(requestBody.toJSONString(), JSON_TYPE))
+                    .post(RequestBody.create(FeishuJson.toJson(requestBody), JSON_TYPE))
                     .addHeader("Content-Type", "application/json; charset=utf-8")
                     .build();
 
@@ -108,18 +107,18 @@ public class FeishuSSO {
                     log.warn("飞书 OAuth v2 换票 HTTP 失败: status={}, body={}", response.code(), raw);
                     return null;
                 }
-                JSONObject result = JSON.parseObject(raw);
-                Integer err = result.getInteger("code");
+                ObjectNode result = FeishuJson.parseObject(raw);
+                Integer err = FeishuJson.getInteger(result, "code");
                 if (err != null && err != 0) {
                     log.warn("飞书 OAuth v2 换票业务失败: {}", raw);
                     return null;
                 }
-                JSONObject data = result.getJSONObject("data");
+                ObjectNode data = FeishuJson.getObject(result, "data");
                 if (data == null) {
                     // 部分版本字段在根上
-                    return firstNonEmpty(result.getString("access_token"), null);
+                    return firstNonEmpty(FeishuJson.getString(result, "access_token"), null);
                 }
-                return firstNonEmpty(data.getString("access_token"), result.getString("access_token"));
+                return firstNonEmpty(FeishuJson.getString(data, "access_token"), FeishuJson.getString(result, "access_token"));
             }
         } catch (Exception e) {
             log.warn("飞书 OAuth v2 换票异常: {}", e.getMessage());
@@ -138,13 +137,13 @@ public class FeishuSSO {
             return null;
         }
         try {
-            JSONObject requestBody = new JSONObject();
+            ObjectNode requestBody = FeishuJson.newObject();
             requestBody.put("grant_type", "authorization_code");
             requestBody.put("code", code);
 
             Request request = new Request.Builder()
                     .url(feishuSsoConfig.getApiUrl() + "/authen/v1/access_token")
-                    .post(RequestBody.create(requestBody.toJSONString(), JSON_TYPE))
+                    .post(RequestBody.create(FeishuJson.toJson(requestBody), JSON_TYPE))
                     .addHeader("Authorization", "Bearer " + appToken)
                     .addHeader("Content-Type", "application/json; charset=utf-8")
                     .build();
@@ -155,13 +154,13 @@ public class FeishuSSO {
                     log.warn("飞书 v1 access_token HTTP 失败: status={}, body={}", response.code(), raw);
                     return null;
                 }
-                JSONObject result = JSON.parseObject(raw);
-                if (result.getInteger("code") == null || result.getInteger("code") != 0) {
+                ObjectNode result = FeishuJson.parseObject(raw);
+                if (FeishuJson.getInteger(result, "code") == null || FeishuJson.getInteger(result, "code") != 0) {
                     log.warn("飞书 v1 access_token 业务失败: {}", raw);
                     return null;
                 }
-                JSONObject data = result.getJSONObject("data");
-                return data != null ? data.getString("access_token") : null;
+                ObjectNode data = FeishuJson.getObject(result, "data");
+                return data != null ? FeishuJson.getString(data, "access_token") : null;
             }
         } catch (Exception e) {
             log.error("飞书 v1 换票异常", e);
@@ -183,38 +182,38 @@ public class FeishuSSO {
                     log.warn("飞书获取用户信息 HTTP 失败: status={}, body={}", response.code(), raw);
                     return null;
                 }
-                JSONObject result = JSON.parseObject(raw);
-                if (result.getInteger("code") == null || result.getInteger("code") != 0) {
+                ObjectNode result = FeishuJson.parseObject(raw);
+                if (FeishuJson.getInteger(result, "code") == null || FeishuJson.getInteger(result, "code") != 0) {
                     log.warn("飞书获取用户信息业务失败: {}", raw);
                     return null;
                 }
-                JSONObject data = result.getJSONObject("data");
+                ObjectNode data = FeishuJson.getObject(result, "data");
                 if (data == null) {
                     return null;
                 }
                 FeishuUserInfo userInfo = new FeishuUserInfo();
-                userInfo.setUserId(firstNonEmpty(data.getString("user_id"), data.getString("employee_id")));
-                userInfo.setOpenId(data.getString("open_id"));
-                userInfo.setUnionId(data.getString("union_id"));
-                userInfo.setName(firstNonEmpty(data.getString("name"), data.getString("en_name")));
-                userInfo.setEmail(firstNonEmpty(data.getString("email"), data.getString("enterprise_email")));
-                userInfo.setMobile(data.getString("mobile"));
-                userInfo.setAvatar(firstNonEmpty(data.getString("avatar_url"), data.getString("avatar_thumb")));
+                userInfo.setUserId(firstNonEmpty(FeishuJson.getString(data, "user_id"), FeishuJson.getString(data, "employee_id")));
+                userInfo.setOpenId(FeishuJson.getString(data, "open_id"));
+                userInfo.setUnionId(FeishuJson.getString(data, "union_id"));
+                userInfo.setName(firstNonEmpty(FeishuJson.getString(data, "name"), FeishuJson.getString(data, "en_name")));
+                userInfo.setEmail(firstNonEmpty(FeishuJson.getString(data, "email"), FeishuJson.getString(data, "enterprise_email")));
+                userInfo.setMobile(FeishuJson.getString(data, "mobile"));
+                userInfo.setAvatar(firstNonEmpty(FeishuJson.getString(data, "avatar_url"), FeishuJson.getString(data, "avatar_thumb")));
 
                 // 兼容嵌套 user_info
-                JSONObject nested = data.getJSONObject("user_info");
+                ObjectNode nested = FeishuJson.getObject(data, "user_info");
                 if (nested != null) {
                     if (!StringUtils.hasText(userInfo.getName())) {
-                        userInfo.setName(nested.getString("name"));
+                        userInfo.setName(FeishuJson.getString(nested, "name"));
                     }
                     if (!StringUtils.hasText(userInfo.getEmail())) {
-                        userInfo.setEmail(nested.getString("email"));
+                        userInfo.setEmail(FeishuJson.getString(nested, "email"));
                     }
                     if (!StringUtils.hasText(userInfo.getMobile())) {
-                        userInfo.setMobile(nested.getString("mobile"));
+                        userInfo.setMobile(FeishuJson.getString(nested, "mobile"));
                     }
                     if (!StringUtils.hasText(userInfo.getAvatar())) {
-                        userInfo.setAvatar(nested.getString("avatar_url"));
+                        userInfo.setAvatar(FeishuJson.getString(nested, "avatar_url"));
                     }
                 }
                 if (!StringUtils.hasText(userInfo.getUserId())

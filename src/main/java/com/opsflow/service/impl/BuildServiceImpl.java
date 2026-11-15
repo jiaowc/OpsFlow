@@ -30,7 +30,9 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -60,6 +62,9 @@ public class BuildServiceImpl implements BuildService {
 
     @Autowired
     private PipelineViewService pipelineViewService;
+
+    @Autowired
+    private com.opsflow.service.ProjectAccessService projectAccessService;
     
     @Autowired
     private HarborClient harborClient;
@@ -106,6 +111,7 @@ public class BuildServiceImpl implements BuildService {
             throw new BusinessException("环境ID不能为空");
         }
         pipelineViewService.assertAccessibleEnv(request.getEnvId());
+        projectAccessService.assertCanOperateService(request.getServiceId());
         
         if (request.getPipelineTemplateId() == null) {
             throw new BusinessException("Pipeline模板ID不能为空");
@@ -133,24 +139,9 @@ public class BuildServiceImpl implements BuildService {
         pipelineRunService.assertNoRunningBuild(request.getServiceId(), request.getEnvId());
         
         // 2. 获取Pipeline模板
-        Pipeline pipeline = null;
-        String buildNodeName = null;
-        if (request.getPipelineTemplateId() != null) {
-            pipeline = pipelineMapper.selectById(request.getPipelineTemplateId());
-            if (pipeline == null || pipeline.getStatus() != 1) {
-                throw new BusinessException("Pipeline模板不存在或已禁用");
-            }
-        } else {
-            if (request.getBuildParameters() != null && request.getBuildParameters().getNode() != null) {
-                BuildNode node = buildNodeMapper.selectById(request.getBuildParameters().getNode());
-                if (node != null) {
-                    buildNodeName = node.getName();
-                }
-            }
-            if (buildNodeName == null || buildNodeName.isEmpty()) {
-                buildNodeName = selectRandomNode();
-                log.info("随机选择构建节点: {}", buildNodeName);
-            }
+        Pipeline pipeline = pipelineMapper.selectById(request.getPipelineTemplateId());
+        if (pipeline == null || pipeline.getStatus() != 1) {
+            throw new BusinessException("Pipeline模板不存在或已禁用");
         }
         
         // 3. 创建构建任务记录
@@ -162,13 +153,8 @@ public class BuildServiceImpl implements BuildService {
         buildJob.setBranch(request.getBranch());
         buildJob.setGitType(normalizeGitType(request.getGitType()));
         
-        // 保存Pipeline模板ID
-        if (pipeline != null) {
-            buildJob.setPipelineTemplateId(pipeline.getId());
-        } else if (buildNodeName != null) {
-            buildJob.setBuildNode(buildNodeName);
-        }
-        
+        buildJob.setPipelineTemplateId(pipeline.getId());
+
         // 保存构建参数（JSON格式）
         if (request.getBuildParameters() != null) {
             try {
@@ -197,23 +183,6 @@ public class BuildServiceImpl implements BuildService {
         return response;
     }
     
-    /**
-     * 随机选择构建节点（兼容旧参数）
-     */
-    private String selectRandomNode() {
-        List<BuildNode> nodes = buildNodeMapper.selectList(
-            new QueryWrapper<BuildNode>()
-                .eq("status", "ONLINE")
-        );
-
-        if (nodes.isEmpty()) {
-            throw new BusinessException("没有可用的构建节点");
-        }
-
-        int index = (int) (Math.random() * nodes.size());
-        return nodes.get(index).getName();
-    }
-
     private Long getCurrentUserId() {
         String username = getCurrentUsername();
         if (username == null || username.trim().isEmpty()) {
@@ -246,6 +215,7 @@ public class BuildServiceImpl implements BuildService {
         if (buildJob == null) {
             throw new BusinessException("构建任务不存在");
         }
+        projectAccessService.assertCanViewService(buildJob.getServiceId());
         
         // 如果构建已完成且有镜像信息，验证镜像是否已推送到Harbor
         String buildStatus = buildJob.getStatus();
@@ -268,7 +238,6 @@ public class BuildServiceImpl implements BuildService {
         response.setTaskName(buildJob.getTaskName());
         response.setStatus(buildJob.getStatus());
         response.setImageTag(buildJob.getImageTag());
-        response.setBuildLogUrl(buildJob.getBuildLogUrl());
         response.setErrorMessage(buildJob.getErrorMessage());
         response.setStartTime(buildJob.getStartTime());
         response.setEndTime(buildJob.getEndTime());
@@ -278,6 +247,7 @@ public class BuildServiceImpl implements BuildService {
 
     @Override
     public List<String> getBranches(Long serviceId, String type) {
+        projectAccessService.assertCanViewService(serviceId);
         com.opsflow.dao.model.Service service = serviceMapper.selectById(serviceId);
         if (service == null) {
             throw new BusinessException("服务不存在");
@@ -356,6 +326,13 @@ public class BuildServiceImpl implements BuildService {
         if (envId != null) {
             wrapper.eq("env_id", envId);
         }
+        Set<Long> serviceIds = projectAccessService.accessibleServiceIds(null);
+        if (serviceIds != null) {
+            if (serviceIds.isEmpty()) {
+                return new ArrayList<>();
+            }
+            wrapper.in("service_id", serviceIds);
+        }
         wrapper.orderByDesc("create_time");
         
         List<BuildJob> jobs = buildJobMapper.selectList(wrapper);
@@ -368,9 +345,7 @@ public class BuildServiceImpl implements BuildService {
             dto.setServiceId(job.getServiceId());
             dto.setEnvId(job.getEnvId());
             dto.setBranch(job.getBranch());
-            dto.setBuildNode(job.getBuildNode());
             dto.setStatus(job.getStatus());
-            dto.setBuildLogUrl(job.getBuildLogUrl());
             dto.setBuildNumber(job.getBuildNumber());
             dto.setCreateTime(job.getCreateTime());
             dto.setUpdateTime(job.getUpdateTime());

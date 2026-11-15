@@ -1,3 +1,4 @@
+SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS `pipeline_view` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL COMMENT '视图名称，如 dev',

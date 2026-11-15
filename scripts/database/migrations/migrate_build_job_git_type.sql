@@ -1,4 +1,5 @@
 -- build_job 增加 git_type（从 service 迁移语义到流水线 Job）
+SET NAMES utf8mb4;
 SET @dbname = DATABASE();
 
 SET @exists = (

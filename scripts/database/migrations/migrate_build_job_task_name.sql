@@ -1,4 +1,5 @@
 -- 构建任务增加任务名称字段（可重复执行）
+SET NAMES utf8mb4;
 SET @dbname = DATABASE();
 SET @tablename = 'build_job';
 SET @columnname = 'task_name';

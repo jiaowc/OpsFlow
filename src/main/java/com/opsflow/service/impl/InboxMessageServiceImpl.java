@@ -17,6 +17,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -33,11 +34,18 @@ public class InboxMessageServiceImpl implements InboxMessageService {
 
     @Override
     public void sendApprovalNotify(ApprovalRecord record, DeployTask task) {
-        if (record == null || !StringUtils.hasText(record.getApprover())) {
+        if (record == null) {
+            return;
+        }
+        List<String> recipients;
+        if (!record.listApproverCandidates().isEmpty()) {
+            recipients = record.listApproverCandidates();
+        } else if (StringUtils.hasText(record.getApprover())) {
+            recipients = Collections.singletonList(record.getApprover().trim());
+        } else {
             // 未指定审批人：任意人可批，不发个人站内信
             return;
         }
-        String username = record.getApprover().trim();
         String clusterName = "-";
         if (task != null && task.getClusterId() != null) {
             Cluster cluster = clusterMapper.selectById(task.getClusterId());
@@ -54,19 +62,25 @@ public class InboxMessageServiceImpl implements InboxMessageService {
                 + "\n审批步骤：第 " + record.getCurrentStep() + " 步"
                 + "\n请在「上线任务」中完成审批。";
 
+        if (recipients.size() > 1) {
+            content += "\n审批人：" + safe(record.getApproverName()) + "（任一人审批即可）";
+        }
+
         LocalDateTime now = LocalDateTime.now();
-        InboxMessage msg = new InboxMessage();
-        msg.setUsername(username);
-        msg.setTitle(title);
-        msg.setContent(content);
-        msg.setMsgType("approval");
-        msg.setBizType(BIZ_APPROVAL_RECORD);
-        msg.setBizId(String.valueOf(record.getId()));
-        msg.setLinkPath("/tasks");
-        msg.setReadFlag(0);
-        msg.setCreateTime(now);
-        msg.setUpdateTime(now);
-        inboxMessageMapper.insert(msg);
+        for (String username : recipients) {
+            InboxMessage msg = new InboxMessage();
+            msg.setUsername(username);
+            msg.setTitle(title);
+            msg.setContent(content);
+            msg.setMsgType("approval");
+            msg.setBizType(BIZ_APPROVAL_RECORD);
+            msg.setBizId(String.valueOf(record.getId()));
+            msg.setLinkPath("/tasks");
+            msg.setReadFlag(0);
+            msg.setCreateTime(now);
+            msg.setUpdateTime(now);
+            inboxMessageMapper.insert(msg);
+        }
     }
 
     @Override

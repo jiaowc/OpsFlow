@@ -42,11 +42,6 @@ public class PipelineDTO {
     private Map<String, String> parameterDefinitions;
 
     /**
-     * 主 CI 构建节点 ID（兼容单选）
-     */
-    private Long buildNodeId;
-
-    /**
      * CI 构建节点 ID 列表（多选）
      */
     private List<Long> buildNodeIds;

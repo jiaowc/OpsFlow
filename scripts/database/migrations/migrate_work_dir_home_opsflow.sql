@@ -1,4 +1,5 @@
 -- 将节点远程工作目录默认路径更新为 ~/opsflow（兼容 build_node / jenkins_node）
+SET NAMES utf8mb4;
 SET @dbname = DATABASE();
 SET @tablename = (
   SELECT CASE

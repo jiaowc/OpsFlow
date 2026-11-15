@@ -115,6 +115,28 @@ public class ComponentController {
     }
 
     /**
+     * 下拉选项：仅返回 id / 名称 / 类型 / 地址 / 状态，不含认证配置（服务表单选择 Git 组件用）
+     */
+    @RequiresPermission({"credential:manage", "service:view", "service:manage"})
+    @GetMapping("/options")
+    public List<Map<String, Object>> options(@RequestParam(required = false) String type) {
+        QueryWrapper<Component> wrapper = new QueryWrapper<>();
+        if (type != null && !type.isEmpty()) {
+            wrapper.eq("type", type);
+        }
+        wrapper.orderByDesc("create_time");
+        return componentMapper.selectList(wrapper).stream().map(c -> {
+            Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("id", c.getId());
+            item.put("name", c.getName());
+            item.put("type", c.getType());
+            item.put("url", c.getUrl());
+            item.put("status", c.getStatus());
+            return item;
+        }).collect(Collectors.toList());
+    }
+
+    /**
      * 查询组件详情
      */
     @GetMapping("/{id}")

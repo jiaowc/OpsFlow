@@ -24,15 +24,8 @@ build_project() {
     check_command mvn
     setup_java8
 
-    local maven_profile="${OPSFLOW_MAVEN_PROFILE:-${SPRING_PROFILES_ACTIVE:-}}"
-    local mvn_args=(clean package -DskipTests)
-    if [ -n "${maven_profile}" ]; then
-        mvn_args+=(-P"${maven_profile}")
-        print_info "Maven 打包环境: ${maven_profile}"
-    else
-        print_info "Maven 打包环境: 默认 (application.yml)"
-    fi
-    if mvn "${mvn_args[@]}"; then
+    # 所有环境共用同一个 jar，环境在启动时由 SPRING_PROFILES_ACTIVE 选择
+    if mvn clean package -DskipTests; then
         print_success "编译成功"
     else
         print_error "编译失败，请检查错误信息"
@@ -86,15 +79,8 @@ start_local_app() {
         mv "${LOG_FILE}" "${LOG_FILE}.$(date +%Y%m%d_%H%M%S).bak" 2>/dev/null || true
     fi
 
-    if [ -d "${PROJECT_DIR}/config" ]; then
-        print_info "使用外部配置目录: ${PROJECT_DIR}/config"
-        print_info "激活环境: ${SPRING_PROFILES_ACTIVE:-默认(application.yml)}"
-        nohup java -jar "${JAR_PATH}" --spring.config.additional-location=file:"${PROJECT_DIR}/config/" > "${LOG_FILE}" 2>&1 &
-    else
-        print_warning "外部配置目录不存在: ${PROJECT_DIR}/config"
-        print_info "使用默认配置文件（项目内）"
-        nohup java -jar "${JAR_PATH}" > "${LOG_FILE}" 2>&1 &
-    fi
+    print_config_summary
+    nohup java -jar "${JAR_PATH}" > "${LOG_FILE}" 2>&1 &
 
     sleep 3
     local current_pid
@@ -250,8 +236,8 @@ main() {
             echo ""
             echo "故障排查："
             echo "  1. 查看日志: tail -100 ${LOG_FILE}"
-            echo "  2. 检查 profile: echo \${SPRING_PROFILES_ACTIVE:-local}"
-            echo "  3. 检查数据库连接配置是否在 application-\${SPRING_PROFILES_ACTIVE:-local}.yml"
+            echo "  2. 检查环境: SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-(未设置，使用默认配置)}"
+            echo "  3. 检查数据库连接: DB_URL / DB_USERNAME / DB_PASSWORD（环境变量或 config/application-local.yml）"
             echo ""
             exit 1
         fi

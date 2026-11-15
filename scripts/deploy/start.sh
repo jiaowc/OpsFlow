@@ -82,15 +82,8 @@ fi
 cd "${PROJECT_DIR}"
 print_info "正在启动 ${APP_NAME}（本地模式）..."
 
-if [ -d "${PROJECT_DIR}/config" ]; then
-    print_info "使用外部配置目录: ${PROJECT_DIR}/config"
-    print_info "激活环境: ${SPRING_PROFILES_ACTIVE:-默认(application.yml)}"
-    nohup java -jar "${JAR_PATH}" --spring.config.additional-location=file:"${PROJECT_DIR}/config/" > "${LOG_FILE}" 2>&1 &
-else
-    print_warning "外部配置目录不存在: ${PROJECT_DIR}/config"
-    print_info "使用默认配置文件（项目内）"
-    nohup java -jar "${JAR_PATH}" > "${LOG_FILE}" 2>&1 &
-fi
+print_config_summary
+nohup java -jar "${JAR_PATH}" > "${LOG_FILE}" 2>&1 &
 
 if wait_for_port 30; then
     print_success "应用启动成功！"

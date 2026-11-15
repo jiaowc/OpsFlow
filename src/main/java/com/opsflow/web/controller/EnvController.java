@@ -106,15 +106,6 @@ public class EnvController {
 
     private void applyCluster(Env env, Long clusterId) {
         env.setClusterId(clusterId);
-        if (clusterId == null) {
-            env.setK8sCluster(null);
-            return;
-        }
-
-        Cluster cluster = clusterMapper.selectById(clusterId);
-        if (cluster != null) {
-            env.setK8sCluster(cluster.getName());
-        }
     }
 
     private void normalizeEnvType(Env env) {
@@ -144,9 +135,7 @@ public class EnvController {
             Cluster cluster = clusterMapper.selectById(env.getClusterId());
             if (cluster != null) {
                 dto.setClusterServer(cluster.getServer());
-                if (dto.getK8sCluster() == null || dto.getK8sCluster().trim().isEmpty()) {
-                    dto.setK8sCluster(cluster.getName());
-                }
+                dto.setK8sCluster(cluster.getName());
             }
         }
         return dto;

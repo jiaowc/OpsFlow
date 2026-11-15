@@ -1,13 +1,43 @@
-// 登录功能
+// 登录功能（含 i18n + 企业品牌）
+(function initLoginI18n() {
+    if (typeof applyI18n === 'function') {
+        applyI18n(document);
+    }
+})();
+
+(async function initLoginBranding() {
+    try {
+        const response = await fetch('/api/branding/public');
+        if (!response.ok) return;
+        const data = await response.json();
+        const custom = !!data.custom && !!data.logoUrl;
+        const title = (data.title && String(data.title).trim()) || 'OPSFLOW';
+        document.querySelectorAll('[data-brand-text]').forEach(el => {
+            el.textContent = title;
+            if (custom) el.classList.add('brand-text-with-logo');
+        });
+        document.querySelectorAll('[data-brand-logo]').forEach(img => {
+            if (custom) {
+                img.src = data.logoUrl;
+                img.alt = title;
+                img.hidden = false;
+                img.style.display = '';
+            }
+        });
+    } catch (e) {
+        console.warn('Load login branding failed', e);
+    }
+})();
+
 document.getElementById('loginForm').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     const errorMsg = document.getElementById('errorMsg');
-    
+
     errorMsg.textContent = '';
-    
+
     try {
         const response = await fetch('/api/auth/login', {
             method: 'POST',
@@ -16,20 +46,20 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
             },
             body: JSON.stringify({ username, password })
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
-            // 登录成功，跳转到控制台
             if (data.token) {
                 localStorage.setItem('token', data.token);
             }
             window.location.href = '/statistics';
         } else {
-            errorMsg.textContent = data.message || '登录失败，请检查用户名和密码';
+            const fallback = typeof t === 'function' ? t('login.failed') : '登录失败，请检查用户名和密码';
+            errorMsg.textContent = data.message || fallback;
         }
     } catch (error) {
-        errorMsg.textContent = '登录失败，请稍后重试';
+        errorMsg.textContent = typeof t === 'function' ? t('login.retry') : '登录失败，请稍后重试';
         console.error('Login error:', error);
     }
 });
@@ -44,7 +74,6 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     if (errorMsg) {
         errorMsg.textContent = err;
     }
-    // 清理地址栏参数，避免刷新重复提示
     const url = new URL(window.location.href);
     url.searchParams.delete('sso_error');
     window.history.replaceState({}, '', url.pathname + (url.search || '') + url.hash);

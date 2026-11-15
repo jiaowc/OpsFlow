@@ -1,4 +1,5 @@
 -- pipeline 增加流水线类型；deploy_task / build_job 关联 CD 执行
+SET NAMES utf8mb4;
 
 SET @dbname = DATABASE();
 

@@ -1,6 +1,7 @@
 package com.opsflow.web.controller;
 
 import com.opsflow.api.dto.PipelineTemplateDTO;
+import com.opsflow.api.dto.TemplateVariableCheckDTO;
 import com.opsflow.service.PipelineTemplateService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -42,5 +43,13 @@ public class PipelineTemplateController {
     @DeleteMapping("/{id}")
     public boolean delete(@PathVariable Long id) {
         return pipelineTemplateService.delete(id);
+    }
+
+    /**
+     * 保存前检查模版里的 ${变量} 写法，只检查不保存。
+     */
+    @PostMapping("/check-variables")
+    public TemplateVariableCheckDTO checkVariables(@RequestBody PipelineTemplateDTO request) {
+        return pipelineTemplateService.checkVariables(request);
     }
 }

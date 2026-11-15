@@ -1,17 +1,20 @@
 package com.opsflow.web.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.opsflow.common.util.PasswordHasher;
 import com.opsflow.dao.mapper.UserMapper;
 import com.opsflow.dao.model.User;
 import com.opsflow.integration.feishu.FeishuSSO;
 import com.opsflow.integration.feishu.FeishuSsoConfig;
 import com.opsflow.service.FeishuUserResolveService;
 import com.opsflow.service.PermissionService;
+import com.opsflow.web.security.LoginAttemptGuard;
+import com.opsflow.web.security.SessionPermissionResolver;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.util.DigestUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
@@ -47,11 +50,17 @@ public class AuthController {
     @Autowired
     private FeishuUserResolveService feishuUserResolveService;
 
+    @Autowired
+    private LoginAttemptGuard loginAttemptGuard;
+
+    @Autowired
+    private SessionPermissionResolver sessionPermissionResolver;
+
     /**
-     * 登录：优先校验 user 表（密码 MD5，与用户管理一致）；无匹配时兼容 admin/admin。
+     * 登录：校验 user 表密码（BCrypt，兼容历史 MD5 并在登录成功后自动升级）。
      */
     @PostMapping("/login")
-    public Map<String, Object> login(@RequestBody Map<String, String> loginRequest, HttpSession session) {
+    public Map<String, Object> login(@RequestBody Map<String, String> loginRequest, HttpServletRequest request) {
         String username = loginRequest.get("username");
         String password = loginRequest.get("password");
 
@@ -64,52 +73,57 @@ public class AuthController {
         }
 
         String trimmedUsername = username.trim();
+        long lockedSeconds = loginAttemptGuard.lockedSeconds(trimmedUsername);
+        if (lockedSeconds > 0) {
+            result.put("success", false);
+            result.put("message", "登录失败次数过多，请 " + ((lockedSeconds + 59) / 60) + " 分钟后再试");
+            return result;
+        }
+
         User user = userMapper.selectOne(
                 new QueryWrapper<User>().eq("username", trimmedUsername).last("LIMIT 1"));
 
-        if (user != null) {
-            if (user.getStatus() != null && user.getStatus() == 0) {
-                result.put("success", false);
-                result.put("message", "用户已禁用");
-                return result;
-            }
-            String inputHash = DigestUtils.md5DigestAsHex(password.getBytes());
-            if (inputHash.equalsIgnoreCase(user.getPassword())) {
-                bindSession(session, user.getUsername(), user.getId(),
-                        permissionService.listRoleCodesByUserId(user.getId()),
-                        permissionService.listPermissionCodesByUserId(user.getId()));
-
-                result.put("success", true);
-                result.put("token", session.getId());
-                result.put("username", user.getUsername());
-                result.put("roles", session.getAttribute("roles"));
-                result.put("permissions", session.getAttribute("permissions"));
-                result.put("message", "登录成功");
-                return result;
-            }
+        if (user == null || !PasswordHasher.matches(password, user.getPassword())) {
+            loginAttemptGuard.recordFailure(trimmedUsername);
             result.put("success", false);
             result.put("message", "用户名或密码错误");
             return result;
         }
-
-        // 兼容：未入库的 admin 账号（开发/初始环境）→ 超管全权限
-        if ("admin".equals(trimmedUsername) && "admin".equals(password)) {
-            bindSession(session, trimmedUsername, null,
-                    Collections.singletonList("ADMIN"),
-                    Collections.singletonList(PermissionService.WILDCARD));
-
-            result.put("success", true);
-            result.put("token", session.getId());
-            result.put("username", trimmedUsername);
-            result.put("roles", session.getAttribute("roles"));
-            result.put("permissions", session.getAttribute("permissions"));
-            result.put("message", "登录成功");
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            result.put("success", false);
+            result.put("message", "用户已禁用");
             return result;
         }
+        loginAttemptGuard.recordSuccess(trimmedUsername);
 
-        result.put("success", false);
-        result.put("message", "用户名或密码错误");
+        if (PasswordHasher.needsUpgrade(user.getPassword())) {
+            User upgrade = new User();
+            upgrade.setId(user.getId());
+            upgrade.setPassword(PasswordHasher.hash(password));
+            userMapper.updateById(upgrade);
+        }
+
+        HttpSession session = rotateSession(request);
+        bindSession(session, user.getUsername(), user.getId(),
+                permissionService.listRoleCodesByUserId(user.getId()),
+                permissionService.listPermissionCodesByUserId(user.getId()));
+
+        result.put("success", true);
+        result.put("token", session.getId());
+        result.put("username", user.getUsername());
+        result.put("roles", session.getAttribute("roles"));
+        result.put("permissions", session.getAttribute("permissions"));
+        result.put("message", "登录成功");
         return result;
+    }
+
+    /**
+     * 认证成功后更换 session ID，防止会话固定攻击
+     */
+    private HttpSession rotateSession(HttpServletRequest request) {
+        HttpSession session = request.getSession(true);
+        request.changeSessionId();
+        return session;
     }
 
     /**
@@ -160,6 +174,7 @@ public class AuthController {
                                @RequestParam(required = false) String state,
                                @RequestParam(required = false) String error,
                                @RequestParam(value = "error_description", required = false) String errorDescription,
+                               HttpServletRequest request,
                                HttpSession session,
                                HttpServletResponse response) throws IOException {
         if (StringUtils.hasText(error)) {
@@ -210,6 +225,7 @@ public class AuthController {
                 feishuUser.getEmail()
         );
 
+        request.changeSessionId();
         bindSession(session, user.getUsername(), user.getId(),
                 permissionService.listRoleCodesByUserId(user.getId()),
                 permissionService.listPermissionCodesByUserId(user.getId()));
@@ -243,8 +259,9 @@ public class AuthController {
         String username = (String) session.getAttribute("user");
         Boolean authenticated = (Boolean) session.getAttribute("authenticated");
 
-        if (authenticated != null && authenticated && username != null) {
-            ensureSessionPermissions(session);
+        if (authenticated != null && authenticated && username != null
+                && session.getAttribute("userId") != null) {
+            sessionPermissionResolver.resolvePermissions(session);
             result.put("username", username);
             result.put("authenticated", true);
             result.put("userId", session.getAttribute("userId"));
@@ -273,33 +290,7 @@ public class AuthController {
                              List<String> roles, List<String> permissions) {
         session.setAttribute("user", username);
         session.setAttribute("authenticated", true);
-        if (userId != null) {
-            session.setAttribute("userId", userId);
-        } else {
-            session.removeAttribute("userId");
-        }
-        session.setAttribute("roles", roles != null ? roles : Collections.emptyList());
-        session.setAttribute("permissions", permissions != null ? permissions : Collections.emptyList());
-    }
-
-    @SuppressWarnings("unchecked")
-    private void ensureSessionPermissions(HttpSession session) {
-        if (session.getAttribute("permissions") != null && session.getAttribute("roles") != null) {
-            return;
-        }
-        Long userId = (Long) session.getAttribute("userId");
-        if (userId != null) {
-            session.setAttribute("roles", permissionService.listRoleCodesByUserId(userId));
-            session.setAttribute("permissions", permissionService.listPermissionCodesByUserId(userId));
-            return;
-        }
-        String username = (String) session.getAttribute("user");
-        if ("admin".equals(username)) {
-            session.setAttribute("roles", Collections.singletonList("ADMIN"));
-            session.setAttribute("permissions", Collections.singletonList(PermissionService.WILDCARD));
-        } else {
-            session.setAttribute("roles", Collections.emptyList());
-            session.setAttribute("permissions", Collections.emptyList());
-        }
+        session.setAttribute("userId", userId);
+        sessionPermissionResolver.bind(session, roles, permissions);
     }
 }

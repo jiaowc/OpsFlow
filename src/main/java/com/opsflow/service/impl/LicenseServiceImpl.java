@@ -23,6 +23,7 @@ import java.security.PublicKey;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -39,6 +40,17 @@ public class LicenseServiceImpl implements LicenseService {
     public static final String CONFIG_TYPE = "license";
     public static final String KEY_RAW = "raw";
 
+    /** 订阅过期后宽限天数：期内商业功能仍可用并提示续费 */
+    public static final int GRACE_DAYS = 7;
+
+    private static final List<String> ALL_KNOWN_FEATURES = Collections.unmodifiableList(Arrays.asList(
+            LicenseFeatures.DEPLOY_APPROVAL,
+            LicenseFeatures.AUDIT,
+            LicenseFeatures.NOTIFY_INTEGRATION,
+            LicenseFeatures.PROD_ROLLBACK,
+            LicenseFeatures.BRANDING
+    ));
+
     private static final DateTimeFormatter[] TIME_FORMATS = new DateTimeFormatter[]{
             DateTimeFormatter.ISO_LOCAL_DATE_TIME,
             DateTimeFormatter.ISO_OFFSET_DATE_TIME,
@@ -49,8 +61,8 @@ public class LicenseServiceImpl implements LicenseService {
     /**
      * License 强校验总开关。
      * <p>
-     * 当前默认关闭（false）：不拦截功能，上线审批等均可直接使用。
-     * 后期需要重新启用时：将配置 {@code opsflow.license.enforcement-enabled} 改为 {@code true} 并重启。
+     * 当前默认关闭（false）：不拦截功能，商业能力均可直接使用。
+     * 对外交付改为 {@code opsflow.license.enforcement-enabled=true}。
      * </p>
      */
     @Value("${opsflow.license.enforcement-enabled:false}")
@@ -84,7 +96,6 @@ public class LicenseServiceImpl implements LicenseService {
 
     @Override
     public boolean isFeatureEnabled(String feature) {
-        // 关闭强校验时：视为全部功能已授权
         if (!enforcementEnabled) {
             return true;
         }
@@ -97,12 +108,11 @@ public class LicenseServiceImpl implements LicenseService {
 
     @Override
     public void requireFeature(String feature) {
-        // 关闭强校验时：跳过拦截
         if (!enforcementEnabled) {
             return;
         }
         if (!isFeatureEnabled(feature)) {
-            throw new BusinessException("未授权功能「" + feature + "」，请导入有效 License 后使用上线审批相关能力");
+            throw new BusinessException(featureDeniedMessage(feature));
         }
     }
 
@@ -113,8 +123,8 @@ public class LicenseServiceImpl implements LicenseService {
         if (!enforcementEnabled) {
             dto.setPresent(false);
             dto.setValid(true);
-            dto.setDeployApprovalEnabled(true);
-            dto.setFeatures(new ArrayList<>(Arrays.asList(LicenseFeatures.DEPLOY_APPROVAL)));
+            dto.setFeatures(new ArrayList<>(ALL_KNOWN_FEATURES));
+            fillFeatureFlags(dto, true);
             dto.setMessage("License 强校验已关闭（配置 enforcement-enabled=false），所有功能开放");
             return dto;
         }
@@ -122,18 +132,21 @@ public class LicenseServiceImpl implements LicenseService {
         if (cached == null || !cached.present) {
             dto.setPresent(false);
             dto.setValid(false);
-            dto.setDeployApprovalEnabled(false);
-            dto.setMessage("尚未导入 License");
+            fillFeatureFlags(dto, false);
+            dto.setMessage("尚未导入 License（当前为 Community：核心 CI/CD 可用）");
             return dto;
         }
         dto.setPresent(true);
         dto.setValid(cached.valid);
         dto.setCustomer(cached.customer);
         dto.setLicenseId(cached.licenseId);
+        dto.setPlan(cached.plan);
         dto.setIssuedAt(cached.issuedAt);
         dto.setExpiresAt(cached.expiresAt);
+        dto.setInGracePeriod(cached.inGracePeriod);
+        dto.setDaysRemaining(daysRemaining(cached.expiresAt));
         dto.setFeatures(new ArrayList<>(cached.features));
-        dto.setDeployApprovalEnabled(cached.valid && cached.features.contains(LicenseFeatures.DEPLOY_APPROVAL));
+        fillFeatureFlags(dto, cached.valid);
         dto.setMessage(cached.message);
         return dto;
     }
@@ -162,6 +175,7 @@ public class LicenseServiceImpl implements LicenseService {
             values.put(KEY_RAW, normalized);
             values.put("customer", nullToEmpty(verified.customer));
             values.put("licenseId", nullToEmpty(verified.licenseId));
+            values.put("plan", nullToEmpty(verified.plan));
             values.put("expiresAt", nullToEmpty(verified.expiresAt));
             values.put("features", String.join(",", verified.features));
             values.put("importedAt", LocalDateTime.now().toString());
@@ -182,6 +196,7 @@ public class LicenseServiceImpl implements LicenseService {
         values.put(KEY_RAW, "");
         values.put("customer", "");
         values.put("licenseId", "");
+        values.put("plan", "");
         values.put("expiresAt", "");
         values.put("features", "");
         values.put("importedAt", "");
@@ -192,7 +207,7 @@ public class LicenseServiceImpl implements LicenseService {
     @Override
     public List<String> enabledFeatures() {
         if (!enforcementEnabled) {
-            return new ArrayList<>(Arrays.asList(LicenseFeatures.DEPLOY_APPROVAL));
+            return new ArrayList<>(ALL_KNOWN_FEATURES);
         }
         CachedLicense cached = current();
         if (cached == null || !cached.valid) {
@@ -201,18 +216,75 @@ public class LicenseServiceImpl implements LicenseService {
         return new ArrayList<>(cached.features);
     }
 
+    private void fillFeatureFlags(LicenseStatusDTO dto, boolean enabledBase) {
+        List<String> features = dto.getFeatures() != null ? dto.getFeatures() : Collections.emptyList();
+        boolean on = enabledBase;
+        dto.setDeployApprovalEnabled(on && features.contains(LicenseFeatures.DEPLOY_APPROVAL));
+        dto.setAuditEnabled(on && features.contains(LicenseFeatures.AUDIT));
+        dto.setNotifyIntegrationEnabled(on && features.contains(LicenseFeatures.NOTIFY_INTEGRATION));
+        dto.setProdRollbackEnabled(on && features.contains(LicenseFeatures.PROD_ROLLBACK));
+        dto.setBrandingEnabled(on && features.contains(LicenseFeatures.BRANDING));
+    }
+
+    private String featureDeniedMessage(String feature) {
+        String code = feature == null ? "" : feature.trim().toLowerCase(Locale.ROOT);
+        String label;
+        if (LicenseFeatures.DEPLOY_APPROVAL.equals(code)) {
+            label = "上线审批";
+        } else if (LicenseFeatures.AUDIT.equals(code)) {
+            label = "操作审计";
+        } else if (LicenseFeatures.NOTIFY_INTEGRATION.equals(code)) {
+            label = "集成与通知";
+        } else if (LicenseFeatures.PROD_ROLLBACK.equals(code)) {
+            label = "生产环境回滚";
+        } else if (LicenseFeatures.BRANDING.equals(code)) {
+            label = "企业品牌定制";
+        } else {
+            label = code;
+        }
+        return "未授权功能「" + label + "」（" + code + "），请导入有效订阅 License 后使用";
+    }
+
     private CachedLicense current() {
         CachedLicense cached = cache.get();
         if (cached != null) {
-            // 过期重验
-            if (cached.valid && isExpired(cached.expiresAt)) {
-                cached.valid = false;
-                cached.message = "License 已过期";
-                cached.features = Collections.emptyList();
-            }
+            reevaluateExpiry(cached);
             return cached;
         }
         return refreshCache();
+    }
+
+    private void reevaluateExpiry(CachedLicense cached) {
+        if (!cached.valid && !cached.inGracePeriod) {
+            // 已硬失效则保持；若时钟回拨到宽限内，下面会重算
+        }
+        if (!StringUtils.hasText(cached.expiresAt)) {
+            return;
+        }
+        LocalDateTime exp = parseTime(cached.expiresAt);
+        if (exp == null) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (!now.isAfter(exp)) {
+            // 未过期：若之前被标过期，需从存储重载；此处仅纠正宽限标记
+            if (cached.inGracePeriod) {
+                cached.inGracePeriod = false;
+            }
+            return;
+        }
+        LocalDateTime graceEnd = exp.plusDays(GRACE_DAYS);
+        if (!now.isAfter(graceEnd)) {
+            cached.valid = true;
+            cached.inGracePeriod = true;
+            long left = ChronoUnit.DAYS.between(now.toLocalDate(), graceEnd.toLocalDate());
+            cached.message = "订阅已过期，宽限期剩余约 " + Math.max(left, 0) + " 天，请尽快续费导入新 License";
+            return;
+        }
+        cached.valid = false;
+        cached.inGracePeriod = false;
+        cached.features = Collections.emptyList();
+        cached.message = "订阅已过期且超过宽限期，商业功能已关闭（Community 核心仍可用）";
     }
 
     private CachedLicense refreshCache() {
@@ -250,6 +322,7 @@ public class LicenseServiceImpl implements LicenseService {
         }
         result.customer = payload.getCustomer();
         result.licenseId = payload.getLicenseId();
+        result.plan = payload.getPlan();
         result.issuedAt = payload.getIssuedAt();
         result.expiresAt = payload.getExpiresAt();
 
@@ -272,18 +345,13 @@ public class LicenseServiceImpl implements LicenseService {
             result.features = Collections.emptyList();
             return result;
         }
-        if (isExpired(payload.getExpiresAt())) {
-            result.valid = false;
-            result.message = "License 已过期";
-            result.features = Collections.emptyList();
-            return result;
-        }
         if (isNotYetValid(payload.getIssuedAt())) {
             result.valid = false;
             result.message = "License 尚未生效";
             result.features = Collections.emptyList();
             return result;
         }
+
         List<String> features = new ArrayList<>();
         if (payload.getFeatures() != null) {
             for (String f : payload.getFeatures()) {
@@ -293,17 +361,56 @@ public class LicenseServiceImpl implements LicenseService {
             }
         }
         result.features = features;
+
+        if (isHardExpired(payload.getExpiresAt())) {
+            result.valid = false;
+            result.inGracePeriod = false;
+            result.features = Collections.emptyList();
+            result.message = "订阅已过期且超过宽限期，商业功能已关闭（Community 核心仍可用）";
+            return result;
+        }
+        if (isPastExpiry(payload.getExpiresAt())) {
+            result.valid = true;
+            result.inGracePeriod = true;
+            result.message = "订阅已过期，处于宽限期内，请尽快续费导入新 License";
+            return result;
+        }
+
         result.valid = true;
-        result.message = "License 有效";
+        result.inGracePeriod = false;
+        result.message = StringUtils.hasText(result.plan)
+                ? ("License 有效（计划：" + result.plan + "）")
+                : "License 有效";
         return result;
     }
 
-    private boolean isExpired(String expiresAt) {
+    private Long daysRemaining(String expiresAt) {
+        if (!StringUtils.hasText(expiresAt)) {
+            return null;
+        }
+        LocalDateTime exp = parseTime(expiresAt);
+        if (exp == null) {
+            return null;
+        }
+        return ChronoUnit.DAYS.between(LocalDateTime.now().toLocalDate(), exp.toLocalDate());
+    }
+
+    /** 已过 expiresAt（可能仍在宽限内） */
+    private boolean isPastExpiry(String expiresAt) {
         if (!StringUtils.hasText(expiresAt)) {
             return false;
         }
         LocalDateTime exp = parseTime(expiresAt);
         return exp != null && LocalDateTime.now().isAfter(exp);
+    }
+
+    /** 超过 expiresAt + 宽限期 */
+    private boolean isHardExpired(String expiresAt) {
+        if (!StringUtils.hasText(expiresAt)) {
+            return false;
+        }
+        LocalDateTime exp = parseTime(expiresAt);
+        return exp != null && LocalDateTime.now().isAfter(exp.plusDays(GRACE_DAYS));
     }
 
     private boolean isNotYetValid(String issuedAt) {
@@ -346,8 +453,10 @@ public class LicenseServiceImpl implements LicenseService {
     private static class CachedLicense {
         boolean present;
         boolean valid;
+        boolean inGracePeriod;
         String customer;
         String licenseId;
+        String plan;
         String issuedAt;
         String expiresAt;
         String message;

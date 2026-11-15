@@ -1,4 +1,5 @@
 -- 集群表及 env.cluster_id（可重复执行）
+SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `cluster` (
   `id` bigint NOT NULL AUTO_INCREMENT,

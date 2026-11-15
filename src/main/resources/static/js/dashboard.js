@@ -86,7 +86,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 基础初始化（这些函数应该在 core.js 和 utils.js 中，已经加载）
     if (typeof window.checkAuth === 'function') window.checkAuth();
-    if (typeof window.initMockData === 'function') window.initMockData();
     if (typeof window.loadEnvs === 'function') window.loadEnvs();
     if (typeof window.loadServicesForSelect === 'function') window.loadServicesForSelect();
     if (typeof window.loadNodesForSelect === 'function') window.loadNodesForSelect();

@@ -46,6 +46,21 @@ public interface DeployTaskCdService {
     void onBuildJobFinished(Long buildJobId);
 
     /**
+     * 某服务在某环境的任务结束后调用：唤醒因同一服务被占用而排队的上线任务模块
+     */
+    void wakeWaitingCdJobs(Long serviceId, Long envId);
+
+    /**
+     * 在独立事务中锁住上线任务并补启动可运行的模块
+     */
+    void resumeTask(Long taskId);
+
+    /**
+     * 定时巡检仍有待执行模块的上线任务
+     */
+    void resumeWaitingTasks();
+
+    /**
      * 重试失败的 CD 构建任务（重置阶段并重新执行）。
      *
      * @param buildJobId CD BuildJob ID

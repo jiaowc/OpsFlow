@@ -2,9 +2,11 @@ package com.opsflow.service.impl;
 
 import com.opsflow.dao.model.ApprovalRecord;
 import com.opsflow.dao.model.DeployTask;
+import com.opsflow.license.LicenseFeatures;
 import com.opsflow.service.ApprovalNotifyDispatchService;
 import com.opsflow.service.FeishuApprovalNotifyService;
 import com.opsflow.service.InboxMessageService;
+import com.opsflow.service.LicenseService;
 import com.opsflow.service.NotifyConfigService;
 import com.opsflow.integration.feishu.FeishuConfig;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +44,9 @@ public class ApprovalNotifyDispatchServiceImpl implements ApprovalNotifyDispatch
     @Autowired
     private FeishuConfig feishuConfig;
 
+    @Autowired
+    private LicenseService licenseService;
+
     /** {@inheritDoc} 各渠道独立 try-catch，单渠道失败不影响其他渠道 */
     @Override
     public void notifyPending(ApprovalRecord record, DeployTask task) {
@@ -61,7 +66,9 @@ public class ApprovalNotifyDispatchServiceImpl implements ApprovalNotifyDispatch
             }
         }
         if (channels.contains(CHANNEL_FEISHU)) {
-            if (!feishuConfig.isEnabled()) {
+            if (!licenseService.isFeatureEnabled(LicenseFeatures.NOTIFY_INTEGRATION)) {
+                log.info("未开通集成通知 License，跳过飞书推送 recordId={}", record.getId());
+            } else if (!feishuConfig.isEnabled()) {
                 log.info("飞书审批通知未启用，跳过 recordId={}", record.getId());
             } else {
                 try {
@@ -85,7 +92,8 @@ public class ApprovalNotifyDispatchServiceImpl implements ApprovalNotifyDispatch
         } catch (Exception e) {
             log.warn("标记站内信已读失败 recordId={}", record.getId(), e);
         }
-        if (parseChannels(task.getNotifyChannels()).contains(CHANNEL_FEISHU)) {
+        if (parseChannels(task.getNotifyChannels()).contains(CHANNEL_FEISHU)
+                && licenseService.isFeatureEnabled(LicenseFeatures.NOTIFY_INTEGRATION)) {
             try {
                 feishuApprovalNotifyService.refreshCard(record, task, "approved", operator);
             } catch (Exception e) {
@@ -106,7 +114,8 @@ public class ApprovalNotifyDispatchServiceImpl implements ApprovalNotifyDispatch
         } catch (Exception e) {
             log.warn("标记站内信已读失败 recordId={}", record.getId(), e);
         }
-        if (parseChannels(task.getNotifyChannels()).contains(CHANNEL_FEISHU)) {
+        if (parseChannels(task.getNotifyChannels()).contains(CHANNEL_FEISHU)
+                && licenseService.isFeatureEnabled(LicenseFeatures.NOTIFY_INTEGRATION)) {
             try {
                 feishuApprovalNotifyService.refreshCard(record, task, "rejected", operator);
             } catch (Exception e) {

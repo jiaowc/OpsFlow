@@ -1,6 +1,7 @@
 -- 为节点表添加缺失的字段（兼容 build_node / jenkins_node）
 -- 执行前请先检查字段是否已存在，如果已存在请跳过
 -- 此脚本兼容 MySQL 5.7+
+SET NAMES utf8mb4;
 
 -- 检查并添加 host 字段
 SET @dbname = DATABASE();

@@ -1,4 +1,5 @@
 -- deploy_task 增加部署策略与并发数
+SET NAMES utf8mb4;
 SET @dbname = DATABASE();
 
 SET @exist := (

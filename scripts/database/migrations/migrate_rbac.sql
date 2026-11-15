@@ -31,8 +31,6 @@ CREATE TABLE IF NOT EXISTS `permission` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL COMMENT '权限名称',
   `code` varchar(50) NOT NULL COMMENT '权限代码',
-  `resource` varchar(200) DEFAULT NULL COMMENT '资源路径（备注）',
-  `method` varchar(20) DEFAULT NULL COMMENT 'HTTP 方法（备注）',
   `description` varchar(500) DEFAULT NULL COMMENT '描述',
   `parent_id` bigint DEFAULT NULL COMMENT '父权限ID',
   `status` tinyint DEFAULT 1 COMMENT '状态：1-启用 0-禁用',
@@ -112,6 +110,10 @@ SELECT '回滚部署', 'pipeline:rollback', '回滚到历史成功镜像', 1 FRO
 WHERE NOT EXISTS (SELECT 1 FROM `permission` WHERE `code` = 'pipeline:rollback');
 
 INSERT INTO `permission` (`name`, `code`, `description`, `status`)
+SELECT '回滚非生产环境', 'pipeline:rollback:nonprod', '仅可回滚非生产环境；生产环境回滚需「回滚部署」', 1 FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `permission` WHERE `code` = 'pipeline:rollback:nonprod');
+
+INSERT INTO `permission` (`name`, `code`, `description`, `status`)
 SELECT '查看上线任务', 'deploy:view', '查看上线任务', 1 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM `permission` WHERE `code` = 'deploy:view');
 
@@ -126,6 +128,10 @@ WHERE NOT EXISTS (SELECT 1 FROM `permission` WHERE `code` = 'deploy:approve');
 INSERT INTO `permission` (`name`, `code`, `description`, `status`)
 SELECT '解锁上线任务', 'deploy:unlock', '解除他人锁定的上线任务', 1 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM `permission` WHERE `code` = 'deploy:unlock');
+
+INSERT INTO `permission` (`name`, `code`, `description`, `status`)
+SELECT '删除上线任务', 'deploy:delete', '删除上线任务及其关联审批/CD 记录', 1 FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `permission` WHERE `code` = 'deploy:delete');
 
 INSERT INTO `permission` (`name`, `code`, `description`, `status`)
 SELECT '查看服务', 'service:view', '查看服务列表', 1 FROM DUAL
@@ -205,7 +211,7 @@ INSERT INTO `role_permission` (`role_id`, `permission_id`)
 SELECT r.id, p.id FROM `role` r
 JOIN `permission` p ON p.code IN (
   'statistics:view',
-  'pipeline:view', 'pipeline:run', 'pipeline:edit',
+  'pipeline:view', 'pipeline:run', 'pipeline:edit', 'pipeline:rollback:nonprod',
   'deploy:view', 'deploy:create',
   'service:view', 'service:manage',
   'env:view', 'cluster:view', 'approval:view', 'node:view'

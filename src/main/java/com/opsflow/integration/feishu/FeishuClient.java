@@ -1,8 +1,8 @@
 package com.opsflow.integration.feishu;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -84,11 +84,11 @@ public class FeishuClient {
         }
         String base = StringUtils.hasText(apiUrl) ? apiUrl : "https://open.feishu.cn/open-apis";
         try {
-            JSONObject requestBody = new JSONObject();
+            ObjectNode requestBody = FeishuJson.newObject();
             requestBody.put("app_id", appId);
             requestBody.put("app_secret", appSecret);
             RequestBody body = RequestBody.create(
-                    requestBody.toJSONString(),
+                    FeishuJson.toJson(requestBody),
                     MediaType.parse("application/json; charset=utf-8")
             );
             Request request = new Request.Builder()
@@ -97,11 +97,11 @@ public class FeishuClient {
                     .build();
             try (Response response = httpClient.newCall(request).execute()) {
                 if (response.isSuccessful() && response.body() != null) {
-                    JSONObject result = JSON.parseObject(response.body().string());
-                    if (result.getInteger("code") != null && result.getInteger("code") == 0) {
-                        return result.getString("tenant_access_token");
+                    ObjectNode result = FeishuJson.parseObject(response.body().string());
+                    if (FeishuJson.getInteger(result, "code") != null && FeishuJson.getInteger(result, "code") == 0) {
+                        return FeishuJson.getString(result, "tenant_access_token");
                     }
-                    log.error("获取飞书访问令牌失败: {}", result.getString("msg"));
+                    log.error("获取飞书访问令牌失败: {}", FeishuJson.getString(result, "msg"));
                 }
             }
         } catch (Exception e) {
@@ -111,12 +111,12 @@ public class FeishuClient {
     }
 
     private String fetchAndCacheNotifyToken(String appId, String appSecret) throws Exception {
-            JSONObject requestBody = new JSONObject();
+            ObjectNode requestBody = FeishuJson.newObject();
             requestBody.put("app_id", appId);
             requestBody.put("app_secret", appSecret);
 
             RequestBody body = RequestBody.create(
-                    requestBody.toJSONString(),
+                    FeishuJson.toJson(requestBody),
                     MediaType.parse("application/json; charset=utf-8")
             );
 
@@ -127,16 +127,16 @@ public class FeishuClient {
 
             try (Response response = httpClient.newCall(request).execute()) {
                 if (response.isSuccessful() && response.body() != null) {
-                    JSONObject result = JSON.parseObject(response.body().string());
-                    if (result.getInteger("code") != null && result.getInteger("code") == 0) {
-                        accessToken = result.getString("tenant_access_token");
-                        int expire = result.getInteger("expire") != null ? result.getInteger("expire") : 7200;
+                    ObjectNode result = FeishuJson.parseObject(response.body().string());
+                    if (FeishuJson.getInteger(result, "code") != null && FeishuJson.getInteger(result, "code") == 0) {
+                        accessToken = FeishuJson.getString(result, "tenant_access_token");
+                        int expire = FeishuJson.getInteger(result, "expire") != null ? FeishuJson.getInteger(result, "expire") : 7200;
                         tokenExpireTime = System.currentTimeMillis() + (expire - 300) * 1000L;
                         tokenAppId = appId;
                         tokenAppSecret = appSecret;
                         return accessToken;
                     }
-                    log.error("获取飞书访问令牌失败: {}", result.getString("msg"));
+                    log.error("获取飞书访问令牌失败: {}", FeishuJson.getString(result, "msg"));
                 }
             }
             return null;
@@ -156,13 +156,13 @@ public class FeishuClient {
         }
 
         try {
-            JSONObject requestBody = new JSONObject();
+            ObjectNode requestBody = FeishuJson.newObject();
             requestBody.put("receive_id", receiveId);
             requestBody.put("msg_type", msgType);
             requestBody.put("content", contentJson);
 
             RequestBody body = RequestBody.create(
-                    requestBody.toJSONString(),
+                    FeishuJson.toJson(requestBody),
                     MediaType.parse("application/json; charset=utf-8")
             );
 
@@ -178,10 +178,10 @@ public class FeishuClient {
                     log.error("发送飞书消息 HTTP 失败: status={}, body={}", response.code(), resp);
                     return null;
                 }
-                JSONObject result = JSON.parseObject(resp);
-                if (result.getInteger("code") != null && result.getInteger("code") == 0) {
-                    JSONObject data = result.getJSONObject("data");
-                    return data != null ? data.getString("message_id") : null;
+                ObjectNode result = FeishuJson.parseObject(resp);
+                if (FeishuJson.getInteger(result, "code") != null && FeishuJson.getInteger(result, "code") == 0) {
+                    ObjectNode data = FeishuJson.getObject(result, "data");
+                    return data != null ? FeishuJson.getString(data, "message_id") : null;
                 }
                 log.error("发送飞书消息失败: {}", resp);
             }
@@ -192,45 +192,45 @@ public class FeishuClient {
     }
 
     public boolean sendTextMessage(String receiveId, String text) {
-        JSONObject content = new JSONObject();
+        ObjectNode content = FeishuJson.newObject();
         content.put("text", text);
         String receiveIdType = StringUtils.hasText(feishuConfig.getReceiveIdType())
                 ? feishuConfig.getReceiveIdType() : "user_id";
-        return sendMessage(receiveId, receiveIdType, "text", content.toJSONString()) != null;
+        return sendMessage(receiveId, receiveIdType, "text", FeishuJson.toJson(content)) != null;
     }
 
     /**
      * 发送交互卡片，返回 message_id
      */
-    public String sendInteractiveCard(String receiveId, JSONObject card) {
+    public String sendInteractiveCard(String receiveId, ObjectNode card) {
         String receiveIdType = StringUtils.hasText(feishuConfig.getReceiveIdType())
                 ? feishuConfig.getReceiveIdType() : "user_id";
         return sendInteractiveCard(receiveId, receiveIdType, card);
     }
 
-    public String sendInteractiveCard(String receiveId, String receiveIdType, JSONObject card) {
+    public String sendInteractiveCard(String receiveId, String receiveIdType, ObjectNode card) {
         if (card == null) {
             return null;
         }
         // interactive 的 content 即为卡片 JSON 本身
-        return sendMessage(receiveId, receiveIdType, "interactive", card.toJSONString());
+        return sendMessage(receiveId, receiveIdType, "interactive", FeishuJson.toJson(card));
     }
 
     /**
      * 更新已发送的交互卡片
      */
-    public boolean updateInteractiveMessage(String messageId, JSONObject card) {
+    public boolean updateInteractiveMessage(String messageId, ObjectNode card) {
         String token = getAccessToken();
         if (token == null || !StringUtils.hasText(messageId) || card == null) {
             return false;
         }
         try {
-            JSONObject requestBody = new JSONObject();
+            ObjectNode requestBody = FeishuJson.newObject();
             requestBody.put("msg_type", "interactive");
-            requestBody.put("content", card.toJSONString());
+            requestBody.put("content", FeishuJson.toJson(card));
 
             RequestBody body = RequestBody.create(
-                    requestBody.toJSONString(),
+                    FeishuJson.toJson(requestBody),
                     MediaType.parse("application/json; charset=utf-8")
             );
 
@@ -246,8 +246,8 @@ public class FeishuClient {
                     log.error("更新飞书消息 HTTP 失败: status={}, body={}", response.code(), resp);
                     return false;
                 }
-                JSONObject result = JSON.parseObject(resp);
-                boolean ok = result.getInteger("code") != null && result.getInteger("code") == 0;
+                ObjectNode result = FeishuJson.parseObject(resp);
+                boolean ok = FeishuJson.getInteger(result, "code") != null && FeishuJson.getInteger(result, "code") == 0;
                 if (!ok) {
                     log.error("更新飞书消息失败: {}", resp);
                 }
@@ -273,13 +273,13 @@ public class FeishuClient {
             return null;
         }
         try {
-            JSONObject requestBody = new JSONObject();
-            JSONArray arr = new JSONArray();
+            ObjectNode requestBody = FeishuJson.newObject();
+            ArrayNode arr = FeishuJson.newArray();
             arr.add(value);
-            requestBody.put(field, arr);
+            requestBody.set(field, arr);
 
             RequestBody body = RequestBody.create(
-                    requestBody.toJSONString(),
+                    FeishuJson.toJson(requestBody),
                     MediaType.parse("application/json; charset=utf-8")
             );
 
@@ -295,21 +295,21 @@ public class FeishuClient {
                     log.error("批量查询飞书用户失败: status={}, body={}", response.code(), resp);
                     return null;
                 }
-                JSONObject result = JSON.parseObject(resp);
-                if (result.getInteger("code") == null || result.getInteger("code") != 0) {
+                ObjectNode result = FeishuJson.parseObject(resp);
+                if (FeishuJson.getInteger(result, "code") == null || FeishuJson.getInteger(result, "code") != 0) {
                     log.error("批量查询飞书用户失败: {}", resp);
                     return null;
                 }
-                JSONObject data = result.getJSONObject("data");
+                ObjectNode data = FeishuJson.getObject(result, "data");
                 if (data == null) {
                     return null;
                 }
-                JSONArray userList = data.getJSONArray("user_list");
+                ArrayNode userList = FeishuJson.getArray(data, "user_list");
                 if (userList == null || userList.isEmpty()) {
                     return null;
                 }
-                JSONObject first = userList.getJSONObject(0);
-                return first != null ? first.getString("user_id") : null;
+                JsonNode first = userList.get(0);
+                return first != null ? FeishuJson.getString(first, "user_id") : null;
             }
         } catch (Exception e) {
             log.error("通过 {} 获取飞书用户 ID 异常", field, e);

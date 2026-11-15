@@ -1,10 +1,10 @@
 -- 平台原生流水线表迁移
+SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS `pipeline` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL COMMENT 'Pipeline名称',
   `description` varchar(500) COMMENT '描述',
   `steps_config` text COMMENT '步骤配置JSON',
-  `script` text COMMENT 'Jenkinsfile脚本（可选）',
   `jenkins_job_template` varchar(200) COMMENT '兼容字段',
   `parameter_definitions` text COMMENT '参数定义JSON',
   `status` tinyint DEFAULT 1 COMMENT '1-启用 0-禁用',
@@ -21,7 +21,6 @@ CREATE TABLE IF NOT EXISTS `build_job_stage` (
   `step_name` varchar(100) NOT NULL COMMENT '步骤名称',
   `status` varchar(20) DEFAULT 'PENDING' COMMENT 'PENDING/RUNNING/SUCCESS/FAILURE/SKIPPED',
   `duration_ms` bigint DEFAULT 0 COMMENT '耗时毫秒',
-  `log_text` mediumtext COMMENT '阶段日志',
   `error_message` text COMMENT '错误信息',
   `start_time` datetime COMMENT '开始时间',
   `end_time` datetime COMMENT '结束时间',

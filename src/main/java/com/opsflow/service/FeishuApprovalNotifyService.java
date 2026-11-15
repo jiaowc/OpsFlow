@@ -1,6 +1,6 @@
 package com.opsflow.service;
 
-import com.alibaba.fastjson.JSONObject;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.opsflow.dao.model.ApprovalRecord;
 import com.opsflow.dao.model.DeployTask;
 
@@ -22,10 +22,10 @@ public interface FeishuApprovalNotifyService {
     /**
      * 构建审批待办卡片
      */
-    JSONObject buildPendingCard(ApprovalRecord record, DeployTask task);
+    ObjectNode buildPendingCard(ApprovalRecord record, DeployTask task);
 
     /**
      * 构建审批结果卡片（无按钮）
      */
-    JSONObject buildResultCard(ApprovalRecord record, DeployTask task, String finalStatus, String operatorName);
+    ObjectNode buildResultCard(ApprovalRecord record, DeployTask task, String finalStatus, String operatorName);
 }

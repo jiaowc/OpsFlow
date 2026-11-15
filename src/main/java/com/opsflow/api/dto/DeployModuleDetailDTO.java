@@ -37,4 +37,7 @@ public class DeployModuleDetailDTO {
 
     /** 模块添加人用户 ID */
     private Long ownerId;
+
+    /** 最近一次部署成功的非生产环境名称；为空表示该镜像未在测试环境验证过 */
+    private String verifiedEnv;
 }

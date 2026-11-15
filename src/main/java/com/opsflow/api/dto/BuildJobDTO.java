@@ -27,13 +27,9 @@ public class BuildJobDTO {
 
     private String gitType;
 
-    private String buildNode;
-
     private Boolean autoDeploy;
 
     private String status;
-
-    private String buildLogUrl;
 
     private Integer buildNumber;
 

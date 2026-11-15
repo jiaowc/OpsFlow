@@ -66,6 +66,18 @@ public class DashboardController {
         return DASHBOARD;
     }
 
+    /** 项目与成员管理 */
+    @GetMapping("/projects")
+    public String projects() {
+        return DASHBOARD;
+    }
+
+    /** 操作审计日志 */
+    @GetMapping("/audit")
+    public String audit() {
+        return DASHBOARD;
+    }
+
     /** 流水线模版与步骤定义配置 */
     @GetMapping("/pipeline-config")
     public String pipelineConfig() {

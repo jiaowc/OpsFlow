@@ -5,8 +5,9 @@
 ```
 scripts/database/
 ├── schema.sql           # 全量建表（新环境首选）
-├── init_db.sh           # 一键初始化（读 config/application.yml）
+├── init_db.sh           # 一键初始化（连接解析见 db_env.sh，支持 --profile=dev）
 ├── run_migrations.sh    # 增量迁移（可重复执行）
+├── db_env.sh            # 共用：按与应用一致的规则解析数据库连接（DB_URL / DB_PASSWORD 等）
 ├── migrations/          # migrate_*.sql 增量脚本
 ├── seeds/               # seed_*.sql 种子数据
 └── migrate/             # 历史/特殊迁移工具脚本

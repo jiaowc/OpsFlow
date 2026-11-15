@@ -42,22 +42,11 @@ public class Pipeline {
      * 步骤配置 JSON，包含 checkout、build、deploy、notify 等步骤定义
      */
     private String stepsConfig;
-    
-    /**
-     * 可选的自定义脚本内容
-     */
-    private String script;
-    
+
     /**
      * 参数定义 JSON，键为参数名、值为参数描述/默认值说明
      */
     private String parameterDefinitions;
-
-    /**
-     * 主 CI 构建节点 ID（兼容单选，与 buildNodeIds 首项同步）
-     */
-    @TableField(updateStrategy = FieldStrategy.IGNORED)
-    private Long buildNodeId;
 
     /**
      * CI 构建节点 ID 列表，逗号分隔，支持多节点候选调度

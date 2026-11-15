@@ -1,0 +1,37 @@
+# 仅启动 OpsFlow 应用（使用外部 MySQL）
+#
+# 前置：在 .env 中设置 DB_URL / DB_USERNAME / DB_PASSWORD
+#   cp .env.example .env
+#
+# 启动：
+#   ./scripts/deploy/compose-up.sh --external-db
+#   # 或：docker compose -f docker-compose.app.yml up -d --build
+#
+# 访问：http://localhost:${OPSFLOW_PORT:-8080}
+
+services:
+  opsflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${OPSFLOW_DOCKER_IMAGE:-opsflow:1.0.0}
+    container_name: opsflow
+    restart: unless-stopped
+    ports:
+      - "${OPSFLOW_PORT:-8080}:8080"
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m}
+      DB_URL: ${DB_URL:?请在 .env 中设置 DB_URL}
+      DB_USERNAME: ${DB_USERNAME:-opsflow}
+      DB_PASSWORD: ${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
+      OPSFLOW_WEBHOOK_SECRET: ${OPSFLOW_WEBHOOK_SECRET:-}
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s

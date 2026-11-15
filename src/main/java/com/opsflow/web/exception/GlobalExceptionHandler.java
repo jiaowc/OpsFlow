@@ -2,12 +2,15 @@ package com.opsflow.web.exception;
 
 import com.opsflow.common.exception.AccessDeniedException;
 import com.opsflow.common.exception.BusinessException;
+import com.opsflow.web.audit.AuditLogInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+
+import javax.servlet.http.HttpServletRequest;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -21,7 +24,8 @@ public class GlobalExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<Map<String, Object>> handleAccessDeniedException(AccessDeniedException e) {
+    public ResponseEntity<Map<String, Object>> handleAccessDeniedException(AccessDeniedException e, HttpServletRequest request) {
+        request.setAttribute(AuditLogInterceptor.ATTR_ERROR_MESSAGE, e.getMessage());
         logger.warn("无权限: {}", e.getMessage());
         Map<String, Object> error = new HashMap<>();
         error.put("error", "无权限");
@@ -30,7 +34,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<Map<String, Object>> handleBusinessException(BusinessException e) {
+    public ResponseEntity<Map<String, Object>> handleBusinessException(BusinessException e, HttpServletRequest request) {
+        request.setAttribute(AuditLogInterceptor.ATTR_ERROR_MESSAGE, e.getMessage());
         logger.warn("业务错误: {}", e.getMessage());
         Map<String, Object> error = new HashMap<>();
         error.put("error", "业务错误");
@@ -39,7 +44,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(IllegalArgumentException e) {
+    public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(IllegalArgumentException e, HttpServletRequest request) {
+        request.setAttribute(AuditLogInterceptor.ATTR_ERROR_MESSAGE, e.getMessage());
         logger.error("参数错误: {}", e.getMessage(), e);
         Map<String, Object> error = new HashMap<>();
         error.put("error", "参数错误");
@@ -48,7 +54,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<Map<String, Object>> handleRuntimeException(RuntimeException e) {
+    public ResponseEntity<Map<String, Object>> handleRuntimeException(RuntimeException e, HttpServletRequest request) {
+        request.setAttribute(AuditLogInterceptor.ATTR_ERROR_MESSAGE, e.getMessage());
         logger.error("运行时错误: {}", e.getMessage(), e);
         Map<String, Object> error = new HashMap<>();
         error.put("error", "服务器错误");
@@ -57,7 +64,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleException(Exception e) {
+    public ResponseEntity<Map<String, Object>> handleException(Exception e, HttpServletRequest request) {
+        request.setAttribute(AuditLogInterceptor.ATTR_ERROR_MESSAGE, e.getMessage());
         logger.error("未知错误: {}", e.getMessage(), e);
         Map<String, Object> error = new HashMap<>();
         error.put("error", "未知错误");

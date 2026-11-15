@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.14</version>
+        <version>2.7.18</version>
         <relativePath/>
     </parent>
 
@@ -24,8 +24,6 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <mybatis-plus.version>3.5.3.1</mybatis-plus.version>
         <kubernetes-client.version>18.0.0</kubernetes-client.version>
-        <!-- 空字符串 = 不传 -P 时默认仅使用 application.yml -->
-        <default.spring.profile></default.spring.profile>
     </properties>
 
     <dependencies>
@@ -36,6 +34,10 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
         </dependency>
         <dependency>
             <groupId>com.baomidou</groupId>
@@ -59,14 +61,9 @@
             <version>4.11.0</version>
         </dependency>
         <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>fastjson</artifactId>
-            <version>1.2.83</version>
-        </dependency>
-        <dependency>
-            <groupId>com.jcraft</groupId>
+            <groupId>com.github.mwiede</groupId>
             <artifactId>jsch</artifactId>
-            <version>0.1.55</version>
+            <version>2.28.8</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -83,75 +80,6 @@
     <build>
         <finalName>opsflow</finalName>
         <plugins>
-            <plugin>
-                <artifactId>maven-resources-plugin</artifactId>
-                <version>3.3.1</version>
-                <executions>
-                    <execution>
-                        <id>copy-profile-config-into-jar</id>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>copy-resources</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.build.outputDirectory}</outputDirectory>
-                            <delimiters>
-                                <delimiter>@</delimiter>
-                            </delimiters>
-                            <useDefaultDelimiters>false</useDefaultDelimiters>
-                            <resources>
-                                <resource>
-                                    <directory>${project.basedir}/config</directory>
-                                    <filtering>false</filtering>
-                                    <includes>
-                                        <include>application.yml</include>
-                                        <include>application-dev.yml</include>
-                                        <include>application-test.yml</include>
-                                        <include>application-prod.yml</include>
-                                        <include>application.yml.example</include>
-                                        <include>application-dev.yml.example</include>
-                                        <include>application-test.yml.example</include>
-                                        <include>application-prod.yml.example</include>
-                                    </includes>
-                                </resource>
-                                <resource>
-                                    <directory>${project.basedir}/config/packaging</directory>
-                                    <filtering>true</filtering>
-                                    <includes>
-                                        <include>application.properties</include>
-                                    </includes>
-                                </resource>
-                            </resources>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <version>3.1.0</version>
-                <executions>
-                    <execution>
-                        <id>ensure-default-application-yml</id>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                        <configuration>
-                            <target>
-                                <!-- CI 上 application.yml 通常被 gitignore；用 example 兜底 -->
-                                <copy file="${project.basedir}/config/application.yml.example"
-                                      tofile="${project.build.outputDirectory}/application.yml"
-                                      overwrite="false"
-                                      failonerror="false"/>
-                                <copy file="${project.basedir}/config/application.yml"
-                                      tofile="${project.build.outputDirectory}/application.yml"
-                                      overwrite="true"
-                                      failonerror="false"/>
-                            </target>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -181,124 +109,4 @@
         </plugins>
     </build>
 
-    <profiles>
-        <profile>
-            <id>dev</id>
-            <properties>
-                <default.spring.profile>dev</default.spring.profile>
-            </properties>
-            <build>
-                <plugins>
-                    <plugin>
-                        <artifactId>maven-antrun-plugin</artifactId>
-                        <version>3.1.0</version>
-                        <executions>
-                            <execution>
-                                <id>overlay-dev-application-yml</id>
-                                <phase>prepare-package</phase>
-                                <goals>
-                                    <goal>run</goal>
-                                </goals>
-                                <configuration>
-                                    <target>
-                                        <!-- 先用可提交的 example，再用本地/仓库中的正式文件覆盖 -->
-                                        <copy file="${project.basedir}/config/application-dev.yml.example"
-                                              tofile="${project.build.outputDirectory}/application.yml"
-                                              overwrite="true"
-                                              failonerror="false"/>
-                                        <copy file="${project.basedir}/config/application-dev.yml"
-                                              tofile="${project.build.outputDirectory}/application.yml"
-                                              overwrite="true"
-                                              failonerror="false"/>
-                                        <available file="${project.build.outputDirectory}/application.yml"
-                                                   property="opsflow.dev.application.yml.ready"/>
-                                        <fail unless="opsflow.dev.application.yml.ready"
-                                              message="缺少 config/application-dev.yml(.example)，无法执行 -Pdev 打包。请提交环境配置后重试。"/>
-                                    </target>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <id>test</id>
-            <properties>
-                <default.spring.profile>test</default.spring.profile>
-            </properties>
-            <build>
-                <plugins>
-                    <plugin>
-                        <artifactId>maven-antrun-plugin</artifactId>
-                        <version>3.1.0</version>
-                        <executions>
-                            <execution>
-                                <id>overlay-test-application-yml</id>
-                                <phase>prepare-package</phase>
-                                <goals>
-                                    <goal>run</goal>
-                                </goals>
-                                <configuration>
-                                    <target>
-                                        <copy file="${project.basedir}/config/application-test.yml.example"
-                                              tofile="${project.build.outputDirectory}/application.yml"
-                                              overwrite="true"
-                                              failonerror="false"/>
-                                        <copy file="${project.basedir}/config/application-test.yml"
-                                              tofile="${project.build.outputDirectory}/application.yml"
-                                              overwrite="true"
-                                              failonerror="false"/>
-                                        <available file="${project.build.outputDirectory}/application.yml"
-                                                   property="opsflow.test.application.yml.ready"/>
-                                        <fail unless="opsflow.test.application.yml.ready"
-                                              message="缺少 config/application-test.yml(.example)，无法执行 -Ptest 打包。请提交环境配置后重试。"/>
-                                    </target>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <id>prod</id>
-            <properties>
-                <default.spring.profile>prod</default.spring.profile>
-            </properties>
-            <build>
-                <plugins>
-                    <plugin>
-                        <artifactId>maven-antrun-plugin</artifactId>
-                        <version>3.1.0</version>
-                        <executions>
-                            <execution>
-                                <id>overlay-prod-application-yml</id>
-                                <phase>prepare-package</phase>
-                                <goals>
-                                    <goal>run</goal>
-                                </goals>
-                                <configuration>
-                                    <target>
-                                        <copy file="${project.basedir}/config/application-prod.yml.example"
-                                              tofile="${project.build.outputDirectory}/application.yml"
-                                              overwrite="true"
-                                              failonerror="false"/>
-                                        <copy file="${project.basedir}/config/application-prod.yml"
-                                              tofile="${project.build.outputDirectory}/application.yml"
-                                              overwrite="true"
-                                              failonerror="false"/>
-                                        <available file="${project.build.outputDirectory}/application.yml"
-                                                   property="opsflow.prod.application.yml.ready"/>
-                                        <fail unless="opsflow.prod.application.yml.ready"
-                                              message="缺少 config/application-prod.yml(.example)，无法执行 -Pprod 打包。请提交环境配置后重试。"/>
-                                    </target>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
 </project>

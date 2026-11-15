@@ -144,7 +144,7 @@ window.loadPipelineStepDefs = loadPipelineStepDefs;
 async function loadStepDefs() {
     const list = document.getElementById('stepDefList');
     if (!list) return;
-    list.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#999;">加载中...</td></tr>';
+    list.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-4);">加载中...</td></tr>';
     const defs = await loadPipelineStepDefs(true);
     renderStepDefList(defs);
 }
@@ -154,14 +154,14 @@ function renderStepDefList(defs) {
     const list = document.getElementById('stepDefList');
     if (!list) return;
     if (!defs.length) {
-        list.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#999;">暂无步骤，请点击「添加步骤」创建</td></tr>';
+        list.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-4);">暂无步骤，请点击「添加步骤」创建</td></tr>';
         return;
     }
     list.innerHTML = defs.map(def => {
         const phaseText = def.phase === 'cd' ? 'CD' : 'CI';
         const statusText = (def.status === 1 || def.status == null)
-            ? '<span style="color:#059669;">启用</span>'
-            : '<span style="color:#dc2626;">禁用</span>';
+            ? '<span class="status-tag is-on">启用</span>'
+            : '<span class="status-tag is-off">禁用</span>';
         const timeoutText = def.timeoutSeconds != null ? def.timeoutSeconds : 60;
         return `
             <tr>
@@ -180,11 +180,39 @@ function renderStepDefList(defs) {
     }).join('');
 }
 
+/** 步骤内容框 → 模版类型；挂上模版管理同一套变量检查 */
+const STEP_CONTENT_TEMPLATE_TYPE = {
+    dockerfileContent: 'dockerfile',
+    deploymentTemplateContent: 'deployment',
+    serviceTemplateContent: 'service'
+};
+
+function appendTemplateVarCheckHtml(textareaName, contentKey) {
+    const type = STEP_CONTENT_TEMPLATE_TYPE[contentKey];
+    if (!type || typeof window.buildTemplateVarCheckHtml !== 'function') {
+        return '';
+    }
+    return window.buildTemplateVarCheckHtml({ type, textareaName });
+}
+
+function wireStepTemplateVarChecks(root) {
+    if (root && typeof window.wireTemplateVarChecks === 'function') {
+        window.wireTemplateVarChecks(root);
+    }
+}
+
+async function passStepTemplateVarChecks(root) {
+    if (!root || typeof window.passTemplateVarChecks !== 'function') {
+        return true;
+    }
+    return window.passTemplateVarChecks(root);
+}
+
 async function buildStepContentFieldsHtml(stepType, contentConfig) {
     contentConfig = contentConfig || {};
     const fields = STEP_CONTENT_FIELDS[stepType] || [];
     if (!fields.length) {
-        return '<div style="color:#666;font-size:13px;padding:8px 0;">此步骤类型无需额外配置</div>';
+        return '<div style="color:var(--text-3);font-size:13px;padding:8px 0;">此步骤类型无需额外配置</div>';
     }
     const parts = [];
     for (const field of fields) {
@@ -209,7 +237,7 @@ async function buildStepContentFieldsHtml(stepType, contentConfig) {
                             onchange="onStepTemplateSelectChange(this)"${required}>
                         ${renderTemplateSelectOptions(templates, value, emptyLabel)}
                     </select>
-                    <small style="color:#666;">从「模版管理」选择；执行时会自动使用模版最新内容</small>
+                    <small style="color:var(--text-3);">从「模版管理」选择；执行时会自动使用模版最新内容</small>
                 </div>
             `);
             continue;
@@ -219,11 +247,13 @@ async function buildStepContentFieldsHtml(stepType, contentConfig) {
             continue;
         }
         if (field.type === 'textarea') {
+            const textareaName = `content_${field.key}`;
             parts.push(`
                 <div class="form-item">
                     <label>${field.label}</label>
-                    <textarea name="content_${field.key}" rows="${field.rows || 3}" placeholder="${escStepHtml(field.placeholder || '')}"${required}>${escStepHtml(value)}</textarea>
-                    ${field.hint ? `<small style="color:#666;">${escStepHtml(field.hint)}</small>` : ''}
+                    <textarea name="${textareaName}" rows="${field.rows || 3}" placeholder="${escStepHtml(field.placeholder || '')}"${required}>${escStepHtml(value)}</textarea>
+                    ${field.hint ? `<small style="color:var(--text-3);">${escStepHtml(field.hint)}</small>` : ''}
+                    ${appendTemplateVarCheckHtml(textareaName, field.key)}
                 </div>
             `);
             continue;
@@ -234,7 +264,7 @@ async function buildStepContentFieldsHtml(stepType, contentConfig) {
                 <input type="text" name="content_${field.key}" value="${escStepHtml(value)}"
                        placeholder="${escStepHtml(field.placeholder || '')}"
                        style="width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;"${required}>
-                ${field.hint ? `<small style="color:#666;">${escStepHtml(field.hint)}</small>` : ''}
+                ${field.hint ? `<small style="color:var(--text-3);">${escStepHtml(field.hint)}</small>` : ''}
             </div>
         `);
     }
@@ -265,6 +295,7 @@ async function onStepTemplateSelectChange(selectEl) {
         }
         const template = await response.json();
         contentInput.value = template.content || '';
+        contentInput.dispatchEvent(new Event('input', { bubbles: true }));
         if (templateType === 'service' || template.type === 'service') {
             setHiddenStepField(form, 'serviceType', template.serviceType || 'ClusterIP');
         }
@@ -322,8 +353,9 @@ async function onStepDefTypeChange(selectEl) {
     if (phaseSelect && stepType) {
         phaseSelect.value = inferPhase(stepType);
     }
-    container.innerHTML = '<div style="color:#666;font-size:13px;">加载配置中...</div>';
+    container.innerHTML = '<div style="color:var(--text-3);font-size:13px;">加载配置中...</div>';
     container.innerHTML = await buildStepContentFieldsHtml(stepType, {});
+    wireStepTemplateVarChecks(form);
 }
 
 function collectStepDefFormData(form) {
@@ -373,7 +405,7 @@ function showCreateStepDefModal() {
     }
     const stepTypeOptions = Object.entries(STEP_TYPE_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
     const content = `
-        <form id="createStepDefForm" style="max-height:75vh;overflow-y:auto;">
+        <form id="createStepDefForm" class="tpl-form">
             <div class="form-item"><label>步骤名称 *</label><input type="text" name="name" placeholder="例如: 我的镜像制作" required></div>
             <div class="form-item">
                 <label>步骤类型 *</label>
@@ -400,9 +432,9 @@ function showCreateStepDefModal() {
                     <option value="0">禁用</option>
                 </select>
             </div>
-            <div style="border-top:1px solid #eee;padding-top:12px;margin-top:8px;">
+            <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;">
                 <h4 style="margin:0 0 12px 0;">步骤自定义内容</h4>
-                <div id="stepDefContentFields"><div style="color:#666;font-size:13px;">请先选择步骤类型</div></div>
+                <div id="stepDefContentFields"><div style="color:var(--text-3);font-size:13px;">请先选择步骤类型</div></div>
             </div>
         </form>
     `;
@@ -410,6 +442,7 @@ function showCreateStepDefModal() {
         const form = document.getElementById('createStepDefForm');
         const data = collectStepDefFormData(form);
         if (!data) return;
+        if (!await passStepTemplateVarChecks(form)) return;
         try {
             const response = await fetch('/api/pipeline-step-def/create', {
                 method: 'POST',
@@ -432,6 +465,7 @@ function showCreateStepDefModal() {
             alert('创建失败: ' + e.message);
         }
     });
+    wireStepTemplateVarChecks(document.getElementById('createStepDefForm'));
 }
 window.showCreateStepDefModal = showCreateStepDefModal;
 
@@ -462,7 +496,7 @@ async function editStepDef(id) {
         const stepTypeOptions = Object.entries(STEP_TYPE_LABELS).map(([k, v]) =>
             `<option value="${k}" ${def.stepType === k ? 'selected' : ''}>${v}</option>`).join('');
         const content = `
-            <form id="editStepDefForm" style="max-height:75vh;overflow-y:auto;">
+            <form id="editStepDefForm" class="tpl-form">
                 <div class="form-item"><label>步骤名称 *</label><input type="text" name="name" value="${escStepHtml(def.name || '')}" required></div>
                 <div class="form-item">
                     <label>步骤类型 *</label>
@@ -489,7 +523,7 @@ async function editStepDef(id) {
                         <option value="0" ${def.status === 0 ? 'selected' : ''}>禁用</option>
                     </select>
                 </div>
-                <div style="border-top:1px solid #eee;padding-top:12px;margin-top:8px;">
+                <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;">
                     <h4 style="margin:0 0 12px 0;">步骤自定义内容</h4>
                     <div id="stepDefContentFields">${await buildStepContentFieldsHtml(def.stepType, contentConfig)}</div>
                 </div>
@@ -499,6 +533,7 @@ async function editStepDef(id) {
             const form = document.getElementById('editStepDefForm');
             const data = collectStepDefFormData(form);
             if (!data) return;
+            if (!await passStepTemplateVarChecks(form)) return;
             try {
                 const resp = await fetch(`/api/pipeline-step-def/${id}`, {
                     method: 'PUT',
@@ -517,6 +552,7 @@ async function editStepDef(id) {
                 alert('更新失败: ' + e.message);
             }
         });
+        wireStepTemplateVarChecks(document.getElementById('editStepDefForm'));
     } catch (e) {
         alert('加载失败: ' + e.message);
     }
@@ -647,13 +683,15 @@ async function buildPipelineStepOverrideHtml(stepId, stepType, overrides, timeou
             const ph = hintDefault
                 ? `不覆盖则用步骤默认（当前默认已配置）`
                 : (field.placeholder || '留空不覆盖');
+            const textareaName = `override_${key}_${stepId}`;
             parts.push(`
                 <div class="form-item" style="margin:0 0 8px;">
                     <label style="font-size:12px;">${escStepHtml(label)}</label>
-                    <textarea name="override_${escStepHtml(key)}_${escStepHtml(stepId)}"
+                    <textarea name="${escStepHtml(textareaName)}"
                               data-override-key="${escStepHtml(key)}"
                               rows="${field.rows || 4}" placeholder="${escStepHtml(ph)}"
                               style="width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;">${escStepHtml(value)}</textarea>
+                    ${appendTemplateVarCheckHtml(textareaName, key)}
                 </div>
             `);
             continue;
@@ -695,6 +733,7 @@ async function onPipelineOverrideTemplateChange(selectEl, stepId) {
         }
         const template = await response.json();
         contentInput.value = template.content || '';
+        contentInput.dispatchEvent(new Event('input', { bubbles: true }));
     } catch (e) {
         alert('加载模版失败: ' + e.message);
     }
@@ -732,6 +771,7 @@ async function refreshPipelineStepOverridePanel(stepId, preserved) {
         def.contentConfig || {},
         def.timeoutSeconds
     );
+    wireStepTemplateVarChecks(stepItem.closest('form') || stepItem);
 }
 window.refreshPipelineStepOverridePanel = refreshPipelineStepOverridePanel;
 

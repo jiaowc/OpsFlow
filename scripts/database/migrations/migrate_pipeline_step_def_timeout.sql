@@ -1,4 +1,5 @@
 -- 步骤定义增加超时时间（秒），默认 60
+SET NAMES utf8mb4;
 SET @dbname = DATABASE();
 
 SET @col_exists = (

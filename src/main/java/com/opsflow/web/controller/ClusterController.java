@@ -76,20 +76,10 @@ public class ClusterController {
             return null;
         }
 
-        String oldName = cluster.getName();
         BeanUtils.copyProperties(request, cluster, "id", "createTime", "credentialId");
         applyCredential(cluster, request.getCredentialId());
         cluster.setUpdateTime(LocalDateTime.now());
         clusterMapper.updateById(cluster);
-
-        if (oldName != null && cluster.getName() != null && !oldName.equals(cluster.getName())) {
-            List<Env> envs = envMapper.selectList(new QueryWrapper<Env>().eq("cluster_id", id));
-            for (Env env : envs) {
-                env.setK8sCluster(cluster.getName());
-                env.setUpdateTime(LocalDateTime.now());
-                envMapper.updateById(env);
-            }
-        }
 
         return toDto(cluster);
     }

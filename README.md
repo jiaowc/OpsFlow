@@ -30,8 +30,8 @@ OpsFlow 是一个基于 Spring Boot 的 DevOps 构建发布平台，支持非生
 ```
 OpsFlow/
 ├── src/main/java/com/opsflow/   # 启动类 + 按包分层（api/dao/service/web/integration）
-├── src/main/resources/          # application.yml、mapper、static
-├── config/                      # 外部配置（生产/本地）
+├── src/main/resources/          # mapper、static
+├── config/                      # 全部应用配置（application*.yml）
 ├── scripts/                     # 部署、数据库、工具脚本
 ├── docs/                        # 文档
 ├── logs/                        # 日志
@@ -42,7 +42,19 @@ OpsFlow/
 
 ## 快速开始
 
-### 1. 环境要求
+### 推荐：Docker Compose 一键安装
+
+无需本机 JDK / Maven / MySQL：
+
+```bash
+cp .env.example .env
+./scripts/deploy/compose-up.sh
+# 打开 http://localhost:8080 ，默认账号 admin / 123456
+```
+
+说明见 [docs/deployment/DOCKER.md](docs/deployment/DOCKER.md)。
+
+### 传统方式：环境要求
 
 - JDK 1.8+
 - Maven 3.6+
@@ -57,6 +69,7 @@ OpsFlow/
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS opsflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 mysql -u root -p opsflow < scripts/database/init.sql
+bash scripts/database/run_migrations.sh   # init.sql 是导出快照，需补跑之后新增的迁移
 ```
 
 从本机库重新导出初始化脚本：
@@ -65,41 +78,25 @@ mysql -u root -p opsflow < scripts/database/init.sql
 bash scripts/database/export_init.sh
 ```
 
-仅导入空表结构（不含业务数据）时仍可用：
+只要空库（表结构 + 角色权限 + 内置 admin 账号，不含业务配置）时：
 
 ```bash
-mysql -u root -p opsflow < scripts/database/schema.sql
+bash scripts/database/init_db.sh   # 建库、导入 schema.sql 与种子数据、执行全部迁移
 ```
 
 ### 3. 配置文件
 
-#### 默认配置
-使用 `config/application.yml` 作为默认完整配置。
+```bash
+cp config/application-local.yml.example config/application-local.yml
+vim config/application-local.yml   # 填写 DB_PASSWORD（本机私有，不入库）
+```
 
-#### 按环境覆盖
-1. 复制配置模板：
-   ```bash
-   cp config/application.yml.example config/application.yml
-   ```
-
-2. 修改配置：
-   ```bash
-   vim config/application.yml
-   # 修改默认数据库连接、密码等配置
-   ```
-
-3. 如需独立环境配置，可编辑：
-   - `config/application-dev.yml`
-   - `config/application-test.yml`
-   - `config/application-prod.yml`
+所有配置都在 `config/`（需在项目根目录启动），各环境的 `application-<env>.yml` 只写与公共配置的差异。详见 [config/README.md](config/README.md)。
 
 ### 4. 编译打包
 
 ```bash
-mvn clean package -DskipTests
-
-# 或按环境打包（示例：dev）
-mvn clean package -Pdev -DskipTests
+mvn clean package -DskipTests   # 所有环境共用同一个 jar
 ```
 
 ### 5. 运行
@@ -112,50 +109,42 @@ mvn clean package -Pdev -DskipTests
 # 停止应用
 ./scripts/deploy/stop.sh
 
-# 重启应用
+# 重启应用（会重新编译）
 ./scripts/deploy/restart.sh
 
-# 指定环境重启（示例：dev）
+# 指定环境（示例：dev）
 SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh
 ```
 
-#### 手动启动
+#### 手动启动（在项目根目录执行）
 ```bash
-# 使用默认配置
 java -jar target/opsflow.jar
-
-# 使用外部配置目录并指定环境
-SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar --spring.config.additional-location=file:./config/
+SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar
 ```
 
-#### Docker Compose（应用 + MySQL，自动导入 init.sql）
+#### Docker Compose（应用 + MySQL，推荐）
 ```bash
-mvn clean package -DskipTests
-docker compose up -d --build
-# 浏览器打开 http://localhost:8080
+cp .env.example .env
+./scripts/deploy/compose-up.sh
+# 或：docker compose up -d --build
+# 浏览器打开 http://localhost:8080 ，账号 admin / 123456
 ```
 
 仅清空数据库并重新初始化：
 ```bash
-docker compose down -v
-docker compose up -d
+./scripts/deploy/compose-down.sh --volumes
+./scripts/deploy/compose-up.sh
 ```
+
+详见 [docs/deployment/DOCKER.md](docs/deployment/DOCKER.md)。
 
 ## 配置文件管理
 
-### 配置优先级
+- 一个 jar 适用所有环境，启动时用 `SPRING_PROFILES_ACTIVE=dev|test|prod` 选择
+- 数据库连接统一用 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` 注入（环境变量或 `config/application-local.yml`）
+- ⚠️ 不要把真实密码提交到 Git；生产环境用环境变量或 K8s Secret
 
-Spring Boot 配置加载优先级（从高到低）：
-1. `SPRING_PROFILES_ACTIVE` / `--spring.profiles.active`
-2. 外部配置目录 `./config/`
-3. `application.yml`
-4. `application-<profile>.yml`
-
-### 安全建议
-
-- ⚠️ **不要将生产真实密码直接提交到 Git**
-- ✅ 使用 `config/application.yml.example` 作为模板
-- ✅ 生产环境建议使用环境变量或配置中心管理敏感信息
+完整说明见 [config/README.md](config/README.md)。
 
 ## API接口
 
@@ -170,8 +159,9 @@ Content-Type: application/json
 {
   "serviceId": 1,
   "envId": 1,
+  "pipelineTemplateId": 3,
   "branch": "develop",
-  "buildNode": "node-1",
+  "gitType": "branch",
   "autoDeploy": true
 }
 ```

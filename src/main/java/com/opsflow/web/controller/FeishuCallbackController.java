@@ -1,7 +1,7 @@
 package com.opsflow.web.controller;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.opsflow.integration.feishu.FeishuJson;
 import com.opsflow.integration.feishu.FeishuCallbackSecurity;
 import com.opsflow.integration.feishu.FeishuConfig;
 import lombok.extern.slf4j.Slf4j;
@@ -34,14 +34,14 @@ public class FeishuCallbackController {
     public Map<String, Object> callback(HttpServletRequest request) throws Exception {
         byte[] rawBytes = StreamUtils.copyToByteArray(request.getInputStream());
         String rawBody = new String(rawBytes, StandardCharsets.UTF_8);
-        JSONObject body = parseBody(rawBody);
+        ObjectNode body = parseBody(rawBody);
         if (body == null) {
             return toast("error", "无效请求");
         }
 
-        if ("url_verification".equalsIgnoreCase(body.getString("type"))) {
+        if ("url_verification".equalsIgnoreCase(FeishuJson.getString(body, "type"))) {
             Map<String, Object> resp = new HashMap<>();
-            resp.put("challenge", body.getString("challenge"));
+            resp.put("challenge", FeishuJson.getString(body, "challenge"));
             return resp;
         }
 
@@ -49,15 +49,15 @@ public class FeishuCallbackController {
         return toast("info", "请前往 OpsFlow 系统完成审批");
     }
 
-    private JSONObject parseBody(String rawBody) {
+    private ObjectNode parseBody(String rawBody) {
         if (!StringUtils.hasText(rawBody)) {
             return null;
         }
         try {
-            JSONObject body = JSON.parseObject(rawBody);
-            if (body != null && body.containsKey("encrypt") && StringUtils.hasText(feishuConfig.getEncryptKey())) {
-                String plain = FeishuCallbackSecurity.decrypt(body.getString("encrypt"), feishuConfig.getEncryptKey());
-                return JSON.parseObject(plain);
+            ObjectNode body = FeishuJson.parseObject(rawBody);
+            if (body != null && body.has("encrypt") && StringUtils.hasText(feishuConfig.getEncryptKey())) {
+                String plain = FeishuCallbackSecurity.decrypt(FeishuJson.getString(body, "encrypt"), feishuConfig.getEncryptKey());
+                return FeishuJson.parseObject(plain);
             }
             return body;
         } catch (Exception e) {

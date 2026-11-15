@@ -4,6 +4,10 @@
 spring:
   application:
     name: opsflow
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 2MB
   datasource:
     url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai}
     username: ${DB_USERNAME:root}
@@ -31,8 +35,30 @@ opsflow:
   # License 强校验：false=关闭（功能全开）；后期改为 true 重新启用
   license:
     enforcement-enabled: false
+  branding:
+    dir: ./data/branding
   pipeline:
     log-dir: ./data/pipeline-logs
+    # 同时执行的流水线任务上限，超出的任务排队（界面显示「排队中」）
+    max-concurrent-jobs: 10
+  deploy:
+    # 上线任务模块因同一服务正在部署而排队时，除任务结束时自动唤醒外，按此间隔兜底巡检（毫秒）
+    cd-resume-interval-ms: 60000
+  # Git 推送 Webhook（/api/webhook/git）校验密钥；为空则关闭 Webhook。
+  # 请通过环境变量 OPSFLOW_WEBHOOK_SECRET 或 config/application-local.yml 设置，不要提交到仓库。
+  webhook:
+    secret: ${OPSFLOW_WEBHOOK_SECRET:}
+  # 保留策略：每天定时清理；天数 ≤ 0 表示不清理该项。有 system:config 权限的用户可调用 POST /api/system/retention?dryRun=true 预览
+  retention:
+    enabled: true
+    cron: "0 30 3 * * ?"
+    # 完整阶段日志文件保留天数，超期只保留末尾摘要
+    log-days: 30
+    # 构建记录保留天数；超期且不在任务最近 keep-latest-per-task 次内的记录删除（任务本身与上线任务记录始终保留）
+    record-days: 180
+    keep-latest-per-task: 50
+    # 操作审计保留天数
+    audit-days: 180
 
 logging:
   level:

@@ -2,8 +2,9 @@
 # 增量数据库迁移（可重复执行，已存在的变更会跳过）
 # 使用场景：拉取新代码后有数据库变更时手动执行，不必每次重启都跑
 #
-#   bash scripts/database/run_migrations.sh              # 默认读 config/application.yml
-#   bash scripts/database/run_migrations.sh --profile=dev  # 读 config/application-dev.yml
+#   bash scripts/database/run_migrations.sh              # 默认环境（application.yml）
+#   bash scripts/database/run_migrations.sh --profile=dev  # dev 环境（application-dev.yml）
+#   连接解析规则见 scripts/database/db_env.sh
 #   OPSFLOW_PROFILE=dev bash scripts/database/run_migrations.sh
 #
 # 也可直接覆盖（优先级最高）：
@@ -31,90 +32,15 @@ for arg in "$@"; do
   esac
 done
 
-if [ -n "$PROFILE" ]; then
-  CONFIG_FILE="${PROJECT_DIR}/config/application-${PROFILE}.yml"
-else
-  CONFIG_FILE="${PROJECT_DIR}/config/application.yml"
-fi
-
-if [ ! -f "$CONFIG_FILE" ]; then
-  echo "配置文件不存在: $CONFIG_FILE" >&2
-  exit 1
-fi
-
-# 去掉 YAML 值两端引号与首尾空白
-strip_yaml_value() {
-  local v="$1"
-  v="${v#"${v%%[![:space:]]*}"}"
-  v="${v%"${v##*[![:space:]]}"}"
-  if [[ "$v" == \"*\" && "$v" == *\" ]]; then
-    v="${v:1:${#v}-2}"
-  elif [[ "$v" == \'*\' && "$v" == *\' ]]; then
-    v="${v:1:${#v}-2}"
-  fi
-  printf '%s' "$v"
-}
-
-# 从 spring.datasource 段解析（避免误匹配其它 username/password）
-extract_ds() {
-  local key="$1"
-  awk -v key="$key" '
-    BEGIN { in_ds=0 }
-    /^[[:space:]]*datasource:[[:space:]]*$/ { in_ds=1; next }
-    in_ds && /^[^[:space:]#]/ { in_ds=0 }
-    in_ds && $0 ~ "^[[:space:]]*" key ":" {
-      sub("^[[:space:]]*" key ":[[:space:]]*", "", $0)
-      print $0
-      exit
-    }
-  ' "$CONFIG_FILE"
-}
-
-if [ -z "${DB_URL:-}" ]; then
-  DB_URL=$(strip_yaml_value "$(extract_ds url)")
-fi
-if [ -z "${DB_USER:-}" ]; then
-  DB_USER=$(strip_yaml_value "$(extract_ds username)")
-fi
-if [ -z "${DB_PASS:-}" ]; then
-  DB_PASS=$(strip_yaml_value "$(extract_ds password)")
-fi
-
-# 解析 jdbc:mysql://host:port/dbname?...
-if [ -z "${DB_HOST:-}" ] || [ -z "${DB_NAME:-}" ] || [ -z "${DB_PORT:-}" ]; then
-  local_jdbc="${DB_URL#jdbc:mysql://}"
-  local_jdbc="${local_jdbc#mysql://}"
-  hostport="${local_jdbc%%/*}"
-  pathdb="${local_jdbc#*/}"
-  dbname="${pathdb%%\?*}"
-  if [ -z "${DB_HOST:-}" ]; then
-    DB_HOST="${hostport%%:*}"
-  fi
-  if [ -z "${DB_PORT:-}" ]; then
-    if [[ "$hostport" == *:* ]]; then
-      DB_PORT="${hostport##*:}"
-    else
-      DB_PORT=3306
-    fi
-  fi
-  if [ -z "${DB_NAME:-}" ]; then
-    DB_NAME="$dbname"
-  fi
-fi
-
-DB_HOST="${DB_HOST:-127.0.0.1}"
-DB_PORT="${DB_PORT:-3306}"
-DB_USER="${DB_USER:-root}"
-DB_NAME="${DB_NAME:-opsflow}"
-
-if [ -z "$DB_PASS" ] || [[ "$DB_PASS" == \$\{* ]]; then
-  echo "数据库密码未解析到有效值（配置: $CONFIG_FILE）" >&2
-  echo "请检查 password，或通过环境变量传入: DB_PASS='你的密码' $0 --profile=${PROFILE:-dev}" >&2
+# shellcheck source=db_env.sh
+source "${PROJECT_DIR}/scripts/database/db_env.sh"
+if ! resolve_db_env "$PROFILE"; then
+  echo "也可直接传入: DB_PASS='你的密码' $0 --profile=${PROFILE:-dev}" >&2
   exit 1
 fi
 
 echo "迁移配置:"
-echo "  config : $CONFIG_FILE"
+echo "  config : $DB_CONFIG_SOURCE"
 echo "  host   : $DB_HOST:$DB_PORT"
 echo "  db     : $DB_NAME"
 echo "  user   : $DB_USER"
@@ -155,7 +81,6 @@ run_sql "${MIGRATIONS_DIR}/migrate_credential.sql" "credential + component.crede
 run_sql "${MIGRATIONS_DIR}/migrate_cluster_credential.sql" "cluster.credential_id"
 run_sql "${MIGRATIONS_DIR}/migrate_service_component.sql" "service.component_id + git_repo_path"
 run_sql "${MIGRATIONS_DIR}/migrate_service_port.sql" "service.service_port"
-run_sql "${MIGRATIONS_DIR}/migrate_service_project_name.sql" "service.project_name 所属项目"
 run_sql "${MIGRATIONS_DIR}/migrate_build_job_git_type.sql" "build_job.git_type"
 run_sql "${MIGRATIONS_DIR}/migrate_pipeline_build_node_ids.sql" "pipeline.build_node_ids"
 run_sql "${MIGRATIONS_DIR}/migrate_drop_jenkins_legacy.sql" "清理 Jenkins 遗留命名"
@@ -175,6 +100,12 @@ run_sql "${MIGRATIONS_DIR}/migrate_rbac.sql" "RBAC 用户角色权限 + 种子�
 run_sql "${MIGRATIONS_DIR}/migrate_user_source.sql" "user.source 用户来源"
 run_sql "${MIGRATIONS_DIR}/migrate_stage_log_file.sql" "阶段日志文件路径/预览字段"
 run_sql "${MIGRATIONS_DIR}/migrate_build_job_indexes.sql" "build_job 热查询索引"
+run_sql "${MIGRATIONS_DIR}/migrate_audit_log.sql" "audit_log 操作审计 + audit:view"
+run_sql "${MIGRATIONS_DIR}/migrate_pipeline_webhook.sql" "pipeline_webhook_trigger Git Webhook 自动构建"
+run_sql "${MIGRATIONS_DIR}/migrate_project.sql" "project / project_member 项目隔离 + project:manage"
+run_sql "${MIGRATIONS_DIR}/migrate_approval_multi_approver.sql" "审批步骤多审批人"
+run_sql "${MIGRATIONS_DIR}/migrate_fix_comment_encoding.sql" "修复乱码字段注释"
+run_sql "${MIGRATIONS_DIR}/migrate_drop_unused_columns.sql" "删除不再使用的字段"
 
 echo
 echo "全部迁移执行完成"

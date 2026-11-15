@@ -93,6 +93,16 @@ public class PipelineJobViewDTO {
     private Boolean deletable;
 
     /**
+     * 代码推送到该分支时是否自动构建（Git Webhook）
+     */
+    private Boolean webhookEnabled;
+
+    /**
+     * 当前用户是否可操作（服务配置了负责人/成员时，仅他们与管理员可操作）
+     */
+    private Boolean operable;
+
+    /**
      * CD 任务是否可手动重试
      */
     private Boolean retryable;
@@ -111,4 +121,14 @@ public class PipelineJobViewDTO {
      * 是否生产环境（回滚时需二次确认）
      */
     private Boolean prodEnv;
+
+    /**
+     * 是否在排队等待执行线程
+     */
+    private Boolean queued;
+
+    /**
+     * 排队位置（从 1 开始），未排队为 0
+     */
+    private Integer queuePosition;
 }

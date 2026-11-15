@@ -13,7 +13,12 @@ public class ServiceDTO {
     private String name;
 
     /**
-     * 所属项目，用于服务分类与筛选
+     * 所属项目 ID（数据隔离依据）
+     */
+    private Long projectId;
+
+    /**
+     * 所属项目名称（展示）
      */
     private String projectName;
 
@@ -57,6 +62,13 @@ public class ServiceDTO {
     private Integer servicePort;
 
     private Integer status;
+
+    /**
+     * 负责人（仅展示，权限由项目角色决定）
+     */
+    private Long ownerUserId;
+
+    private String ownerName;
 }
 
 

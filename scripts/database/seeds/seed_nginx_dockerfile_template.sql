@@ -1,4 +1,5 @@
 -- Nginx 前端 Dockerfile 模版（幂等：同名同类型已存在则跳过）
+SET NAMES utf8mb4;
 INSERT INTO `pipeline_template`
 (`name`, `type`, `description`, `content`, `base_image`, `service_type`, `status`)
 SELECT

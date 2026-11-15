@@ -1,5 +1,6 @@
 package com.opsflow.web.config;
 
+import com.opsflow.web.audit.AuditLogInterceptor;
 import com.opsflow.web.interceptor.AuthInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
@@ -15,9 +16,14 @@ public class WebMvcConfig implements WebMvcConfigurer {
     
     @Autowired
     private AuthInterceptor authInterceptor;
+
+    @Autowired
+    private AuditLogInterceptor auditLogInterceptor;
     
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        // 审计必须在认证之前，被拒绝的请求也要留痕
+        registry.addInterceptor(auditLogInterceptor).addPathPatterns("/api/**");
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/**")
                 .excludePathPatterns(
@@ -30,7 +36,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
                     "/api/auth/login",
                     "/api/auth/logout",
                     "/api/auth/user",
-                    "/api/feishu/callback"
+                    "/api/branding/public",
+                    "/api/branding/logo",
+                    "/api/feishu/callback",
+                    "/api/webhook/git"
                 );
     }
     

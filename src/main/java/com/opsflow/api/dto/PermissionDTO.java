@@ -14,11 +14,7 @@ public class PermissionDTO {
     private String name;
     
     private String code;
-    
-    private String resource;
-    
-    private String method;
-    
+
     private String description;
     
     private Long parentId;
@@ -30,5 +26,4 @@ public class PermissionDTO {
      */
     private List<PermissionDTO> children;
 }
-
 

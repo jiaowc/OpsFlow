@@ -9,31 +9,61 @@
       - 手动：按 task_name + service_id + env_id + pipeline_template_id
     -->
     <sql id="pipelineJobGroupBy">
-        CASE WHEN deploy_task_id IS NOT NULL THEN 1 ELSE 0 END,
-        CASE WHEN deploy_task_id IS NOT NULL THEN '' ELSE IFNULL(TRIM(task_name), '') END,
-        service_id,
-        env_id,
-        pipeline_template_id
+        CASE WHEN bj.deploy_task_id IS NOT NULL THEN 1 ELSE 0 END,
+        CASE WHEN bj.deploy_task_id IS NOT NULL THEN '' ELSE IFNULL(TRIM(bj.task_name), '') END,
+        bj.service_id,
+        bj.env_id,
+        bj.pipeline_template_id
     </sql>
 
     <sql id="pipelineJobEnvFilter">
         <if test="envId != null">
-            AND env_id = #{envId}
+            AND bj.env_id = #{envId}
         </if>
         <if test="envId == null and envIds != null and envIds.size() &gt; 0">
-            AND env_id IN
+            AND bj.env_id IN
             <foreach collection="envIds" item="id" open="(" separator="," close=")">
                 #{id}
             </foreach>
         </if>
+        <if test="serviceIds != null">
+            AND bj.service_id IN
+            <foreach collection="serviceIds" item="sid" open="(" separator="," close=")">
+                #{sid}
+            </foreach>
+        </if>
+    </sql>
+
+    <sql id="pipelineJobKeywordFilter">
+        <if test="keyword != null and keyword != ''">
+            AND (
+                bj.task_name LIKE CONCAT('%', #{keyword}, '%')
+                OR bj.branch LIKE CONCAT('%', #{keyword}, '%')
+                OR bj.job_number LIKE CONCAT('%', #{keyword}, '%')
+                OR s.name LIKE CONCAT('%', #{keyword}, '%')
+                OR s.code LIKE CONCAT('%', #{keyword}, '%')
+                OR s.git_repo LIKE CONCAT('%', #{keyword}, '%')
+                OR e.name LIKE CONCAT('%', #{keyword}, '%')
+                OR u.username LIKE CONCAT('%', #{keyword}, '%')
+                OR u.real_name LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <sql id="pipelineJobListFrom">
+        FROM build_job bj
+        LEFT JOIN service s ON s.id = bj.service_id
+        LEFT JOIN env e ON e.id = bj.env_id
+        LEFT JOIN `user` u ON u.id = bj.creator_id
     </sql>
 
     <select id="countPipelineJobGroups" resultType="long">
         SELECT COUNT(1) FROM (
             SELECT 1
-            FROM build_job
+            <include refid="pipelineJobListFrom"/>
             <where>
                 <include refid="pipelineJobEnvFilter"/>
+                <include refid="pipelineJobKeywordFilter"/>
             </where>
             GROUP BY
             <include refid="pipelineJobGroupBy"/>
@@ -43,10 +73,11 @@
     <select id="selectPipelineJobGroupPage" resultType="com.opsflow.dao.model.BuildJobGroupPageRow">
         SELECT g.max_id AS latestId, g.min_id AS anchorId
         FROM (
-            SELECT MAX(id) AS max_id, MIN(id) AS min_id, MAX(create_time) AS latest_time
-            FROM build_job
+            SELECT MAX(bj.id) AS max_id, MIN(bj.id) AS min_id, MAX(bj.create_time) AS latest_time
+            <include refid="pipelineJobListFrom"/>
             <where>
                 <include refid="pipelineJobEnvFilter"/>
+                <include refid="pipelineJobKeywordFilter"/>
             </where>
             GROUP BY
             <include refid="pipelineJobGroupBy"/>

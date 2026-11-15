@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * 审批记录实体
@@ -50,6 +53,30 @@ public class ApprovalRecord {
      * 审批人飞书用户ID
      */
     private String approverFeishuId;
+
+    /**
+     * 候选审批人（多人任一审批即可），格式 ",user1,user2,"；为空时按 approver 匹配
+     */
+    private String approverCandidates;
+
+    public static final String CANDIDATE_SEPARATOR = ",";
+
+    public static String joinCandidates(List<String> usernames) {
+        return CANDIDATE_SEPARATOR + String.join(CANDIDATE_SEPARATOR, usernames) + CANDIDATE_SEPARATOR;
+    }
+
+    public List<String> listApproverCandidates() {
+        if (approverCandidates == null || approverCandidates.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> result = new ArrayList<>();
+        for (String name : approverCandidates.split(CANDIDATE_SEPARATOR)) {
+            if (!name.trim().isEmpty()) {
+                result.add(name.trim());
+            }
+        }
+        return result;
+    }
 
     /**
      * 飞书审批卡片消息 ID（用于更新卡片）

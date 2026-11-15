@@ -25,17 +25,7 @@ public class Permission {
      * 权限代码
      */
     private String code;
-    
-    /**
-     * 资源路径
-     */
-    private String resource;
-    
-    /**
-     * HTTP方法（GET, POST, PUT, DELETE等）
-     */
-    private String method;
-    
+
     /**
      * 权限描述
      */
@@ -55,5 +45,4 @@ public class Permission {
     
     private LocalDateTime updateTime;
 }
-
 

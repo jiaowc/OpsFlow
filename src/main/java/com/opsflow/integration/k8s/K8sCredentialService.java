@@ -153,7 +153,7 @@ public class K8sCredentialService {
             return "";
         }
         String safeKey = sanitizeSessionKey(sessionKey);
-        String filePath = "/tmp/opsflow-kubeconfig-" + safeKey + ".yaml";
+        String filePath = remoteKubeconfigPath(sessionKey);
         String delimiter = "OPSFLOW_KUBECONFIG_" + safeKey + "_EOF";
         while (content.contains(delimiter)) {
             delimiter += "_X";
@@ -161,6 +161,13 @@ public class K8sCredentialService {
         return "cat <<'" + delimiter + "' > " + NodeCommandHelper.shellQuote(filePath) + "\n"
             + content + "\n" + delimiter + "\n"
             + "export KUBECONFIG=" + NodeCommandHelper.shellQuote(filePath) + "\n";
+    }
+
+    /**
+     * {@link #buildRemoteKubeconfigSetup} 写入的 kubeconfig 文件路径
+     */
+    public String remoteKubeconfigPath(String sessionKey) {
+        return "/tmp/opsflow-kubeconfig-" + sanitizeSessionKey(sessionKey) + ".yaml";
     }
 
     private String sanitizeSessionKey(String sessionKey) {

@@ -1,4 +1,5 @@
 -- 修复 Pipeline 表字符集并写入默认模板
+SET NAMES utf8mb4;
 ALTER TABLE `pipeline` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 DELETE FROM `pipeline`;

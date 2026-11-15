@@ -29,6 +29,22 @@ public class CredentialController {
         return credentialService.list(type);
     }
 
+    /**
+     * 下拉选项：仅返回 id / 名称 / 类型 / 状态，不含凭据内容（集群表单选择 kubeconfig 用）
+     */
+    @RequiresPermission({"credential:manage", "cluster:manage"})
+    @GetMapping("/options")
+    public List<java.util.Map<String, Object>> options(@RequestParam(required = false) String type) {
+        return credentialService.list(type).stream().map(c -> {
+            java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("id", c.getId());
+            item.put("name", c.getName());
+            item.put("credentialType", c.getCredentialType());
+            item.put("status", c.getStatus());
+            return item;
+        }).collect(java.util.stream.Collectors.toList());
+    }
+
     @GetMapping("/{id}")
     public CredentialDTO get(@PathVariable Long id) {
         return credentialService.getById(id);

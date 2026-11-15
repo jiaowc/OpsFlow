@@ -1,0 +1,16 @@
+services:
+  deploy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${DEPLOY_NODE_IMAGE:-opsflow-local-deploy-node:1}
+    container_name: ${DEPLOY_CONTAINER_NAME:-opsflow-deploy}
+    hostname: local-deploy
+    ports:
+      - "${DEPLOY_NODE_PORT:-2224}:22"
+    environment:
+      DEPLOY_NODE_SSH_PASSWORD: ${DEPLOY_NODE_SSH_PASSWORD:-Build12345}
+    volumes:
+      - ${K8S_DATA_DIR:-./.data}/deploy-home:/root/opsflow
+      - ${K8S_DATA_DIR:-./.data}/kubeconfig:/root/.kube/config:ro
+    restart: unless-stopped

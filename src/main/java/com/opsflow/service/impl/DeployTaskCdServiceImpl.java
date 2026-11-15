@@ -27,13 +27,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.Map;
 
 /**
@@ -52,6 +58,9 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
 
     @Autowired
     private DeployTaskMapper deployTaskMapper;
+
+    @Autowired
+    private com.opsflow.integration.pipeline.PipelineJobDispatcher pipelineJobDispatcher;
 
     @Autowired
     private PipelineMapper pipelineMapper;
@@ -74,6 +83,10 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
     @Autowired
     @Lazy
     private PipelineRunService pipelineRunService;
+
+    @Autowired
+    @Lazy
+    private DeployTaskCdService self;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -132,7 +145,7 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
         if (taskId == null) {
             return;
         }
-        DeployTask fresh = deployTaskMapper.selectById(taskId);
+        DeployTask fresh = lockTask(taskId);
         if (fresh == null) {
             return;
         }
@@ -200,7 +213,9 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
         }
 
         List<Long> toLaunch = pickRunnableCdJobs(fresh, Integer.MAX_VALUE);
-        if (toLaunch.isEmpty()) {
+        boolean waiting = toLaunch.isEmpty() && listJobsForDeployTask(taskId).stream()
+                .anyMatch(j -> BuildStatus.PENDING.equals(j.getStatus()));
+        if (toLaunch.isEmpty() && !waiting) {
             log.info("上线任务暂无待自动启动的 CD job: taskId={}", taskId);
             return;
         }
@@ -214,6 +229,10 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
             deployTaskMapper.updateById(fresh);
         }
 
+        if (toLaunch.isEmpty()) {
+            log.info("上线任务模块的服务正被占用，排队等待: taskId={}", taskId);
+            return;
+        }
         log.info("上线任务调度 CD 执行: taskId={}, jobIds={}, mode={}, parallelism={}",
                 taskId, toLaunch, DeployModes.normalize(fresh.getDeployMode()),
                 DeployModes.resolveParallelism(fresh.getDeployMode(), fresh.getDeployParallelism()));
@@ -243,6 +262,71 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
         }
         log.info("补槽启动 CD: taskId={}, jobIds={}", taskId, toLaunch);
         launchCdJobs(taskId, toLaunch);
+    }
+
+    @Override
+    public void wakeWaitingCdJobs(Long serviceId, Long envId) {
+        if (serviceId == null) {
+            return;
+        }
+        QueryWrapper<BuildJob> wrapper = new QueryWrapper<BuildJob>()
+                .select("DISTINCT deploy_task_id")
+                .isNotNull("deploy_task_id")
+                .eq("service_id", serviceId)
+                .eq("status", BuildStatus.PENDING);
+        if (envId != null) {
+            wrapper.eq("env_id", envId);
+        }
+        resumeTasks(buildJobMapper.selectList(wrapper).stream()
+                .map(BuildJob::getDeployTaskId).collect(Collectors.toCollection(LinkedHashSet::new)));
+    }
+
+    /**
+     * 兜底巡检：重启或唤醒遗漏时，把仍有待执行模块的上线任务继续往下推进
+     */
+    @Scheduled(fixedDelayString = "${opsflow.deploy.cd-resume-interval-ms:60000}",
+            initialDelayString = "${opsflow.deploy.cd-resume-initial-delay-ms:60000}")
+    public void resumeWaitingTasks() {
+        try {
+            resumeTasks(buildJobMapper.selectList(new QueryWrapper<BuildJob>()
+                            .select("DISTINCT deploy_task_id")
+                            .isNotNull("deploy_task_id")
+                            .eq("status", BuildStatus.PENDING))
+                    .stream().map(BuildJob::getDeployTaskId).collect(Collectors.toCollection(LinkedHashSet::new)));
+        } catch (Exception e) {
+            log.error("CD 待执行模块巡检失败", e);
+        }
+    }
+
+    private void resumeTasks(Set<Long> taskIds) {
+        for (Long taskId : taskIds) {
+            try {
+                self.resumeTask(taskId);
+            } catch (Exception e) {
+                log.error("唤醒上线任务失败: taskId={}", taskId, e);
+            }
+        }
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public void resumeTask(Long taskId) {
+        DeployTask task = lockTask(taskId);
+        if (task == null || "success".equalsIgnoreCase(task.getTaskStatus())) {
+            return;
+        }
+        if (!"approved".equalsIgnoreCase(task.getApprovalStatus())
+                && !"none".equalsIgnoreCase(task.getApprovalStatus())) {
+            return;
+        }
+        launchAvailableCdJobs(taskId);
+    }
+
+    /**
+     * 锁住上线任务行（当前读），同一上线任务的调度 / 推进 / 重试串行执行，避免同一模块被重复启动
+     */
+    private DeployTask lockTask(Long taskId) {
+        return deployTaskMapper.selectOne(new QueryWrapper<DeployTask>().eq("id", taskId).last("FOR UPDATE"));
     }
 
     private void launchCdJobs(Long taskId, List<Long> jobIds) {
@@ -303,10 +387,11 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
         if (job == null || job.getDeployTaskId() == null) {
             return;
         }
-        DeployTask task = deployTaskMapper.selectById(job.getDeployTaskId());
+        DeployTask task = lockTask(job.getDeployTaskId());
         if (task == null) {
             return;
         }
+        job = buildJobMapper.selectById(buildJobId);
 
         if (BuildStatus.FAILED.equals(job.getStatus())) {
             cancelRemainingPendingCdJobs(task.getId(), job.getId());
@@ -415,7 +500,14 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
             return null;
         }
         if (BuildStatus.PENDING.equals(job.getStatus())) {
-            return "等待调度";
+            BuildJob occupier = buildJobMapper.selectOne(new QueryWrapper<BuildJob>()
+                    .eq("service_id", job.getServiceId()).eq("env_id", job.getEnvId())
+                    .ne("id", job.getId())
+                    .in("status", BuildStatus.BUILDING, BuildStatus.DEPLOYING)
+                    .last("LIMIT 1"));
+            return occupier != null
+                    ? "等待 " + occupier.getJobNumber() + " 部署完成后自动开始（同一服务同时只能部署一个）"
+                    : "等待调度";
         }
         return null;
     }
@@ -454,19 +546,20 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
             return result;
         }
 
+        Set<String> pickedTargets = new HashSet<>();
         if (DeployModes.isParallel(task.getDeployMode())) {
             for (BuildJob item : jobs) {
                 if (result.size() >= free) {
                     break;
                 }
-                if (BuildStatus.PENDING.equals(item.getStatus())) {
+                if (BuildStatus.PENDING.equals(item.getStatus()) && claimTarget(item, pickedTargets)) {
                     result.add(item.getId());
                 }
             }
             return result;
         }
 
-        // serial：必须无运行中，且按顺序推进
+        // serial：必须无运行中，且按顺序推进；下一个模块的服务被占用时整体等待
         if (running > 0) {
             return result;
         }
@@ -478,12 +571,29 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
             if (BuildStatus.FAILED.equals(status)) {
                 return result;
             }
-            if (BuildStatus.PENDING.equals(status)) {
+            if (BuildStatus.PENDING.equals(status) && claimTarget(item, pickedTargets)) {
                 result.add(item.getId());
             }
             return result;
         }
         return result;
+    }
+
+    /**
+     * 同一服务同一环境同时只允许一个任务部署（含其他上线任务和普通流水线）。
+     * 被占用时模块保持 PENDING，占用方结束后由 {@link #wakeWaitingCdJobs} 唤醒。
+     */
+    private boolean claimTarget(BuildJob item, Set<String> pickedTargets) {
+        if (!pickedTargets.add(item.getServiceId() + ":" + item.getEnvId())) {
+            return false;
+        }
+        String runningJob = pipelineRunService.findRunningJobNumber(item.getServiceId(), item.getEnvId(), item.getId());
+        if (runningJob != null) {
+            log.info("CD 模块等待同服务部署完成: jobId={}, deployTaskId={}, 占用方={}",
+                    item.getId(), item.getDeployTaskId(), runningJob);
+            return false;
+        }
+        return true;
     }
 
     private boolean hasRunningCdJob(List<BuildJob> jobs) {
@@ -825,6 +935,12 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
         if (job.getDeployTaskId() == null) {
             throw new BusinessException("非上线任务 CD 构建，无法重试");
         }
+        // 多人同时重试时排队，后到的请求在锁内会读到已被前一个请求置为运行中的状态
+        lockTask(job.getDeployTaskId());
+        job = buildJobMapper.selectById(buildJobId);
+        if (pipelineJobDispatcher.isActive(buildJobId)) {
+            throw new BusinessException("任务正在运行中，请稍后再试");
+        }
         if (BuildStatus.BUILDING.equals(job.getStatus()) || BuildStatus.DEPLOYING.equals(job.getStatus())) {
             throw new BusinessException("任务正在运行中，请稍后再试");
         }
@@ -854,16 +970,25 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
         List<Long> toLaunch = task != null
                 ? pickRunnableCdJobs(task, Integer.MAX_VALUE)
                 : new ArrayList<Long>();
+        String occupiedBy = null;
         if (!toLaunch.contains(buildJobId)) {
-            toLaunch = new ArrayList<>(toLaunch);
-            toLaunch.add(0, buildJobId);
+            occupiedBy = pipelineRunService.findRunningJobNumber(job.getServiceId(), job.getEnvId(), buildJobId);
+            if (occupiedBy == null) {
+                toLaunch = new ArrayList<>(toLaunch);
+                toLaunch.add(0, buildJobId);
+            }
         }
         launchCdJobs(job.getDeployTaskId(), toLaunch);
 
         com.opsflow.api.dto.BuildResponse response = new com.opsflow.api.dto.BuildResponse();
         response.setJobId(job.getId());
         response.setJobNumber(job.getJobNumber());
-        response.setStatus(BuildStatus.BUILDING);
+        if (occupiedBy != null) {
+            response.setStatus(BuildStatus.PENDING);
+            response.setErrorMessage("该服务正在部署（" + occupiedBy + "），已排队，完成后自动开始");
+        } else {
+            response.setStatus(BuildStatus.BUILDING);
+        }
         return response;
     }
 
@@ -874,7 +999,6 @@ public class DeployTaskCdServiceImpl implements DeployTaskCdService {
         for (BuildJobStage stage : stages) {
             stage.setStatus("PENDING");
             stage.setErrorMessage(null);
-            stage.setLogText(null);
             stage.setStartTime(null);
             stage.setEndTime(null);
             stage.setDurationMs(null);

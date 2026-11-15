@@ -1,4 +1,5 @@
 -- 流水线视图 ↔ 角色授权
+SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS `pipeline_view_role` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `view_id` bigint NOT NULL COMMENT '视图 ID',

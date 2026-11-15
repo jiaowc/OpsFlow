@@ -4,48 +4,11 @@
 
 // 全局变量
 let currentUser = null;
-let mockTasks = [];
 let mockEnvs = [];
 let mockNodes = [];
 let mockServices = [];
-let mockApprovals = [];
 let pipelineStepCounter = 0;
 let pipelineParamCounter = 0;
-
-// 初始化模拟数据
-function initMockData() {
-    // 模拟环境数据
-    mockEnvs = [
-        { id: 1, name: 'dev', k8sCluster: 'cluster-dev', k8sNamespace: 'dev', envType: 'nonprod', status: 1 },
-        { id: 2, name: 'uat', k8sCluster: 'cluster-uat', k8sNamespace: 'uat', envType: 'nonprod', status: 1 },
-        { id: 3, name: 'pre', k8sCluster: 'cluster-pre', k8sNamespace: 'pre', envType: 'nonprod', status: 1 },
-        { id: 4, name: 'prod', k8sCluster: 'cluster-prod', k8sNamespace: 'prod', envType: 'prod', status: 1 }
-    ];
-    
-    // 模拟服务数据
-    mockServices = [
-        { id: 1, name: '用户服务', code: 'user-service', gitRepo: 'git@github.com:example/user-service.git', defaultBranch: 'develop', k8sNamespace: 'default', status: 1 },
-        { id: 2, name: '订单服务', code: 'order-service', gitRepo: 'git@github.com:example/order-service.git', defaultBranch: 'develop', k8sNamespace: 'default', status: 1 },
-        { id: 3, name: '支付服务', code: 'payment-service', gitRepo: 'git@github.com:example/payment-service.git', defaultBranch: 'develop', k8sNamespace: 'default', status: 1 }
-    ];
-    
-    // 模拟节点数据
-    mockNodes = [
-        { id: 1, name: 'build-01', nodeType: 'build', label: 'build', status: '在线' },
-        { id: 2, name: 'build-02', nodeType: 'build', label: 'build', status: '在线' },
-        { id: 3, name: 'deploy-01', nodeType: 'deploy', label: 'deploy', status: '在线' },
-        { id: 4, name: 'deploy-02', nodeType: 'deploy', label: 'deploy', status: '在线' }
-    ];
-    
-    // 模拟审批流数据
-    mockApprovals = [
-        { id: 1, name: '生产环境审批流', description: '生产环境上线需要三级审批', steps: [
-            { step: 1, approver: 'tech-lead', approverName: '技术负责人', required: true, status: 'pending' },
-            { step: 2, approver: 'qa-lead', approverName: 'QA负责人', required: true, status: 'pending' },
-            { step: 3, approver: 'pm', approverName: '产品经理', required: true, status: 'pending' }
-        ], status: 1 }
-    ];
-}
 
 // 检查登录状态
 async function checkAuth() {
@@ -103,9 +66,20 @@ let licenseStatus = {
     present: false,
     features: [],
     deployApprovalEnabled: false,
+    auditEnabled: false,
+    notifyIntegrationEnabled: false,
+    prodRollbackEnabled: false,
     // false = 后端已关闭强校验，前端按功能全开处理
     enforcementEnabled: false,
     message: ''
+};
+
+const LICENSE_FEATURE_FLAGS = {
+    deploy_approval: 'deployApprovalEnabled',
+    audit: 'auditEnabled',
+    notify_integration: 'notifyIntegrationEnabled',
+    prod_rollback: 'prodRollbackEnabled',
+    branding: 'brandingEnabled'
 };
 
 function hasFeature(...codes) {
@@ -122,18 +96,22 @@ function hasFeature(...codes) {
         if (!code) continue;
         if (String(code).indexOf(',') >= 0) {
             const parts = String(code).split(',').map(s => s.trim()).filter(Boolean);
-            if (parts.some(p => features.indexOf(p) >= 0)) {
+            if (parts.some(p => featureCodeEnabled(p, features))) {
                 return true;
             }
-        } else if (features.indexOf(code) >= 0) {
+        } else if (featureCodeEnabled(code, features)) {
             return true;
         }
     }
-    // 兼容布尔字段
-    if (codes.indexOf('deploy_approval') >= 0 && licenseStatus && licenseStatus.deployApprovalEnabled) {
+    return false;
+}
+
+function featureCodeEnabled(code, features) {
+    if (features.indexOf(code) >= 0) {
         return true;
     }
-    return false;
+    const flag = LICENSE_FEATURE_FLAGS[code];
+    return !!(flag && licenseStatus && licenseStatus[flag]);
 }
 
 window.hasFeature = hasFeature;
@@ -180,9 +158,12 @@ async function loadLicenseStatus() {
             if (!Array.isArray(licenseStatus.features)) {
                 licenseStatus.features = [];
             }
-            if (licenseStatus.deployApprovalEnabled && licenseStatus.features.indexOf('deploy_approval') < 0) {
-                licenseStatus.features.push('deploy_approval');
-            }
+            Object.keys(LICENSE_FEATURE_FLAGS).forEach(code => {
+                const flag = LICENSE_FEATURE_FLAGS[code];
+                if (licenseStatus[flag] && licenseStatus.features.indexOf(code) < 0) {
+                    licenseStatus.features.push(code);
+                }
+            });
         }
     } catch (e) {
         console.warn('Load license status failed', e);
@@ -228,11 +209,69 @@ async function loadUserInfo() {
             document.getElementById('username').textContent = user.username || '用户';
             await loadLicenseStatus();
             applyPermissionUI();
+            await refreshProjectSwitcher();
         }
     } catch (error) {
         console.error('Load user info error:', error);
     }
 }
+
+// ============================================
+// 全局项目切换：服务 / 流水线 / 上线任务按所选项目过滤，空值表示「我的全部项目」
+// ============================================
+const PROJECT_STORAGE_KEY = 'opsflow.projectId';
+let cachedProjectOptions = null;
+
+function getCurrentProjectId() {
+    return localStorage.getItem(PROJECT_STORAGE_KEY) || '';
+}
+window.getCurrentProjectId = getCurrentProjectId;
+
+/** 当前用户可见项目（含 myRole），force=true 时重新拉取 */
+async function loadProjectOptions(force) {
+    if (cachedProjectOptions && !force) {
+        return cachedProjectOptions;
+    }
+    try {
+        const resp = await fetch('/api/project/list');
+        cachedProjectOptions = resp.ok ? ((await resp.json()) || []) : [];
+    } catch (e) {
+        cachedProjectOptions = [];
+    }
+    return cachedProjectOptions;
+}
+window.loadProjectOptions = loadProjectOptions;
+
+async function refreshProjectSwitcher() {
+    const select = document.getElementById('projectSwitcher');
+    const projects = await loadProjectOptions(true);
+    let current = getCurrentProjectId();
+    if (current && !projects.some(p => String(p.id) === current)) {
+        localStorage.removeItem(PROJECT_STORAGE_KEY);
+        current = '';
+    }
+    if (!select) return;
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const allLabel = typeof t === 'function' ? t('header.allProjects') : '全部项目';
+    select.innerHTML = `<option value="">${esc(allLabel)}</option>` + projects.map(p =>
+        `<option value="${p.id}"${String(p.id) === current ? ' selected' : ''}>${esc(p.name)}</option>`
+    ).join('');
+}
+window.refreshProjectSwitcher = refreshProjectSwitcher;
+
+function onProjectSwitch(projectId) {
+    if (projectId) {
+        localStorage.setItem(PROJECT_STORAGE_KEY, projectId);
+    } else {
+        localStorage.removeItem(PROJECT_STORAGE_KEY);
+    }
+    const active = document.querySelector('.content-section.active');
+    const sectionId = active ? active.id.replace(/-section$/, '') : '';
+    if (sectionId) {
+        showSection(sectionId, null, { updateHistory: false });
+    }
+}
+window.onProjectSwitch = onProjectSwitch;
 
 // 退出登录
 async function logout() {
@@ -245,36 +284,75 @@ async function logout() {
     window.location.href = '/index.html';
 }
 
-// 模块路径映射
-const SECTION_TITLES = {
-    statistics: '工作台',
-    pipeline: '流水线视图',
-    tasks: '上线任务',
-    services: '服务管理',
-    environments: '环境配置',
-    clusters: '集群管理',
-    approval: '审批流程',
-    nodes: '节点管理',
-    users: '用户管理',
-    'pipeline-config': '流水线配置',
-    'credentials-config': '凭据与组件',
-    'integration-config': '集成与通知',
-    'license-config': 'License'
+// 顶栏用户菜单（退出登录收在里面）
+function toggleUserMenu() {
+    const menu = document.getElementById('userMenu');
+    if (menu) {
+        menu.classList.toggle('open');
+    }
+}
+window.toggleUserMenu = toggleUserMenu;
+
+// 用捕获阶段监听：站内信铃铛会 stopPropagation，冒泡阶段收不到它的点击
+document.addEventListener('click', function (e) {
+    const menu = document.getElementById('userMenu');
+    if (menu && menu.classList.contains('open') && !menu.contains(e.target)) {
+        menu.classList.remove('open');
+    }
+}, true);
+
+// 模块路径映射（标题走 i18n）
+const SECTION_TITLE_KEYS = {
+    statistics: 'menu.statistics',
+    pipeline: 'menu.pipeline',
+    tasks: 'menu.tasks',
+    services: 'menu.services',
+    projects: 'menu.projects',
+    environments: 'menu.environments',
+    clusters: 'menu.clusters',
+    approval: 'menu.approval',
+    nodes: 'menu.nodes',
+    users: 'menu.users',
+    audit: 'menu.audit',
+    'pipeline-config': 'menu.pipelineConfig',
+    'credentials-config': 'menu.credentials',
+    'integration-config': 'menu.integrations',
+    'branding-config': 'menu.branding',
+    'license-config': 'menu.license'
 };
+
+function getSectionTitle(sectionId) {
+    const key = SECTION_TITLE_KEYS[sectionId];
+    if (key && typeof t === 'function') {
+        return t(key);
+    }
+    return key || sectionId || '';
+}
+
+// 兼容旧引用
+const SECTION_TITLES = new Proxy({}, {
+    get(_target, prop) {
+        if (typeof prop !== 'string') return undefined;
+        return getSectionTitle(prop);
+    }
+});
 
 const SECTION_ROUTES = {
     statistics: '/statistics',
     pipeline: '/pipeline',
     tasks: '/tasks',
     services: '/services',
+    projects: '/projects',
     environments: '/environments',
     clusters: '/clusters',
     approval: '/approval',
     nodes: '/nodes',
     users: '/users',
+    audit: '/audit',
     'pipeline-config': '/pipeline-config',
     'credentials-config': '/credentials',
     'integration-config': '/integrations',
+    'branding-config': '/branding',
     'license-config': '/license'
 };
 
@@ -300,10 +378,13 @@ function initSectionFromUrl() {
     showSection(sectionId, menuItem, { updateHistory: false });
     suppressHistoryUpdate = false;
 
-    const expectedPath = getPathForSection(sectionId);
+    const active = document.querySelector('.content-section.active');
+    const shownSection = active ? active.id.replace(/-section$/, '') : sectionId;
+    const expectedPath = getPathForSection(shownSection);
     if (window.location.pathname !== expectedPath) {
-        history.replaceState({ section: sectionId }, '', expectedPath);
+        history.replaceState({ section: shownSection }, '', expectedPath);
     }
+    document.title = (SECTION_TITLES[shownSection] || '控制台') + ' - OPSFLOW';
     document.documentElement.removeAttribute('data-initial-section');
 }
 
@@ -345,13 +426,50 @@ function bindMenuNavigation() {
     });
 }
 
+/** 当前用户能否进入该页面：以左侧菜单项的 data-permission / data-feature 为准 */
+function canAccessSection(sectionId) {
+    const menuItem = document.querySelector(`.menu-item[data-section="${sectionId}"]`);
+    if (!menuItem) {
+        return true;
+    }
+    const perm = menuItem.getAttribute('data-permission');
+    const feature = menuItem.getAttribute('data-feature');
+    return (!perm || hasPermission(perm)) && (!feature || hasFeature(feature));
+}
+
+function firstAccessibleSection() {
+    const items = document.querySelectorAll('.menu-item[data-section]');
+    for (let i = 0; i < items.length; i++) {
+        const id = items[i].dataset.section;
+        if (canAccessSection(id) && items[i].style.display !== 'none') {
+            return id;
+        }
+    }
+    return 'projects';
+}
+
 // 菜单切换
 function showSection(sectionId, element, options) {
     const opts = options || {};
-    const updateHistory = opts.updateHistory !== false;
+    let updateHistory = opts.updateHistory !== false;
 
-    // License 未开通时，拦截上线任务 / 审批流程深链
-    if ((sectionId === 'tasks' || sectionId === 'approval') && !hasFeature('deploy_approval')) {
+    // 深链或书签进入无权限页面时，改到第一个有权限的菜单
+    if (!canAccessSection(sectionId)) {
+        sectionId = firstAccessibleSection();
+        element = document.querySelector(`.menu-item[data-section="${sectionId}"]`);
+        updateHistory = true;
+    }
+
+    // License 未开通时，拦截商业功能深链
+    if (sectionId === 'audit' && !hasFeature('audit')) {
+        alert(typeof t === 'function' ? t('license.feature.audit') : '操作审计为 Pro 订阅功能，请导入有效 License');
+        sectionId = firstAccessibleSection();
+        element = document.querySelector(`.menu-item[data-section="${sectionId}"]`);
+    } else if (sectionId === 'integration-config' && !hasFeature('notify_integration')) {
+        alert(typeof t === 'function' ? t('license.feature.notify') : '集成与通知为 Pro 订阅功能，请导入有效 License');
+        sectionId = firstAccessibleSection();
+        element = document.querySelector(`.menu-item[data-section="${sectionId}"]`);
+    } else if ((sectionId === 'tasks' || sectionId === 'approval') && !hasFeature('deploy_approval')) {
         sectionId = 'statistics';
         element = document.querySelector('.menu-item[data-section="statistics"]');
     }
@@ -421,13 +539,20 @@ function showSection(sectionId, element, options) {
             break;
         case 'users':
             if (typeof showUserTab === 'function') {
-                const firstTabBtn = document.querySelector('#users-section .tab-btn');
+                const firstTabBtn = Array.from(document.querySelectorAll('#users-section .tab-btn'))
+                    .find(btn => btn.style.display !== 'none');
                 if (firstTabBtn) {
                     showUserTab('user-list', firstTabBtn);
                 } else {
                     if (typeof loadUsers === 'function') loadUsers();
                 }
             }
+            break;
+        case 'audit':
+            if (typeof loadAuditPage === 'function') loadAuditPage();
+            break;
+        case 'projects':
+            if (typeof loadProjects === 'function') loadProjects();
             break;
         case 'pipeline-config':
             activateConfigSectionDefault('pipeline-config', 'step-def');
@@ -440,6 +565,10 @@ function showSection(sectionId, element, options) {
             break;
         case 'license-config':
             if (typeof loadLicensePage === 'function') loadLicensePage();
+            break;
+        case 'branding-config':
+            if (typeof loadBrandingAdminPanel === 'function') loadBrandingAdminPanel();
+            if (typeof applyI18n === 'function') applyI18n(document.getElementById('branding-config-section'));
             break;
         case 'statistics':
             if (typeof loadStatistics === 'function') loadStatistics();
@@ -474,8 +603,8 @@ function showModal(title, content, onConfirm) {
                     ${content}
                 </div>
                 <div class="modal-footer">
-                    <button class="btn-secondary" onclick="closeModal()">取消</button>
-                    ${onConfirm ? `<button class="btn-primary" onclick="confirmModal()">确认</button>` : ''}
+                    <button class="btn-secondary" onclick="closeModal()">${typeof t === 'function' ? t('common.cancel') : '取消'}</button>
+                    ${onConfirm ? `<button class="btn-primary" onclick="confirmModal()">${typeof t === 'function' ? t('common.confirm') : '确认'}</button>` : ''}
                 </div>
             </div>
         </div>
@@ -523,10 +652,36 @@ window.showModal = showModal;
 // Dashboard初始化 - 页面加载时执行
 // ============================================
 
+// 语言切换后刷新静态文案与依赖文案的控件
+window.onLocaleChange = function () {
+    if (typeof applyI18n === 'function') {
+        applyI18n(document);
+    }
+    if (typeof loadPublicBranding === 'function') {
+        loadPublicBranding();
+    }
+    if (typeof loadBrandingAdminPanel === 'function') {
+        loadBrandingAdminPanel();
+    }
+    if (typeof refreshProjectSwitcher === 'function') {
+        refreshProjectSwitcher();
+    }
+    const active = document.querySelector('.content-section.active');
+    const sectionId = active ? active.id.replace(/-section$/, '') : '';
+    if (sectionId) {
+        document.title = (getSectionTitle(sectionId) || 'OPSFLOW') + ' - OPSFLOW';
+    }
+};
+
 // 页面加载时初始化
 document.addEventListener('DOMContentLoaded', async function() {
+    if (typeof applyI18n === 'function') {
+        applyI18n(document);
+    }
+    if (typeof loadPublicBranding === 'function') {
+        loadPublicBranding();
+    }
     await checkAuth();
-    initMockData();
     loadEnvs();
     loadServicesForSelect();
     loadNodesForSelect();
@@ -754,7 +909,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (typeof loadTasks === 'function') loadTasks();
         if (typeof loadStatistics === 'function') loadStatistics();
         if (typeof loadSystemConfigs === 'function') loadSystemConfigs();
-        if (typeof loadBuildJobs === 'function') loadBuildJobs();
         
         // 检查当前激活的标签页，如果是流水线管理，则加载 pipeline 数据
         const activePipelineMgmtPanel = document.getElementById('pipeline-mgmt-config');

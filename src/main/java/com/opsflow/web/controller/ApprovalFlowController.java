@@ -10,18 +10,24 @@ import com.opsflow.common.exception.BusinessException;
 import com.opsflow.dao.mapper.ApprovalFlowMapper;
 import com.opsflow.dao.mapper.DeployTaskMapper;
 import com.opsflow.dao.model.ApprovalFlow;
+import com.opsflow.dao.model.ApprovalRecord;
 import com.opsflow.dao.model.DeployTask;
+import com.opsflow.dao.mapper.UserMapper;
+import com.opsflow.dao.model.User;
 import com.opsflow.service.ApprovalService;
 import com.opsflow.license.LicenseFeatures;
 import com.opsflow.service.LicenseService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpSession;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import com.opsflow.web.security.RequiresPermission;
 
@@ -43,6 +49,13 @@ public class ApprovalFlowController {
 
     @Autowired
     private LicenseService licenseService;
+
+    @Autowired
+    private UserMapper userMapper;
+
+    private static final int APPROVER_NAME_MAX_LENGTH = 500;
+
+    private static final int APPROVER_CANDIDATES_MAX_LENGTH = 1000;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -215,13 +228,64 @@ public class ApprovalFlowController {
             }
             ApprovalFlowDTO.ApprovalStep copy = new ApprovalFlowDTO.ApprovalStep();
             copy.setStep(step.getStep() != null ? step.getStep() : index);
-            copy.setApprover(step.getApprover());
-            copy.setApproverName(step.getApproverName());
+            Set<String> usernames = approverUsernames(step);
+            if (usernames.size() > 1) {
+                List<User> approvers = requireEnabledUsers(usernames);
+                List<String> approverUsernames = approvers.stream().map(User::getUsername).collect(Collectors.toList());
+                if (ApprovalRecord.joinCandidates(approverUsernames).length() > APPROVER_CANDIDATES_MAX_LENGTH) {
+                    throw new BusinessException("单个步骤的审批人过多，请减少人数");
+                }
+                copy.setApprovers(approverUsernames);
+                copy.setApproverName(truncateName(StringUtils.hasText(step.getApproverName())
+                        ? step.getApproverName().trim() : joinDisplayNames(approvers)));
+            } else {
+                copy.setApprover(usernames.isEmpty() ? null : usernames.iterator().next());
+                copy.setApproverName(step.getApproverName());
+            }
             copy.setRequired(step.getRequired() == null || step.getRequired());
             normalized.add(copy);
             index++;
         }
         return normalized;
+    }
+
+    /** 合并 approvers 与 approver 并去重 */
+    private Set<String> approverUsernames(ApprovalFlowDTO.ApprovalStep step) {
+        Set<String> usernames = new LinkedHashSet<>();
+        if (step.getApprovers() != null) {
+            step.getApprovers().stream().filter(StringUtils::hasText).map(String::trim).forEach(usernames::add);
+        }
+        if (StringUtils.hasText(step.getApprover())) {
+            usernames.add(step.getApprover().trim());
+        }
+        return usernames;
+    }
+
+    private List<User> requireEnabledUsers(Set<String> usernames) {
+        List<User> users = new ArrayList<>();
+        for (String username : usernames) {
+            User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", username).last("LIMIT 1"));
+            if (user == null) {
+                throw new BusinessException("审批人不存在: " + username);
+            }
+            if (user.getStatus() != null && user.getStatus() != 1) {
+                throw new BusinessException("审批人已禁用: " + username);
+            }
+            users.add(user);
+        }
+        return users;
+    }
+
+    private String joinDisplayNames(List<User> users) {
+        return users.stream().map(this::displayName).collect(Collectors.joining(" / "));
+    }
+
+    private String truncateName(String name) {
+        return name.length() > APPROVER_NAME_MAX_LENGTH ? name.substring(0, APPROVER_NAME_MAX_LENGTH) : name;
+    }
+
+    private String displayName(User user) {
+        return StringUtils.hasText(user.getRealName()) ? user.getRealName().trim() : user.getUsername();
     }
 
     /** 将步骤列表序列化为 JSON 字符串 */

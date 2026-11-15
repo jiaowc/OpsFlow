@@ -57,7 +57,7 @@ async function loadUsers() {
         console.error('Load users error:', error);
     }
     
-    userList.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #999;">暂无用户数据</td></tr>';
+    userList.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-4);">暂无用户数据</td></tr>';
 }
 
 function formatUserSource(source) {
@@ -89,7 +89,7 @@ function renderUserList(users) {
         const roles = user.roles && user.roles.length > 0 
             ? user.roles.map(r => r.name).join(', ') 
             : '-';
-        const statusText = user.status === 1 ? '<span style="color: #059669;">启用</span>' : '<span style="color: #dc2626;">禁用</span>';
+        const statusText = user.status === 1 ? '<span class="status-tag is-on">启用</span>' : '<span class="status-tag is-off">禁用</span>';
         
         return `
             <tr>
@@ -385,7 +385,7 @@ async function loadRoles() {
         console.error('Load roles error:', error);
     }
     
-    roleList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">暂无角色数据</td></tr>';
+    roleList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-4);">暂无角色数据</td></tr>';
 }
 
 // 渲染角色列表
@@ -395,7 +395,7 @@ function renderRoleList(roles) {
     
     roleList.innerHTML = roles.map(role => {
         const permissionCount = role.permissions ? role.permissions.length : 0;
-        const statusText = role.status === 1 ? '<span style="color: #059669;">启用</span>' : '<span style="color: #dc2626;">禁用</span>';
+        const statusText = role.status === 1 ? '<span class="status-tag is-on">启用</span>' : '<span class="status-tag is-off">禁用</span>';
         
         return `
             <tr>
@@ -610,7 +610,7 @@ async function loadPermissions() {
         console.error('Load permissions error:', error);
     }
     
-    permissionList.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">暂无权限数据</td></tr>';
+    permissionList.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: var(--text-4);">暂无权限数据</td></tr>';
 }
 
 // 渲染权限列表
@@ -619,15 +619,11 @@ function renderPermissionList(permissions) {
     if (!permissionList) return;
     
     permissionList.innerHTML = permissions.map(permission => {
-        const statusText = permission.status === 1 ? '<span style="color: #059669;">启用</span>' : '<span style="color: #dc2626;">禁用</span>';
-        const methodText = permission.method || '-';
-        
+        const statusText = permission.status === 1 ? '<span class="status-tag is-on">启用</span>' : '<span class="status-tag is-off">禁用</span>';
         return `
             <tr>
                 <td>${permission.name || '-'}</td>
                 <td>${permission.code || '-'}</td>
-                <td>${permission.resource || '-'}</td>
-                <td>${methodText}</td>
                 <td>${permission.description || '-'}</td>
                 <td>${statusText}</td>
                 <td>
@@ -663,20 +659,6 @@ async function showAddPermissionModal() {
                 <input type="text" name="code" placeholder="例如: user:manage" required>
             </div>
             <div class="form-item">
-                <label>资源路径</label>
-                <input type="text" name="resource" placeholder="例如: /api/user/**">
-            </div>
-            <div class="form-item">
-                <label>HTTP方法</label>
-                <select name="method">
-                    <option value="">全部</option>
-                    <option value="GET">GET</option>
-                    <option value="POST">POST</option>
-                    <option value="PUT">PUT</option>
-                    <option value="DELETE">DELETE</option>
-                </select>
-            </div>
-            <div class="form-item">
                 <label>父权限</label>
                 <select name="parentId">
                     <option value="0">无（顶级权限）</option>
@@ -705,8 +687,6 @@ async function showAddPermissionModal() {
         const data = {
             name: formData.get('name'),
             code: formData.get('code'),
-            resource: formData.get('resource') || null,
-            method: formData.get('method') || null,
             parentId: parentId,
             description: formData.get('description') || null,
             status: formData.get('status') === 'on' ? 1 : 0
@@ -767,20 +747,6 @@ async function editPermission(id) {
                     <input type="text" name="code" value="${permission.code || ''}" required>
                 </div>
                 <div class="form-item">
-                    <label>资源路径</label>
-                    <input type="text" name="resource" value="${permission.resource || ''}">
-                </div>
-                <div class="form-item">
-                    <label>HTTP方法</label>
-                    <select name="method">
-                        <option value="">全部</option>
-                        <option value="GET" ${permission.method === 'GET' ? 'selected' : ''}>GET</option>
-                        <option value="POST" ${permission.method === 'POST' ? 'selected' : ''}>POST</option>
-                        <option value="PUT" ${permission.method === 'PUT' ? 'selected' : ''}>PUT</option>
-                        <option value="DELETE" ${permission.method === 'DELETE' ? 'selected' : ''}>DELETE</option>
-                    </select>
-                </div>
-                <div class="form-item">
                     <label>父权限</label>
                     <select name="parentId">
                         <option value="0">无（顶级权限）</option>
@@ -809,8 +775,6 @@ async function editPermission(id) {
             const data = {
                 name: formData.get('name'),
                 code: formData.get('code'),
-                resource: formData.get('resource') || null,
-                method: formData.get('method') || null,
                 parentId: newParentId,
                 description: formData.get('description') || null,
                 status: formData.get('status') === 'on' ? 1 : 0

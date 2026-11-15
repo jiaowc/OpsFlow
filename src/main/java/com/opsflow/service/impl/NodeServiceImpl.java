@@ -11,12 +11,17 @@ import com.opsflow.service.NodeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 @Service
 public class NodeServiceImpl implements NodeService {
+
+    public static final String STATUS_ONLINE = "在线";
+    public static final String STATUS_OFFLINE = "离线";
 
     private static final Pattern COMMAND_ERROR_PATTERN = Pattern.compile(
             "(?i)(command not found|not found|no such file|cannot execute|which: no |: not found)",
@@ -51,7 +56,7 @@ public class NodeServiceImpl implements NodeService {
         items.add(toItem("ssh", "SSH 连接", true, sshResult));
 
         if (!sshResult.isSuccess()) {
-            return buildResult(node, items, false, "SSH 连接失败，无法继续检测构建环境");
+            return buildResult(node, items, false, "SSH 连接失败，无法继续检测构建环境", false);
         }
 
         items.add(runCheck(node, "java", "JDK", "java -version 2>&1 | head -n 1", true));
@@ -64,7 +69,7 @@ public class NodeServiceImpl implements NodeService {
                 ? "构建环境检测通过，满足 CI 构建条件"
                 : "构建环境检测未通过，请安装或配置缺失的必检组件";
 
-        return buildResult(node, items, passed, summary);
+        return buildResult(node, items, passed, summary, true);
     }
 
     private NodeEnvCheckResultDTO checkDeployEnvironment(BuildNode node) {
@@ -74,7 +79,7 @@ public class NodeServiceImpl implements NodeService {
         items.add(toItem("ssh", "SSH 连接", true, sshResult));
 
         if (!sshResult.isSuccess()) {
-            return buildResult(node, items, false, "SSH 连接失败，无法继续检测部署环境");
+            return buildResult(node, items, false, "SSH 连接失败，无法继续检测部署环境", false);
         }
 
         items.add(runCheck(node, "kubectl", "kubectl", "kubectl version --client 2>&1 | head -n 1", true));
@@ -85,7 +90,7 @@ public class NodeServiceImpl implements NodeService {
                 ? "部署环境检测通过，满足 CD 部署条件"
                 : "部署环境检测未通过，请安装或配置 kubectl";
 
-        return buildResult(node, items, passed, summary);
+        return buildResult(node, items, passed, summary, true);
     }
 
     private boolean allRequiredPassed(List<NodeEnvCheckItemDTO> items) {
@@ -150,14 +155,33 @@ public class NodeServiceImpl implements NodeService {
     }
 
     private NodeEnvCheckResultDTO buildResult(BuildNode node, List<NodeEnvCheckItemDTO> items,
-                                              boolean passed, String summary) {
+                                              boolean passed, String summary, boolean sshConnected) {
+        String status = sshConnected ? STATUS_ONLINE : STATUS_OFFLINE;
+        persistNodeStatus(node, status);
+
         NodeEnvCheckResultDTO dto = new NodeEnvCheckResultDTO();
         dto.setNodeId(node.getId());
         dto.setNodeName(node.getName());
         dto.setNodeType(node.getNodeType());
         dto.setPassed(passed);
         dto.setSummary(summary);
+        dto.setStatus(status);
         dto.setItems(items);
         return dto;
+    }
+
+    /**
+     * 以 SSH 能否连通更新节点在线状态（与列表「在线/离线」一致）
+     */
+    private void persistNodeStatus(BuildNode node, String status) {
+        if (node == null || node.getId() == null || status == null) {
+            return;
+        }
+        if (Objects.equals(status, node.getStatus())) {
+            return;
+        }
+        node.setStatus(status);
+        node.setUpdateTime(LocalDateTime.now());
+        buildNodeMapper.updateById(node);
     }
 }

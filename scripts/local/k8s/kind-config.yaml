@@ -1,0 +1,20 @@
+# kind 单节点集群；测完 kind delete cluster --name opsflow 即可清空
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: opsflow
+nodes:
+  - role: control-plane
+# 让集群节点能拉宿主机 Harbor（localhost / http）
+# Docker Desktop 下宿主机地址用 host.docker.internal
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost"]
+      endpoint = ["http://host.docker.internal"]
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:80"]
+      endpoint = ["http://host.docker.internal"]
+    [plugins."io.containerd.grpc.v1.cri".registry.configs."localhost".tls]
+      insecure_skip_verify = true
+    [plugins."io.containerd.grpc.v1.cri".registry.configs."localhost:80".tls]
+      insecure_skip_verify = true
+    [plugins."io.containerd.grpc.v1.cri".registry.configs."host.docker.internal".tls]
+      insecure_skip_verify = true

@@ -1,4 +1,5 @@
 -- 组件管理表迁移（已有 opsflow 库时单独执行）
+SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS `component` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL COMMENT '组件名称',

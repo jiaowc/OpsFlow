@@ -1,25 +1,27 @@
-# OpsFlow 一键启动：MySQL（含当前配置数据） + 应用
+# OpsFlow 一键安装：MySQL + 应用（推荐默认方式）
 #
-# 前置：先打包
-#   mvn clean package -DskipTests
+# 快速开始：
+#   cp .env.example .env          # 可选，建议改密码
+#   ./scripts/deploy/compose-up.sh
+#   # 或：docker compose up -d --build
 #
-# 启动：
-#   docker compose up -d --build
+# 访问：http://localhost:${OPSFLOW_PORT:-8080}
+# 默认账号：admin / 123456（首次登录后请修改）
 #
-# 访问：http://localhost:8080
-# 默认账号见 scripts/database/init.sql 中的 user 表（本地多为 123456）
+# 停止：./scripts/deploy/compose-down.sh
+# 清空库重建：docker compose down -v && docker compose up -d --build
 #
-# 停止：
-#   docker compose down
-# 清空数据后重新初始化（会重新导入 init.sql）：
-#   docker compose down -v && docker compose up -d --build
+# 使用已有 MySQL：见 docker-compose.app.yml
 
 services:
   mysql:
     image: mysql:8.0
     container_name: opsflow-mysql
     restart: unless-stopped
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-authentication-plugin=mysql_native_password
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
     environment:
       TZ: Asia/Shanghai
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-opsflow}
@@ -36,7 +38,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
-      start_period: 20s
+      start_period: 25s
 
   opsflow:
     build:
@@ -52,9 +54,11 @@ services:
       - "${OPSFLOW_PORT:-8080}:8080"
     environment:
       TZ: Asia/Shanghai
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai
-      SPRING_DATASOURCE_USERNAME: opsflow
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-opsflow}
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m}
+      DB_URL: jdbc:mysql://mysql:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai
+      DB_USERNAME: opsflow
+      DB_PASSWORD: ${MYSQL_PASSWORD:-opsflow}
+      OPSFLOW_WEBHOOK_SECRET: ${OPSFLOW_WEBHOOK_SECRET:-}
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
@@ -63,7 +67,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 30s
+      start_period: 45s
 
 volumes:
   opsflow-mysql:

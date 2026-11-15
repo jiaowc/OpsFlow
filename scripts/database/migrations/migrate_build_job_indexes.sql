@@ -1,4 +1,5 @@
 -- build_job 热查询索引（幂等）
+SET NAMES utf8mb4;
 SET @dbname = DATABASE();
 
 SET @exist := (

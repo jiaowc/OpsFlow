@@ -132,7 +132,7 @@ public class HarborController {
      * @param project 可选，Harbor 项目名
      * @return 标签列表
      */
-    @RequiresPermission({"deploy:view", "deploy:create", "pipeline:view", "pipeline:rollback"})
+    @RequiresPermission({"deploy:view", "deploy:create", "pipeline:view", "pipeline:rollback", "pipeline:rollback:nonprod"})
     @GetMapping("/images/{imageName}/tags")
     public List<String> getImageTags(@PathVariable String imageName,
                                      @RequestParam(required = false) String project) {

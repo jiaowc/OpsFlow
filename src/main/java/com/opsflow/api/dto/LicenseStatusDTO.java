@@ -16,14 +16,35 @@ public class LicenseStatusDTO {
 
     private String licenseId;
 
+    /** 订阅计划：pro / enterprise 等，可空 */
+    private String plan;
+
     private String issuedAt;
 
     private String expiresAt;
+
+    /** 距到期剩余整天数；已过期为负数；永不过期为 null */
+    private Long daysRemaining;
+
+    /** 是否处于过期宽限期内（商业功能仍可用，但应续费） */
+    private boolean inGracePeriod;
 
     private List<String> features = new ArrayList<>();
 
     /** 是否已开通上线审批 */
     private boolean deployApprovalEnabled;
+
+    /** 是否已开通操作审计查询 */
+    private boolean auditEnabled;
+
+    /** 是否已开通外部集成通知 */
+    private boolean notifyIntegrationEnabled;
+
+    /** 是否已开通生产环境回滚 */
+    private boolean prodRollbackEnabled;
+
+    /** 是否已开通企业品牌定制（自定义 Logo） */
+    private boolean brandingEnabled;
 
     /**
      * 是否启用 License 强校验。

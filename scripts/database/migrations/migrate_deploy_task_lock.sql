@@ -1,5 +1,6 @@
 -- 上线任务协作锁定：locked / locked_by / locked_at
 -- 可重复执行
+SET NAMES utf8mb4;
 
 SET @db := DATABASE();
 

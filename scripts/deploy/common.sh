@@ -8,7 +8,7 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 JAR_NAME="opsflow.jar"
 JAR_PATH="${PROJECT_DIR}/target/${JAR_NAME}"
 LOG_FILE="${PROJECT_DIR}/logs/app.log"
-CONFIG_FILE="${PROJECT_DIR}/config/application.yml"
+LOCAL_CONFIG_FILE="${PROJECT_DIR}/config/application-local.yml"
 PORT="${OPSFLOW_PORT:-8080}"
 APP_NAME="OpsFlow"
 
@@ -18,31 +18,54 @@ DOCKER_CONTAINER="${OPSFLOW_DOCKER_CONTAINER:-opsflow}"
 DOCKER_NETWORK="${OPSFLOW_DOCKER_NETWORK:-}"
 
 # Java（本地编译/运行必须用 JDK 8；不要直接沿用环境里的 JAVA_HOME，可能是 17/21）
-OPSFLOW_JAVA8_CANDIDATES=(
-    "${OPSFLOW_JAVA_HOME:-}"
-    "/Library/Java/JavaVirtualMachines/jdk8u472/Contents/Home"
-    "/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home"
-    "/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home"
-)
 JAVA_8_HOME=""
 
-resolve_java8_home() {
+is_jdk8_home() {
+    local home="$1"
+    [ -n "${home}" ] \
+        && [ -x "${home}/bin/java" ] \
+        && [ -x "${home}/bin/javac" ] \
+        && "${home}/bin/java" -version 2>&1 | grep -Eq 'version "1\.8|version "8'
+}
+
+collect_java8_candidates() {
     local candidate
-    for candidate in "${OPSFLOW_JAVA8_CANDIDATES[@]}"; do
-        if [ -n "${candidate}" ] && [ -x "${candidate}/bin/java" ]; then
-            if "${candidate}/bin/java" -version 2>&1 | grep -Eq 'version "1\.8|version "8'; then
-                JAVA_8_HOME="${candidate}"
-                return 0
-            fi
-        fi
+    if [ -n "${OPSFLOW_JAVA_HOME:-}" ]; then
+        echo "${OPSFLOW_JAVA_HOME}"
+    fi
+    for candidate in \
+        /Library/Java/JavaVirtualMachines/jdk1.8.0_341.jdk/Contents/Home \
+        /Library/Java/JavaVirtualMachines/jdk8u472/Contents/Home \
+        /Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home \
+        /Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home; do
+        echo "${candidate}"
+    done
+    for candidate in /Library/Java/JavaVirtualMachines/*/Contents/Home; do
+        [ -d "${candidate}" ] || continue
+        echo "${candidate}"
     done
     if command -v /usr/libexec/java_home >/dev/null 2>&1; then
-        candidate="$(/usr/libexec/java_home -v 1.8 2>/dev/null || true)"
-        if [ -n "${candidate}" ] && [ -x "${candidate}/bin/java" ]; then
+        /usr/libexec/java_home -V 2>&1 \
+            | awk -F'"' '/Java SE 8|1\.8\.0/ {print $2}' \
+            | while IFS= read -r candidate; do
+                [ -n "${candidate}" ] && echo "${candidate}"
+            done
+    fi
+}
+
+resolve_java8_home() {
+    local candidate seen=""
+    while IFS= read -r candidate; do
+        [ -n "${candidate}" ] || continue
+        case " ${seen} " in
+            *" ${candidate} "*) continue ;;
+        esac
+        seen="${seen} ${candidate}"
+        if is_jdk8_home "${candidate}"; then
             JAVA_8_HOME="${candidate}"
             return 0
         fi
-    fi
+    done < <(collect_java8_candidates)
     return 1
 }
 
@@ -78,12 +101,27 @@ resolve_active_profile() {
         echo "${SPRING_PROFILES_ACTIVE}"
         return
     fi
+    # 兼容旧变量：以前用它选择 Maven 打包环境，现在等同于 SPRING_PROFILES_ACTIVE
     if [ -n "${OPSFLOW_MAVEN_PROFILE:-}" ]; then
+        print_warning "OPSFLOW_MAVEN_PROFILE 已废弃，请改用 SPRING_PROFILES_ACTIVE=${OPSFLOW_MAVEN_PROFILE}" >&2
         echo "${OPSFLOW_MAVEN_PROFILE}"
         return
     fi
-    # 空字符串 = 不强制 profile，仅使用 application.yml
+    # 空字符串 = 不激活 profile，仅使用公共配置 application.yml
     echo ""
+}
+
+print_config_summary() {
+    if [ ! -f "${PROJECT_DIR}/config/application.yml" ]; then
+        print_error "缺少 ${PROJECT_DIR}/config/application.yml（应用配置只从 config/ 目录读取）"
+    fi
+    print_info "激活环境: ${SPRING_PROFILES_ACTIVE:-默认（仅公共配置 application.yml）}"
+    if [ -f "${LOCAL_CONFIG_FILE}" ]; then
+        print_info "本机私有配置: ${LOCAL_CONFIG_FILE}"
+    elif [ -z "${DB_PASSWORD:-}" ]; then
+        print_warning "未找到 ${LOCAL_CONFIG_FILE}，且未设置环境变量 DB_PASSWORD，启动可能失败"
+        print_info "可参考 config/application-local.yml.example 创建"
+    fi
 }
 
 ensure_active_profile_env() {
@@ -164,17 +202,9 @@ stop_docker_app() {
 }
 
 build_docker_image() {
-    print_info "正在基于本地 JAR 构建 Docker 镜像 ${DOCKER_IMAGE}..."
+    print_info "正在多阶段构建 Docker 镜像 ${DOCKER_IMAGE}（镜像内 Maven 编译，无需预打 jar）..."
     check_command docker
     cd "${PROJECT_DIR}"
-
-    if [ ! -f "${JAR_PATH}" ]; then
-        print_error "JAR 不存在: ${JAR_PATH}"
-        print_info "请先执行: mvn clean package -DskipTests"
-        exit 1
-    fi
-
-    print_info "使用 JAR: ${JAR_PATH} ($(du -h "${JAR_PATH}" | cut -f1))"
 
     if docker build -t "${DOCKER_IMAGE}" .; then
         print_success "镜像构建成功: ${DOCKER_IMAGE}"
@@ -213,19 +243,20 @@ start_docker_app() {
         --add-host=host.docker.internal:host-gateway
     )
 
-    if [ -d "${PROJECT_DIR}/config" ]; then
-        print_info "挂载外部配置目录: ${PROJECT_DIR}/config"
-        print_info "Docker 激活环境: ${SPRING_PROFILES_ACTIVE:-默认(application.yml)}"
-        run_args+=(
-            -v "${PROJECT_DIR}/config:/app/config:ro"
-        )
-        if [ -n "${SPRING_PROFILES_ACTIVE:-}" ]; then
-            run_args+=(-e "SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}")
-        fi
-    else
-        print_warning "外部配置目录不存在: ${PROJECT_DIR}/config，将使用镜像内默认配置"
-        print_info "建议准备 config/application.yml 与 application-<env>.yml"
+    print_config_summary
+    if [ -n "${SPRING_PROFILES_ACTIVE:-}" ]; then
+        run_args+=(-e "SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}")
     fi
+    if [ -d "${PROJECT_DIR}/config" ]; then
+        # 用项目 config/ 覆盖镜像内的 /app/config/，带上本机的 application-local.yml 和最新配置
+        run_args+=(-v "${PROJECT_DIR}/config:/app/config:ro")
+    fi
+    local db_var
+    for db_var in DB_URL DB_USERNAME DB_PASSWORD; do
+        if [ -n "${!db_var:-}" ]; then
+            run_args+=(-e "${db_var}")
+        fi
+    done
 
     if [ -n "${DOCKER_NETWORK}" ]; then
         run_args+=(--network "${DOCKER_NETWORK}")

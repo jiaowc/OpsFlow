@@ -9,7 +9,7 @@ import com.opsflow.dao.model.*;
 import com.opsflow.service.FeishuUserResolveService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.util.DigestUtils;
+import com.opsflow.common.util.PasswordHasher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
@@ -54,6 +54,23 @@ public class UserController {
     }
 
     /**
+     * 下拉选项：仅返回启用用户的 id / 用户名 / 姓名（审批流选择审批人用）
+     */
+    @RequiresPermission({"user:manage", "approval:manage"})
+    @GetMapping("/options")
+    public List<java.util.Map<String, Object>> userOptions() {
+        return userMapper.selectList(new QueryWrapper<User>().eq("status", 1).orderByAsc("username"))
+                .stream().map(u -> {
+                    java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
+                    item.put("id", u.getId());
+                    item.put("username", u.getUsername());
+                    item.put("realName", u.getRealName());
+                    item.put("status", u.getStatus());
+                    return item;
+                }).collect(Collectors.toList());
+    }
+
+    /**
      * 获取用户详情
      */
     @GetMapping("/{id}")
@@ -80,9 +97,9 @@ public class UserController {
         User user = new User();
         BeanUtils.copyProperties(request, user, "id", "roles", "roleIds", "feishuUserId", "source");
         
-        // 加密密码（简单MD5，实际应该使用BCrypt等更安全的方式）
+        // BCrypt 加密密码
         if (request.getPassword() != null && !request.getPassword().isEmpty()) {
-            user.setPassword(DigestUtils.md5DigestAsHex(request.getPassword().getBytes()));
+            user.setPassword(PasswordHasher.hash(request.getPassword()));
         } else {
             throw new BusinessException("密码不能为空");
         }
@@ -131,7 +148,7 @@ public class UserController {
         
         // 如果提供了新密码，则更新
         if (request.getPassword() != null && !request.getPassword().isEmpty()) {
-            user.setPassword(DigestUtils.md5DigestAsHex(request.getPassword().getBytes()));
+            user.setPassword(PasswordHasher.hash(request.getPassword()));
         }
         // 允许管理员纠正来源（飞书/LDAP 同步用户）
         if (StringUtils.hasText(request.getSource())) {
@@ -203,7 +220,7 @@ public class UserController {
      */
     private UserDTO getUserDTO(User user) {
         UserDTO dto = new UserDTO();
-        BeanUtils.copyProperties(user, dto);
+        BeanUtils.copyProperties(user, dto, "password");
         if (!StringUtils.hasText(dto.getSource())) {
             dto.setSource("local");
         }

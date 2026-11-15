@@ -17,6 +17,67 @@
 // ============================================
 
 window._taskListCache = [];
+window._taskFilteredCache = [];
+let taskListPage = 1;
+const TASK_LIST_PAGE_SIZE_KEY = 'opsflow.taskList.pageSize';
+const TASK_PAGE_SIZE_OPTIONS = [10, 20, 50];
+
+function getTaskListPageSize() {
+    const saved = parseInt(localStorage.getItem(TASK_LIST_PAGE_SIZE_KEY), 10);
+    return TASK_PAGE_SIZE_OPTIONS.includes(saved) ? saved : 20;
+}
+
+function gotoTaskListPage(page) {
+    const total = (window._taskFilteredCache || []).length;
+    const pageSize = getTaskListPageSize();
+    const totalPages = Math.max(Math.ceil(total / pageSize) || 1, 1);
+    taskListPage = Math.min(Math.max(parseInt(page, 10) || 1, 1), totalPages);
+    paintTaskTablePage();
+}
+window.gotoTaskListPage = gotoTaskListPage;
+
+function changeTaskListPageSize(size) {
+    const normalized = TASK_PAGE_SIZE_OPTIONS.includes(Number(size)) ? Number(size) : 20;
+    localStorage.setItem(TASK_LIST_PAGE_SIZE_KEY, String(normalized));
+    taskListPage = 1;
+    paintTaskTablePage();
+}
+window.changeTaskListPageSize = changeTaskListPageSize;
+
+function renderTaskPageSizeSelect(pageSize) {
+    return `
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280;">
+            每页
+            <select onchange="window.changeTaskListPageSize(Number(this.value))" style="padding:2px 6px;">
+                ${TASK_PAGE_SIZE_OPTIONS.map(n =>
+                    `<option value="${n}" ${n === pageSize ? 'selected' : ''}>${n}</option>`
+                ).join('')}
+            </select>
+            条
+        </label>
+    `;
+}
+
+function renderTaskPaginationBar(page, totalPages, total) {
+    const safeTotalPages = Math.max(totalPages || 0, 1);
+    const safePage = Math.min(Math.max(page || 1, 1), safeTotalPages);
+    return `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:8px;">
+            <span style="font-size:13px;color:#6b7280;">共 ${total || 0} 条，第 ${safePage} / ${safeTotalPages} 页</span>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                ${renderTaskPageSizeSelect(getTaskListPageSize())}
+                <div style="display:flex;gap:8px;">
+                    <button class="btn-secondary" style="padding:4px 12px;font-size:12px;"
+                        ${safePage <= 1 ? 'disabled' : ''}
+                        onclick="window.gotoTaskListPage(${safePage - 1})">上一页</button>
+                    <button class="btn-secondary" style="padding:4px 12px;font-size:12px;"
+                        ${safePage >= safeTotalPages ? 'disabled' : ''}
+                        onclick="window.gotoTaskListPage(${safePage + 1})">下一页</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
 
 function formatNotifyChannels(channels) {
     if (!channels || !channels.length) {
@@ -150,7 +211,10 @@ function renderModulesCellHtml(task) {
         const name = escapeTaskHtml(resolveModuleServiceName(m));
         const image = escapeTaskHtml(m.imageFullName || (typeof m === 'string' ? m : ''));
         const prefix = details.length > 1 ? `${idx + 1}. ` : '';
-        return `<div class="task-module-line" title="${image}">${prefix}${name}</div>`;
+        const unverified = m.imageFullName && !m.verifiedEnv
+            ? ' <span style="color:#d97706;" title="该镜像未在测试环境部署过">⚠</span>'
+            : '';
+        return `<div class="task-module-line" title="${image}">${prefix}${name}${unverified}</div>`;
     };
 
     if (details.length <= 2) {
@@ -235,18 +299,25 @@ function applyTaskFilters() {
             if (!actionable) return false;
         }
         return true;
+    }).sort((a, b) => {
+        const timeA = a.createTime ? new Date(a.createTime).getTime() : 0;
+        const timeB = b.createTime ? new Date(b.createTime).getTime() : 0;
+        return timeB - timeA;
     });
-    paintTaskTable(filtered);
+    window._taskFilteredCache = filtered;
+    taskListPage = 1;
+    paintTaskTablePage();
 }
 window.applyTaskFilters = applyTaskFilters;
 
 async function loadTasks() {
     const taskList = document.getElementById('taskList');
     if (!taskList) return;
-    taskList.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#999;">加载中...</td></tr>';
+    taskList.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-4);">加载中...</td></tr>';
 
     try {
-        const response = await fetch('/api/task/list');
+        const projectId = typeof getCurrentProjectId === 'function' ? getCurrentProjectId() : '';
+        const response = await fetch('/api/task/list' + (projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''));
         if (response.ok) {
             const tasks = await response.json();
             window._taskListCache = tasks || [];
@@ -260,16 +331,12 @@ async function loadTasks() {
         console.error('Load tasks error:', error);
     }
 
-    // 接口无数据时尝试使用页面 mock
-    if (typeof mockTasks !== 'undefined' && mockTasks.length > 0) {
-        window._taskListCache = mockTasks;
-        populateTaskClusterFilter(window._taskListCache);
-        applyTaskFilters();
-        return;
-    }
-
     window._taskListCache = [];
-    taskList.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#999;">暂无上线任务</td></tr>';
+    window._taskFilteredCache = [];
+    taskListPage = 1;
+    const pager = document.getElementById('taskListPagination');
+    if (pager) pager.innerHTML = '';
+    taskList.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-4);">暂无上线任务</td></tr>';
 }
 
 function renderTaskList(tasks) {
@@ -278,27 +345,50 @@ function renderTaskList(tasks) {
     applyTaskFilters();
 }
 
+function paintTaskTablePage() {
+    const taskList = document.getElementById('taskList');
+    const pager = document.getElementById('taskListPagination');
+    if (!taskList) return;
+
+    const filtered = window._taskFilteredCache || [];
+    const total = filtered.length;
+    const pageSize = getTaskListPageSize();
+    const totalPages = Math.max(Math.ceil(total / pageSize) || 1, 1);
+    if (taskListPage > totalPages) taskListPage = totalPages;
+    if (taskListPage < 1) taskListPage = 1;
+
+    if (pager) {
+        pager.innerHTML = total > 0
+            ? renderTaskPaginationBar(taskListPage, totalPages, total)
+            : '';
+    }
+
+    if (!total) {
+        taskList.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-4);">没有符合条件的上线任务</td></tr>';
+        return;
+    }
+
+    const start = (taskListPage - 1) * pageSize;
+    const pageTasks = filtered.slice(start, start + pageSize);
+    paintTaskTable(pageTasks);
+}
+
 function paintTaskTable(tasks) {
     const taskList = document.getElementById('taskList');
     if (!taskList) return;
 
     if (!tasks || !tasks.length) {
-        taskList.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#999;">没有符合条件的上线任务</td></tr>';
+        taskList.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-4);">没有符合条件的上线任务</td></tr>';
         return;
     }
 
-    const sortedTasks = [...tasks].sort((a, b) => {
-        const timeA = a.createTime ? new Date(a.createTime).getTime() : 0;
-        const timeB = b.createTime ? new Date(b.createTime).getTime() : 0;
-        return timeB - timeA;
-    });
-
-    taskList.innerHTML = sortedTasks.map(task => {
+    taskList.innerHTML = tasks.map(task => {
         const progress = resolveTaskProgress(task);
         // 当前用户可操作的审批记录 → 显示通过/拒绝按钮
         const actionableRecord = (task.approvalRecords || []).find(r => r.actionable);
         const canApprove = typeof hasPermission !== 'function' || hasPermission('deploy:approve');
         const canCreate = typeof hasPermission !== 'function' || hasPermission('deploy:create');
+        const canDeletePerm = typeof hasPermission === 'function' && hasPermission('deploy:delete');
         const approvalActions = actionableRecord && canApprove
             ? `<button class="btn-success btn-sm" onclick="approveApprovalRecord(${actionableRecord.id})">通过</button>
                <button class="btn-danger btn-sm" onclick="rejectApprovalRecord(${actionableRecord.id})">拒绝</button>`
@@ -326,6 +416,14 @@ function paintTaskTable(tasks) {
                 publishBtn = `<button class="btn-success btn-sm" disabled title="${tip}" style="opacity:0.45;cursor:not-allowed;">发布</button>`;
             }
         }
+        let deleteBtn = '';
+        if (canDeletePerm) {
+            if (task.canDelete === false) {
+                deleteBtn = `<button class="btn-danger btn-sm" disabled title="任务发布中，无法删除" style="opacity:0.45;cursor:not-allowed;">删除</button>`;
+            } else {
+                deleteBtn = `<button class="btn-danger btn-sm" onclick="deleteTask(${task.id})">删除</button>`;
+            }
+        }
         const taskName = escapeTaskHtml(task.taskName || '-');
         const taskNumber = escapeTaskHtml(task.taskNumber || task.jobNumber || '-');
         const creatorName = escapeTaskHtml(task.creatorName || '-');
@@ -335,7 +433,7 @@ function paintTaskTable(tasks) {
                 <td>
                     <div class="task-number-cell" title="${taskNumber}">${taskNumber}</div>
                 </td>
-                <td><div class="task-name-cell" title="${taskName}">${taskName}</div></td>
+                <td><div class="task-name-cell" title="${taskName}">${taskName}</div>${task.projectName ? `<div class="task-project-tag">${escapeTaskHtml(task.projectName)}</div>` : ''}</td>
                 <td>${renderClusterCell(task)}</td>
                 <td>${renderEnvCell(task)}</td>
                 <td>${renderModulesCellHtml(task)}</td>
@@ -350,7 +448,7 @@ function paintTaskTable(tasks) {
                         ${publishBtn}
                         ${approvalActions}
                         <button class="btn-edit btn-sm" onclick="viewTask(${task.id})">详情</button>
-                        ${canCreate && task.canEdit ? `<button class="btn-danger btn-sm" onclick="deleteTask(${task.id})">删除</button>` : ''}
+                        ${deleteBtn}
                     </div>
                 </td>
             </tr>
@@ -442,9 +540,29 @@ async function showCreateTaskModal() {
         return;
     }
     window._taskCreateHarborRegistry = harborRegistry;
-    
+    window._taskCreateServicesCache = services;
+
+    const projects = (typeof loadProjectOptions === 'function' ? await loadProjectOptions() : [])
+        .filter(p => p.myRole && p.myRole !== 'VIEWER');
+    if (!projects.length) {
+        alert('你不是任何项目的开发成员，无法创建上线任务，请联系项目管理员');
+        return;
+    }
+    const currentProjectId = typeof getCurrentProjectId === 'function' ? getCurrentProjectId() : '';
+    const defaultProjectId = projects.some(p => String(p.id) === currentProjectId)
+        ? currentProjectId
+        : (projects.length === 1 ? String(projects[0].id) : '');
+
     const content = `
         <form id="createTaskForm">
+            <div class="form-item">
+                <label>所属项目 *</label>
+                <select name="projectId" id="taskProjectSelect" onchange="onTaskCreateProjectChange(this.value)" required>
+                    <option value="">请选择项目</option>
+                    ${projects.map(p => `<option value="${p.id}"${String(p.id) === defaultProjectId ? ' selected' : ''}>${escapeTaskHtml(p.name)}</option>`).join('')}
+                </select>
+                <small style="color:#6b7280;">上线模块只能选择该项目下的服务</small>
+            </div>
             <div class="form-item">
                 <label>任务名称 *</label>
                 <input type="text" name="taskName" placeholder="例如: 用户服务v1.0.0上线" required>
@@ -452,7 +570,7 @@ async function showCreateTaskModal() {
             <div class="form-item">
                 <label>上线模块 *（服务 / Harbor 项目 / 版本）</label>
                 <div id="deployModulesContainer">
-                    ${buildDeployModuleRowHtml(services.map(s => ({ value: s.code || s.name, text: s.code || s.name })))}
+                    ${buildDeployModuleRowHtml(taskCreateServiceOptions(defaultProjectId))}
                 </div>
                 <button type="button" class="btn-secondary" onclick="addDeployModule()" style="margin-top:8px;font-size:12px;padding:6px 12px;">添加模块</button>
                 <small style="color:#6b7280;display:block;margin-top:6px;">将保存完整镜像地址：${harborRegistry}/项目/服务:版本；串行时按此顺序依次部署，有限并行时按并发数同时部署</small>
@@ -529,6 +647,11 @@ async function showCreateTaskModal() {
     showModal('创建上线任务', content, async () => {
         const form = document.getElementById('createTaskForm');
         
+        const projectId = parseInt(form.querySelector('[name="projectId"]').value, 10);
+        if (!projectId) {
+            alert('请选择所属项目');
+            return;
+        }
         const taskName = form.querySelector('[name="taskName"]').value;
         if (!taskName) {
             alert('请输入任务名称');
@@ -610,6 +733,7 @@ async function showCreateTaskModal() {
         }
         
         const data = {
+            projectId: projectId,
             taskName: taskName,
             deployModules: deployModules,
             clusterId: clusterId,
@@ -758,7 +882,11 @@ async function onDeployModuleProjectChange(projectSelect) {
     versionSelect.innerHTML = '<option value="">加载中...</option>';
     versionSelect.disabled = true;
     try {
-        const response = await fetch(`/api/harbor/service/${encodeURIComponent(serviceName)}/versions?project=${encodeURIComponent(project)}`);
+        const query = `service=${encodeURIComponent(serviceName)}&project=${encodeURIComponent(project)}`;
+        const [response, verifiedResp] = await Promise.all([
+            fetch(`/api/harbor/service/${encodeURIComponent(serviceName)}/versions?project=${encodeURIComponent(project)}`),
+            fetch(`/api/task/verified-versions?${query}`).catch(() => null)
+        ]);
         if (!response.ok) {
             throw new Error(await response.text() || '加载版本失败');
         }
@@ -768,8 +896,14 @@ async function onDeployModuleProjectChange(projectSelect) {
             versionSelect.disabled = true;
             return;
         }
+        const verified = (verifiedResp && verifiedResp.ok) ? (await verifiedResp.json() || {}) : {};
+        // 已在测试环境部署成功的版本排在前面，并标注验证环境
+        const ordered = versions.filter(v => verified[v]).concat(versions.filter(v => !verified[v]));
         versionSelect.innerHTML = '<option value="">请选择版本</option>' +
-            versions.map(v => `<option value="${v}">${v}</option>`).join('');
+            ordered.map(v => {
+                const label = verified[v] ? `${v}  ✓ 已在 ${verified[v]} 验证` : `${v}  （未在测试环境部署过）`;
+                return `<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(label)}</option>`;
+            }).join('');
         versionSelect.disabled = false;
     } catch (error) {
         console.error('Load service versions error:', error);
@@ -804,6 +938,20 @@ function buildDeployModuleRowHtml(services) {
         </div>
     `;
 }
+
+function taskCreateServiceOptions(projectId) {
+    return (window._taskCreateServicesCache || [])
+        .filter(s => !projectId || String(s.projectId) === String(projectId))
+        .map(s => ({ value: s.code || s.name, text: s.code || s.name }));
+}
+
+function onTaskCreateProjectChange(projectId) {
+    const container = document.getElementById('deployModulesContainer');
+    if (!container) return;
+    container.innerHTML = buildDeployModuleRowHtml(taskCreateServiceOptions(projectId));
+    refreshDeployModuleOrderButtons();
+}
+window.onTaskCreateProjectChange = onTaskCreateProjectChange;
 
 function getDeployModuleServiceOptions() {
     const container = document.getElementById('deployModulesContainer');
@@ -975,7 +1123,7 @@ async function refreshHarborImages() {
     const imageContainer = form.querySelector('div[style*="max-height"]');
     if (!imageContainer) return;
     
-    imageContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">加载中...</div>';
+    imageContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-4);">加载中...</div>';
     
     try {
         const response = await fetch('/api/harbor/images');
@@ -989,7 +1137,7 @@ async function refreshHarborImages() {
                     </label>
                 `).join('');
             } else {
-                imageContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">暂无镜像</div>';
+                imageContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-4);">暂无镜像</div>';
             }
         } else {
             imageContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #dc2626;">加载失败</div>';
@@ -1289,7 +1437,11 @@ async function viewTask(id) {
                 <ul style="margin: 8px 0; padding-left: 20px;">
                     ${task.deployModuleDetails.map((m, idx) => `
                         <li style="font-size: 13px; margin: 6px 0;">
-                            <div style="font-family: monospace;">${idx + 1}. ${escapeTaskHtml(m.imageFullName || '-')}</div>
+                            <div style="font-family: monospace;">${idx + 1}. ${escapeTaskHtml(m.imageFullName || '-')}
+                                ${m.verifiedEnv
+                                    ? `<span style="font-family:inherit;color:#059669;font-size:12px;margin-left:6px;">✓ 已在 ${escapeTaskHtml(m.verifiedEnv)} 验证</span>`
+                                    : `<span style="font-family:inherit;color:#d97706;font-size:12px;margin-left:6px;">⚠ 未在测试环境部署过</span>`}
+                            </div>
                             <div style="color:#6b7280;font-size:12px;margin-top:2px;">
                                 服务: ${escapeTaskHtml(m.serviceName || m.serviceCode || '-')}
                                 · 端口: ${m.servicePort != null ? m.servicePort : '-'}
@@ -1350,16 +1502,25 @@ async function viewTask(id) {
 }
 
 async function deleteTask(id) {
-    if (!confirm('确定要删除这个任务吗？')) return;
-    
+    if (typeof hasPermission === 'function' && !hasPermission('deploy:delete')) {
+        alert('无删除权限');
+        return;
+    }
+    if (!confirm('确定要删除这个任务吗？删除后关联的审批记录与 CD 构建也会一并清除。')) return;
+
     try {
         const response = await fetch(`/api/task/${id}`, { method: 'DELETE' });
         if (response.ok) {
             alert('删除成功');
             loadTasks();
-        } else {
-            alert('删除失败');
+            return;
         }
+        let message = '删除失败';
+        try {
+            const body = await response.json();
+            if (body && body.message) message = body.message;
+        } catch (_) { /* ignore */ }
+        alert(message);
     } catch (error) {
         alert('删除失败: ' + error.message);
     }

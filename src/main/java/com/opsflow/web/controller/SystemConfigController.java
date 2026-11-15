@@ -5,6 +5,9 @@ import com.opsflow.api.dto.SystemConfigDTO;
 import com.opsflow.dao.mapper.SystemConfigMapper;
 import com.opsflow.dao.model.SystemConfig;
 import com.opsflow.integration.feishu.FeishuClient;
+import com.opsflow.license.LicenseFeatures;
+import com.opsflow.service.BuildRetentionService;
+import com.opsflow.service.LicenseService;
 import com.opsflow.service.SystemConfigService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,11 +36,26 @@ public class SystemConfigController {
     @Autowired
     private FeishuClient feishuClient;
 
+    @Autowired
+    private BuildRetentionService buildRetentionService;
+
+    @Autowired
+    private LicenseService licenseService;
+
+    /**
+     * 手动执行一次构建日志/记录/审计的保留清理；dryRun=true 只统计不删除
+     */
+    @PostMapping("/retention")
+    public Map<String, Object> runRetention(@RequestParam(defaultValue = "true") boolean dryRun) {
+        return buildRetentionService.runCleanup(dryRun);
+    }
+
     /**
      * 创建或更新配置
      */
     @PostMapping("/config")
     public SystemConfigDTO saveConfig(@RequestBody SystemConfigDTO request) {
+        assertNotifyIntegrationWritable(request.getConfigType());
         systemConfigService.save(
                 request.getConfigType(),
                 request.getConfigKey(),
@@ -67,6 +85,7 @@ public class SystemConfigController {
     @PostMapping("/config/batch")
     public Map<String, Object> saveBatch(@RequestBody Map<String, Object> request) {
         String configType = request.get("configType") != null ? String.valueOf(request.get("configType")) : null;
+        assertNotifyIntegrationWritable(configType);
         Object valuesObj = request.get("values");
         Map<String, String> values = new HashMap<>();
         if (valuesObj instanceof Map) {
@@ -91,20 +110,33 @@ public class SystemConfigController {
     /**
      * 通知渠道可用性与默认勾选（创建任务表单用）
      */
+    @RequiresPermission({"system:config", "deploy:create", "deploy:view"})
     @GetMapping("/notify/options")
     public Map<String, Object> notifyOptions() {
         Map<String, Object> result = new HashMap<>();
         boolean inboxEnabled = systemConfigService.getBoolean("notify", "inboxEnabled", true);
-        boolean feishuEnabled = systemConfigService.getBoolean("feishu_notify", "approvalEnabled", false)
+        boolean licensed = licenseService.isFeatureEnabled(LicenseFeatures.NOTIFY_INTEGRATION);
+        boolean feishuEnabled = licensed && (systemConfigService.getBoolean("feishu_notify", "approvalEnabled", false)
                 || (systemConfigService.get("feishu_notify", "approvalEnabled") == null
-                && systemConfigService.getBoolean("feishu", "approvalEnabled", false));
+                && systemConfigService.getBoolean("feishu", "approvalEnabled", false)));
         boolean defaultInbox = systemConfigService.getBoolean("notify", "defaultInbox", true);
         boolean defaultFeishu = systemConfigService.getBoolean("notify", "defaultFeishu", false);
         result.put("inboxEnabled", inboxEnabled);
         result.put("feishuEnabled", feishuEnabled);
+        result.put("notifyIntegrationLicensed", licensed);
         result.put("defaultInbox", inboxEnabled && defaultInbox);
         result.put("defaultFeishu", feishuEnabled && defaultFeishu);
         return result;
+    }
+
+    private void assertNotifyIntegrationWritable(String configType) {
+        if (configType == null) {
+            return;
+        }
+        String t = configType.trim();
+        if ("feishu".equalsIgnoreCase(t) || "feishu_notify".equalsIgnoreCase(t)) {
+            licenseService.requireFeature(LicenseFeatures.NOTIFY_INTEGRATION);
+        }
     }
 
     /**

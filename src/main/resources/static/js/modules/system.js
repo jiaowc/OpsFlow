@@ -385,7 +385,7 @@ async function loadComponents() {
         console.error('Load components error:', error);
     }
     
-    componentList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">暂无组件</td></tr>';
+    componentList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-4);">暂无组件</td></tr>';
 }
 window.loadComponents = loadComponents;
 
@@ -439,7 +439,7 @@ function renderComponentList(components) {
     if (!componentList) return;
     
     if (components.length === 0) {
-        componentList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">暂无组件</td></tr>';
+        componentList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-4);">暂无组件</td></tr>';
         return;
     }
     
@@ -865,9 +865,7 @@ function renderPipelineNodeSelectOptions(nodeType, selectedValue) {
 }
 
 function getPipelineNodeMultiSelectState(pipeline) {
-    const selectedIds = Array.isArray(pipeline.buildNodeIds) && pipeline.buildNodeIds.length
-        ? pipeline.buildNodeIds.map(v => String(v))
-        : (pipeline.buildNodeId != null ? [String(pipeline.buildNodeId)] : []);
+    const selectedIds = Array.isArray(pipeline.buildNodeIds) ? pipeline.buildNodeIds.map(v => String(v)) : [];
     const nodes = (mockNodes || []).filter(n => n.nodeType === 'build');
     return { selectedIds, nodes };
 }
@@ -978,14 +976,14 @@ function buildPipelineNodeSectionHtml(pipeline) {
                 <div id="pipelineBuildNodeMultiSelect" style="position:relative;">
                     ${renderPipelineBuildNodeMultiSelect(pipeline)}
                 </div>
-                <small style="color:#666;display:block;margin-top:4px;">仅在配置了 CI 步骤时需要；运行 Job 时会优先调度到当前负载较低的节点执行 CI 步骤</small>
+                <small style="color:var(--text-3);display:block;margin-top:4px;">仅在配置了 CI 步骤时需要；运行 Job 时会优先调度到当前负载较低的节点执行 CI 步骤</small>
             </div>
             <div class="form-item">
                 <label style="display:flex;justify-content:space-between;align-items:center;">
                     <span>CI 步骤</span>
                     <button type="button" class="btn-secondary" onclick="window.addPipelineCiStep()" style="padding:4px 12px;font-size:12px;">关联 CI 步骤</button>
                 </label>
-                <div id="pipelineCiStepsContainer" style="border:1px solid #ddd;border-radius:4px;padding:12px;background:#f9f9f9;min-height:40px;"></div>
+                <div id="pipelineCiStepsContainer" style="border:1px solid var(--border-strong);border-radius:4px;padding:12px;background:#f9f9f9;min-height:40px;"></div>
             </div>
         </div>
         <div style="border: 1px solid #bbf7d0; border-radius: 6px; padding: 16px; background: #f0fdf4;">
@@ -993,14 +991,14 @@ function buildPipelineNodeSectionHtml(pipeline) {
             <div class="form-item">
                 <label>部署节点</label>
                 <select name="deployNodeId">${renderPipelineNodeSelectOptions('deploy', pipeline.deployNodeId)}</select>
-                <small style="color:#666;display:block;margin-top:4px;">仅在配置了 CD 步骤时需要；部署、检查部署状态等步骤在部署节点执行</small>
+                <small style="color:var(--text-3);display:block;margin-top:4px;">仅在配置了 CD 步骤时需要；部署、检查部署状态等步骤在部署节点执行</small>
             </div>
             <div class="form-item">
                 <label style="display:flex;justify-content:space-between;align-items:center;">
                     <span>CD 步骤</span>
                     <button type="button" class="btn-secondary" onclick="window.addPipelineCdStep()" style="padding:4px 12px;font-size:12px;">关联 CD 步骤</button>
                 </label>
-                <div id="pipelineCdStepsContainer" style="border:1px solid #ddd;border-radius:4px;padding:12px;background:#f9f9f9;min-height:40px;"></div>
+                <div id="pipelineCdStepsContainer" style="border:1px solid var(--border-strong);border-radius:4px;padding:12px;background:#f9f9f9;min-height:40px;"></div>
             </div>
         </div>
         <p style="margin:12px 0 0;font-size:13px;color:#6b7280;">CI / CD 至少配置其中一个阶段（例如仅 CD：直接发布已有镜像，无需构建）</p>
@@ -1093,7 +1091,6 @@ function collectPipelineFormData(form) {
     return {
         name: nameInput.value.trim(),
         pipelineType: pipelineType,
-        buildNodeId: buildNodeIds.length ? buildNodeIds[0] : null,
         buildNodeIds: buildNodeIds,
         deployNodeId: deployNodeId,
         status: form.querySelector('[name="status"]')?.value === '0' ? 0 : 1,
@@ -1144,7 +1141,7 @@ async function loadPipelines() {
         return;
     }
     
-    pipelineList.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #999;">加载中...</td></tr>';
+    pipelineList.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: var(--text-4);">加载中...</td></tr>';
     
     try {
         if (typeof window.loadPipelineStepDefs === 'function') {
@@ -1156,7 +1153,7 @@ async function loadPipelines() {
             if (pipelines && pipelines.length > 0) {
                 renderPipelineList(pipelines);
             } else {
-                pipelineList.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #999;">暂无 Pipeline 模版</td></tr>';
+                pipelineList.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: var(--text-4);">暂无 Pipeline 模版</td></tr>';
             }
         } else {
             const errorText = await response.text();
@@ -1267,21 +1264,21 @@ function renderPipelineList(pipelines) {
     if (!pipelineList) return;
     
     if (pipelines.length === 0) {
-        pipelineList.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #999;">暂无 Pipeline 模版</td></tr>';
+        pipelineList.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: var(--text-4);">暂无 Pipeline 模版</td></tr>';
         return;
     }
     
     pipelineList.innerHTML = pipelines.map(pipeline => {
         const statusText = (pipeline.status === 1 || pipeline.status === null) 
-            ? '<span style="color: #059669;">启用</span>' 
-            : '<span style="color: #dc2626;">禁用</span>';
+            ? '<span class="status-tag is-on">启用</span>' 
+            : '<span class="status-tag is-off">禁用</span>';
         const { ciSteps, cdSteps } = resolvePipelinePhaseSteps(pipeline);
         
         return `
             <tr>
                 <td>${escPipelineHtml(pipeline.name || '-')}</td>
                 <td>${pipelineTypeBadgeHtml(pipeline.pipelineType)}</td>
-                <td>${formatPipelineFlowHtml(pipeline.buildNodeName, pipeline.deployNodeName, ciSteps, cdSteps)}</td>
+                <td class="pipeline-flow-cell">${formatPipelineFlowHtml(pipeline.buildNodeName, pipeline.deployNodeName, ciSteps, cdSteps)}</td>
                 <td>${statusText}</td>
                 <td>
                     <div class="table-actions">
@@ -1353,6 +1350,10 @@ async function showAddPipelineModal() {
         
         const data = collectPipelineFormData(form);
         if (!data) return;
+        if (typeof window.passTemplateVarChecks === 'function'
+                && !await window.passTemplateVarChecks(form)) {
+            return;
+        }
         
         try {
             const response = await fetch('/api/pipeline/create', {
@@ -1497,6 +1498,10 @@ async function showEditPipelineModal(pipeline) {
         
         const data = collectPipelineFormData(form);
         if (!data) return;
+        if (typeof window.passTemplateVarChecks === 'function'
+                && !await window.passTemplateVarChecks(form)) {
+            return;
+        }
         
         try {
             const response = await fetch(`/api/pipeline/${pipeline.id}`, {

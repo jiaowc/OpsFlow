@@ -1,4 +1,5 @@
 -- 为环境表增加生产/非生产类型字段（可重复执行）
+SET NAMES utf8mb4;
 SET @dbname = DATABASE();
 
 SET @preparedStatement = (SELECT IF(

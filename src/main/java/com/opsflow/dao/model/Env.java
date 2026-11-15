@@ -21,9 +21,7 @@ public class Env {
     private String name;
 
     private Long clusterId;
-    
-    private String k8sCluster;
-    
+
     private String k8sNamespace;
 
     /**
@@ -44,6 +42,4 @@ public class Env {
         return "prod".equalsIgnoreCase(name);
     }
 }
-
-
 

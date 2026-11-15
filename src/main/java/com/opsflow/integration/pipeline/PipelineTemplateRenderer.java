@@ -19,6 +19,8 @@ public final class PipelineTemplateRenderer {
     /**
      * 从执行上下文与步骤参数构建模版变量表。
      * <p>步骤参数优先级高于上下文参数；port 与 servicePort 互为别名。</p>
+     * <p>这里新增或删除变量时，同步修改 {@link PipelineTemplateVariableChecker#supportedVariables(String)}，
+     * 否则模版管理保存前的变量检查会误报或漏报。</p>
      *
      * @param context 流水线执行上下文（服务、环境、全局参数）
      * @param stepParams 当前步骤参数（镜像、tag、serviceType 等）

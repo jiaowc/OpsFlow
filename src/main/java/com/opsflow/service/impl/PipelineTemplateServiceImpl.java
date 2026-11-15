@@ -2,7 +2,9 @@ package com.opsflow.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.opsflow.api.dto.PipelineTemplateDTO;
+import com.opsflow.api.dto.TemplateVariableCheckDTO;
 import com.opsflow.common.exception.BusinessException;
+import com.opsflow.integration.pipeline.PipelineTemplateVariableChecker;
 import com.opsflow.dao.mapper.PipelineTemplateMapper;
 import com.opsflow.dao.model.PipelineTemplate;
 import com.opsflow.service.PipelineTemplateService;
@@ -74,6 +76,15 @@ public class PipelineTemplateServiceImpl implements PipelineTemplateService {
     @Override
     public boolean delete(Long id) {
         return pipelineTemplateMapper.deleteById(id) > 0;
+    }
+
+    @Override
+    public TemplateVariableCheckDTO checkVariables(PipelineTemplateDTO request) {
+        if (request == null || request.getType() == null
+                || !SUPPORTED_TYPES.contains(request.getType().trim().toLowerCase())) {
+            throw new BusinessException("模版类型无效");
+        }
+        return PipelineTemplateVariableChecker.check(request.getType(), request.getContent());
     }
 
     private void validate(PipelineTemplateDTO request) {

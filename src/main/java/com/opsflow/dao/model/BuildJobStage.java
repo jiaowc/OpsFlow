@@ -32,8 +32,6 @@ public class BuildJobStage {
 
     private Long durationMs;
 
-    private String logText;
-
     /**
      * 阶段日志相对路径（相对 opsflow.pipeline.log-dir）
      */

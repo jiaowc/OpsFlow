@@ -34,7 +34,7 @@ function getComponentTypeLabel(type) {
 
 async function loadServiceGitComponents() {
     try {
-        const response = await fetch('/api/component/list');
+        const response = await fetch('/api/component/options');
         if (response.ok) {
             const components = await response.json();
             serviceGitComponents = (components || []).filter(c =>
@@ -132,6 +132,13 @@ function buildServiceFormFields(service) {
     const repoPathValue = service.gitRepoPath || service.gitRepo || '';
     return `
         <div class="form-item">
+            <label>所属项目 *</label>
+            <select name="projectId" id="serviceProjectSelect" required>
+                <option value="">加载中...</option>
+            </select>
+            <small style="color:#6b7280;">服务的构建、发布权限由项目成员角色决定</small>
+        </div>
+        <div class="form-item">
             <label>服务名称 *</label>
             <input type="text" name="name" value="${escServiceHtml(service.name || '')}" required>
         </div>
@@ -163,15 +170,73 @@ function buildServiceFormFields(service) {
                    required>
             <small style="color:#6b7280;">可填相对路径（与组件地址拼接），或完整地址（域名需与组件一致）</small>
         </div>
+        <div class="form-item">
+            <label>负责人</label>
+            <select name="ownerUserId" id="serviceOwnerSelect"
+                    data-original="${service.ownerUserId != null ? escServiceHtml(service.ownerUserId) : ''}">
+                <option value="">加载中...</option>
+            </select>
+            <small style="color:#6b7280;">仅用于展示和联系，从项目成员中选择</small>
+        </div>
     `;
 }
 
 async function initServiceGitForm(service) {
-    await loadServiceGitComponents();
+    await Promise.all([loadServiceGitComponents(), initServiceProjectField(service)]);
     const componentSelect = document.getElementById('serviceComponentSelect');
     if (componentSelect) {
         componentSelect.innerHTML = renderServiceComponentOptions(service?.componentId || '');
     }
+}
+
+async function initServiceProjectField(service) {
+    const projectSelect = document.getElementById('serviceProjectSelect');
+    if (!projectSelect) return;
+    const projects = typeof loadProjectOptions === 'function' ? await loadProjectOptions() : [];
+    const selected = service?.projectId != null
+        ? String(service.projectId)
+        : (typeof getCurrentProjectId === 'function' ? getCurrentProjectId() : '');
+    const writable = projects.filter(p => p.myRole && p.myRole !== 'VIEWER');
+    if (service?.projectId != null && !writable.some(p => String(p.id) === selected)) {
+        writable.unshift({ id: service.projectId, name: service.projectName || ('项目#' + service.projectId) });
+    }
+    projectSelect.innerHTML = '<option value="">请选择项目</option>' + writable.map(p =>
+        `<option value="${p.id}"${String(p.id) === selected ? ' selected' : ''}>${escServiceHtml(p.name)}</option>`
+    ).join('');
+    projectSelect.addEventListener('change', () => loadServiceOwnerOptions(projectSelect.value, service));
+    await loadServiceOwnerOptions(projectSelect.value, service);
+}
+
+async function loadServiceOwnerOptions(projectId, service) {
+    const ownerSelect = document.getElementById('serviceOwnerSelect');
+    if (!ownerSelect) return;
+    const originalId = ownerSelect.dataset.original || '';
+    const currentId = ownerSelect.dataset.loaded === '1' ? ownerSelect.value : originalId;
+    if (!projectId) {
+        ownerSelect.innerHTML = '<option value="">请先选择项目</option>';
+        ownerSelect.dataset.loaded = '';
+        return;
+    }
+    let members = null;
+    try {
+        const resp = await fetch(`/api/project/${projectId}/members`);
+        if (resp.ok) members = await resp.json();
+    } catch (e) {
+        members = null;
+    }
+    if (!Array.isArray(members)) {
+        ownerSelect.innerHTML = `<option value="${escServiceHtml(originalId)}">${escServiceHtml(service?.ownerName || '成员加载失败')}</option>`;
+        ownerSelect.dataset.loaded = '';
+        return;
+    }
+    const options = members.map(m => ({ id: String(m.userId), name: m.name }));
+    if (currentId && !options.some(o => o.id === currentId) && String(service?.ownerUserId || '') === currentId) {
+        options.unshift({ id: currentId, name: (service.ownerName || '用户#' + currentId) + '（非项目成员）' });
+    }
+    ownerSelect.innerHTML = '<option value="">不设置</option>' + options.map(o =>
+        `<option value="${o.id}"${o.id === currentId ? ' selected' : ''}>${escServiceHtml(o.name)}</option>`
+    ).join('');
+    ownerSelect.dataset.loaded = '1';
 }
 
 function validateServicePort(port) {
@@ -217,6 +282,16 @@ function collectServiceFormData(form, includeStatus) {
         gitRepoPath,
         gitRepo: resolved.gitRepo
     };
+    const projectId = formData.get('projectId');
+    if (!projectId) {
+        alert('请选择所属项目');
+        return null;
+    }
+    data.projectId = parseInt(projectId, 10);
+    // 后端以请求中的负责人为准；成员列表未加载成功时回传原值，避免误清空
+    const ownerSelect = form.querySelector('#serviceOwnerSelect');
+    const ownerUserId = ownerSelect?.dataset.loaded === '1' ? formData.get('ownerUserId') : (ownerSelect?.dataset.original || '');
+    data.ownerUserId = ownerUserId ? parseInt(ownerUserId, 10) : null;
     if (includeStatus) {
         data.status = parseInt(formData.get('status'), 10);
     }
@@ -232,46 +307,84 @@ async function loadServices() {
     if (!serviceList) return;
 
     try {
-        const response = await fetch('/api/service/list');
+        const projectId = typeof getCurrentProjectId === 'function' ? getCurrentProjectId() : '';
+        const response = await fetch('/api/service/list' + (projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''));
         if (response.ok) {
-            const services = await response.json();
-            if (services && services.length > 0) {
-                renderServiceList(services);
-                return;
-            }
+            cachedServiceList = (await response.json()) || [];
+            applyServiceFilters();
+            return;
         }
+        let message = '加载失败';
+        try {
+            message = (await response.json()).message || message;
+        } catch (e) {
+            // 保留默认提示
+        }
+        cachedServiceList = [];
+        serviceList.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 40px; color: #dc2626;">${escServiceHtml(message)}</td></tr>`;
     } catch (error) {
         console.error('Load services error:', error);
+        cachedServiceList = [];
+        serviceList.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 40px; color: #dc2626;">加载失败</td></tr>';
     }
-
-    renderServiceList(mockServices);
 }
 window.loadServices = loadServices;
 
+function applyServiceFilters() {
+    const keyword = ((document.getElementById('serviceSearchInput') || {}).value || '').trim().toLowerCase();
+    const source = cachedServiceList || [];
+    if (!keyword) {
+        paintServiceTable(source);
+        return;
+    }
+    const filtered = source.filter(service => {
+        const haystack = [
+            service.projectName,
+            service.name,
+            getServiceTypeLabel(service.serviceType),
+            service.serviceType,
+            service.componentName,
+            service.servicePort,
+            service.gitRepo,
+            service.ownerName,
+            service.status === 1 ? '启用' : '禁用'
+        ].map(v => String(v == null ? '' : v).toLowerCase()).join(' ');
+        return haystack.indexOf(keyword) >= 0;
+    });
+    paintServiceTable(filtered, true);
+}
+window.applyServiceFilters = applyServiceFilters;
+
 function renderServiceList(services) {
+    cachedServiceList = services || [];
+    applyServiceFilters();
+}
+
+function paintServiceTable(services, fromFilter) {
     const serviceList = document.getElementById('serviceList');
     if (!serviceList) return;
 
-    cachedServiceList = services || [];
-
-    if (services.length === 0) {
-        serviceList.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">暂无服务</td></tr>';
+    if (!services || services.length === 0) {
+        const emptyText = fromFilter ? '没有符合条件的服务' : '暂无服务';
+        serviceList.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 40px; color: var(--text-4);">${emptyText}</td></tr>`;
         return;
     }
 
     serviceList.innerHTML = services.map(service => `
         <tr data-service-id="${service.id}">
+            <td>${escServiceHtml(service.projectName || '-')}</td>
             <td>${escServiceHtml(service.name || '-')}</td>
             <td>${escServiceHtml(getServiceTypeLabel(service.serviceType))}</td>
             <td>${escServiceHtml(service.componentName || '-')}</td>
             <td>${service.servicePort != null ? escServiceHtml(service.servicePort) : '-'}</td>
             <td>${escServiceHtml(service.gitRepo || '-')}</td>
-            <td>${service.status === 1 ? '<span style="color: #059669;">启用</span>' : '<span style="color: #dc2626;">禁用</span>'}</td>
+            <td>${escServiceHtml(service.ownerName || '-')}</td>
+            <td>${service.status === 1 ? '<span class="status-tag is-on">启用</span>' : '<span class="status-tag is-off">禁用</span>'}</td>
             <td>
-                <div class="table-actions">
+                ${hasPermission('service:manage') ? `<div class="table-actions">
                     <button class="btn-edit service-edit-btn" data-service-id="${service.id}">修改</button>
                     <button class="btn-danger service-delete-btn" data-service-id="${service.id}">删除</button>
-                </div>
+                </div>` : '<span style="color:#9ca3af;">-</span>'}
             </td>
         </tr>
     `).join('');

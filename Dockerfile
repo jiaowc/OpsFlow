@@ -1,9 +1,20 @@
-# OpsFlow 运行镜像
-# 使用前请先在本地编译：
-#   mvn clean package -DskipTests
-# 再构建镜像：
-#   docker build -t opsflow:1.0.0 .
+# OpsFlow 多阶段构建：源码进镜像内编译，无需本机先 mvn package
+#   docker compose up -d --build
+#   或：docker build -t opsflow:1.0.0 .
 
+# ---------- build ----------
+FROM maven:3.9.9-eclipse-temurin-8 AS build
+WORKDIR /build
+
+COPY pom.xml .
+# 先拉依赖，源码变更时尽量复用层缓存
+RUN mvn -B -q -DskipTests dependency:go-offline || true
+
+COPY src ./src
+RUN mvn -B -q -DskipTests package \
+    && test -f target/opsflow.jar
+
+# ---------- runtime ----------
 FROM eclipse-temurin:8-jre-jammy
 LABEL maintainer="OpsFlow" \
       app="opsflow" \
@@ -19,17 +30,18 @@ RUN apt-get update \
     && useradd -r -g opsflow -d /app -s /sbin/nologin opsflow \
     && chown -R opsflow:opsflow /app
 
-COPY target/opsflow.jar /app/opsflow.jar
+COPY --from=build /build/target/opsflow.jar /app/opsflow.jar
+COPY --chown=opsflow:opsflow config/ /app/config/
+COPY scripts/docker/entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
-ENV TZ=Asia/Shanghai
+ENV TZ=Asia/Shanghai \
+    JAVA_OPTS="-Xms256m -Xmx512m"
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=8 \
+HEALTHCHECK --interval=15s --timeout=5s --start-period=45s --retries=8 \
   CMD curl -fsS http://127.0.0.1:8080/api/health >/dev/null || exit 1
 
-USER opsflow
-
-# Spring Boot 会自动加载 /app/config/application.yml（file:./config/）
-# 未挂载配置时则使用 jar 内默认 application.yml
-ENTRYPOINT ["java", "-Xms256m", "-Xmx512m", "-jar", "/app/opsflow.jar"]
+# 以 root 进入 entrypoint，修正挂载目录权限后降权为 opsflow
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

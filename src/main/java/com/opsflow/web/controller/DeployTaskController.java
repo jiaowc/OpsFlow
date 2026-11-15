@@ -16,6 +16,7 @@ import com.opsflow.dao.mapper.ClusterMapper;
 import com.opsflow.dao.mapper.DeployTaskMapper;
 import com.opsflow.dao.mapper.EnvMapper;
 import com.opsflow.dao.mapper.PipelineMapper;
+import com.opsflow.dao.mapper.ProjectMapper;
 import com.opsflow.dao.mapper.ServiceMapper;
 import com.opsflow.dao.model.ApprovalFlow;
 import com.opsflow.dao.model.ApprovalRecord;
@@ -30,6 +31,7 @@ import com.opsflow.integration.harbor.HarborCredentialService;
 import com.opsflow.service.ApprovalService;
 import com.opsflow.service.DeployTaskEditService;
 import com.opsflow.service.PermissionService;
+import com.opsflow.service.ProjectAccessService;
 import com.opsflow.service.impl.ApprovalNotifyDispatchServiceImpl;
 import com.opsflow.license.LicenseFeatures;
 import com.opsflow.service.LicenseService;
@@ -44,7 +46,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
+import com.opsflow.service.DeployImageVerifyService;
 import com.opsflow.web.security.RequiresPermission;
 
 /**
@@ -68,6 +73,9 @@ public class DeployTaskController {
 
     @Autowired
     private EnvMapper envMapper;
+
+    @Autowired
+    private DeployImageVerifyService deployImageVerifyService;
 
     @Autowired
     private ClusterMapper clusterMapper;
@@ -101,6 +109,12 @@ public class DeployTaskController {
 
     @Autowired
     private PermissionService permissionService;
+
+    @Autowired
+    private ProjectAccessService projectAccessService;
+
+    @Autowired
+    private ProjectMapper projectMapper;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -146,6 +160,10 @@ public class DeployTaskController {
         licenseService.requireFeature(LicenseFeatures.DEPLOY_APPROVAL);
         String username = (String) session.getAttribute("user");
 
+        if (request.getProjectId() == null || projectMapper.selectById(request.getProjectId()) == null) {
+            throw new BusinessException("请选择所属项目");
+        }
+        projectAccessService.assertCanOperateProject(request.getProjectId());
         if (request.getTaskName() == null || request.getTaskName().trim().isEmpty()) {
             throw new BusinessException("任务名称不能为空");
         }
@@ -211,20 +229,21 @@ public class DeployTaskController {
         int deployParallelism = DeployModes.resolveParallelism(
                 deployMode, request.getDeployParallelism());
 
-        String notifyChannels = ApprovalNotifyDispatchServiceImpl.normalizeChannels(request.getNotifyChannels());
+        String notifyChannels = sanitizeNotifyChannels(request.getNotifyChannels());
         if (!StringUtils.hasText(notifyChannels)) {
             throw new BusinessException("请至少选择一种通知方式（站内信 / 飞书）");
         }
 
         List<String> normalizedModules = normalizeDeployModules(request.getDeployModules());
+        deployImageVerifyService.assertImagesExist(normalizedModules);
         Long userId = (Long) session.getAttribute("userId");
         List<DeployModuleItemDTO> moduleItems = DeployModuleJson.fromImages(normalizedModules, username, userId);
 
         DeployTask task = new DeployTask();
         BeanUtils.copyProperties(request, task, "deployModules", "deployEnvIds", "approvalRecords",
                 "clusterName", "notifyChannels", "pipelineTemplateName", "buildJobIds",
-                "pipelineParameters", "deployModuleDetails", "deployModuleItems", "deployMode", "deployParallelism",
-                "locked", "lockedBy", "lockedAt", "canEdit", "canLock", "canUnlock", "canPublish",
+                "deployModuleDetails", "deployModuleItems", "deployMode", "deployParallelism",
+                "locked", "lockedBy", "lockedAt", "canEdit", "canDelete", "canLock", "canUnlock", "canPublish",
                 "canSubmitApproval", "showPublish");
         task.setClusterId(request.getClusterId());
         task.setK8sNamespace(request.getK8sNamespace().trim());
@@ -266,8 +285,24 @@ public class DeployTaskController {
      */
     @RequiresPermission("deploy:view")
     @GetMapping("/list")
-    public List<DeployTaskDTO> listTasks(@RequestParam(required = false) String status, HttpSession session) {
+    public List<DeployTaskDTO> listTasks(@RequestParam(required = false) String status,
+                                         @RequestParam(required = false) Long projectId,
+                                         HttpSession session) {
         QueryWrapper<DeployTask> wrapper = new QueryWrapper<>();
+        if (projectId != null) {
+            assertProjectTasksViewable(projectId, session);
+            wrapper.eq("project_id", projectId);
+        } else if (!canViewAllTasks(session)) {
+            Set<Long> projectIds = projectAccessService.accessibleProjectIds();
+            if (projectIds != null) {
+                wrapper.and(w -> {
+                    w.isNull("project_id");
+                    if (!projectIds.isEmpty()) {
+                        w.or().in("project_id", projectIds);
+                    }
+                });
+            }
+        }
         if (status != null && !status.isEmpty()) {
             wrapper.eq("task_status", status);
         }
@@ -284,12 +319,24 @@ public class DeployTaskController {
      * @param session 当前登录会话
      * @return 任务详情；不存在时返回 {@code null}
      */
+    /**
+     * 某服务在 Harbor 项目下已在非生产环境部署成功的版本（tag → 环境名），供创建上线任务时标注和优先展示。
+     */
+    @RequiresPermission({"deploy:view", "deploy:create"})
+    @GetMapping("/verified-versions")
+    public Map<String, String> verifiedVersions(@RequestParam String service, @RequestParam String project) {
+        return deployImageVerifyService.verifiedTags(service, project);
+    }
+
     @RequiresPermission("deploy:view")
     @GetMapping("/{id}")
     public DeployTaskDTO getTask(@PathVariable Long id, HttpSession session) {
         DeployTask task = deployTaskMapper.selectById(id);
         if (task == null) {
             return null;
+        }
+        if (task.getProjectId() != null) {
+            assertProjectTasksViewable(task.getProjectId(), session);
         }
         return getTaskDTO(task, session);
     }
@@ -305,6 +352,7 @@ public class DeployTaskController {
             throw new BusinessException("任务不存在");
         }
         deployTaskEditService.assertEditable(task);
+        assertTaskOperable(task);
 
         String username = (String) session.getAttribute("user");
         Long userId = (Long) session.getAttribute("userId");
@@ -335,7 +383,7 @@ public class DeployTaskController {
                 task.setDeployParallelism(DeployModes.resolveParallelism(deployMode, request.getDeployParallelism()));
             }
             if (request.getNotifyChannels() != null) {
-                String notifyChannels = ApprovalNotifyDispatchServiceImpl.normalizeChannels(request.getNotifyChannels());
+                String notifyChannels = sanitizeNotifyChannels(request.getNotifyChannels());
                 if (StringUtils.hasText(notifyChannels)) {
                     task.setNotifyChannels(notifyChannels);
                 }
@@ -357,6 +405,7 @@ public class DeployTaskController {
             List<DeployModuleItemDTO> merged = deployTaskEditService.mergeModulesByOwnership(
                     task, request.getDeployModuleItems(), request.getDeployModules(), username, userId);
             List<String> normalized = normalizeDeployModules(DeployModuleJson.toImageList(merged));
+            deployImageVerifyService.assertImagesExist(normalized);
             for (int i = 0; i < merged.size(); i++) {
                 merged.get(i).setImage(normalized.get(i));
             }
@@ -375,6 +424,7 @@ public class DeployTaskController {
     @RequiresPermission("deploy:create")
     @PostMapping("/{id}/lock")
     public DeployTaskDTO lockTask(@PathVariable Long id, HttpSession session) {
+        assertTaskOperable(id);
         DeployTask task = deployTaskEditService.lock(id, sessionUsername(session), sessionUserId(session),
                 sessionHasUnlock(session));
         return getTaskDTO(task, session);
@@ -383,6 +433,7 @@ public class DeployTaskController {
     @RequiresPermission({"deploy:create", "deploy:unlock"})
     @PostMapping("/{id}/unlock")
     public DeployTaskDTO unlockTask(@PathVariable Long id, HttpSession session) {
+        assertTaskOperable(id);
         DeployTask task = deployTaskEditService.unlock(id, sessionUsername(session), sessionUserId(session),
                 sessionHasUnlock(session));
         return getTaskDTO(task, session);
@@ -391,6 +442,7 @@ public class DeployTaskController {
     @RequiresPermission("deploy:create")
     @PostMapping("/{id}/submit-approval")
     public DeployTaskDTO submitApproval(@PathVariable Long id, HttpSession session) {
+        assertTaskOperable(id);
         licenseService.requireFeature(LicenseFeatures.DEPLOY_APPROVAL);
         DeployTask task = deployTaskEditService.submitApproval(id, sessionUsername(session), sessionUserId(session),
                 sessionHasUnlock(session));
@@ -400,6 +452,7 @@ public class DeployTaskController {
     @RequiresPermission("deploy:create")
     @PostMapping("/{id}/publish")
     public DeployTaskDTO publishTask(@PathVariable Long id, HttpSession session) {
+        assertTaskOperable(id);
         licenseService.requireFeature(LicenseFeatures.DEPLOY_APPROVAL);
         DeployTask task = deployTaskEditService.publish(id, sessionUsername(session), sessionUserId(session),
                 sessionHasUnlock(session));
@@ -412,9 +465,18 @@ public class DeployTaskController {
      * @param id 任务 ID
      * @return 是否删除成功
      */
-    @RequiresPermission("deploy:create")
+    @RequiresPermission("deploy:delete")
     @DeleteMapping("/{id}")
     public boolean deleteTask(@PathVariable Long id) {
+        DeployTask task = deployTaskMapper.selectById(id);
+        if (task == null) {
+            throw new BusinessException("任务不存在");
+        }
+        assertTaskOperable(task);
+        String status = task.getTaskStatus() == null ? "" : task.getTaskStatus().trim().toLowerCase();
+        if ("deploying".equals(status) || "building".equals(status)) {
+            throw new BusinessException("任务发布中，无法删除");
+        }
         List<BuildJob> linkedJobs = buildJobMapper.selectList(
                 new QueryWrapper<BuildJob>().eq("deploy_task_id", id));
         for (BuildJob job : linkedJobs) {
@@ -424,6 +486,36 @@ public class DeployTaskController {
         }
         approvalRecordMapper.delete(new QueryWrapper<ApprovalRecord>().eq("task_id", id));
         return deployTaskMapper.deleteById(id) > 0;
+    }
+
+    /**
+     * 平台管理员与审批人（deploy:approve）可跨项目查看上线任务
+     */
+    private boolean canViewAllTasks(HttpSession session) {
+        return projectAccessService.isPlatformAdmin() || sessionHasPerm(session, "deploy:approve");
+    }
+
+    private void assertProjectTasksViewable(Long projectId, HttpSession session) {
+        if (!canViewAllTasks(session)) {
+            projectAccessService.assertCanViewProject(projectId);
+        }
+    }
+
+    private void assertTaskOperable(Long taskId) {
+        DeployTask task = deployTaskMapper.selectById(taskId);
+        if (task == null) {
+            throw new BusinessException("任务不存在");
+        }
+        assertTaskOperable(task);
+    }
+
+    /**
+     * 历史任务（project_id 为空）不做项目校验
+     */
+    private void assertTaskOperable(DeployTask task) {
+        if (task.getProjectId() != null) {
+            projectAccessService.assertCanOperateProject(task.getProjectId());
+        }
     }
 
     /**
@@ -460,9 +552,14 @@ public class DeployTaskController {
         Long userId = sessionUserId(session);
         boolean hasCreate = sessionHasPerm(session, "deploy:create");
         boolean hasUnlock = sessionHasUnlock(session);
+        boolean hasDelete = sessionHasPerm(session, "deploy:delete");
 
         DeployTaskDTO dto = new DeployTaskDTO();
         BeanUtils.copyProperties(task, dto, "deployModules", "deployEnvs", "notifyChannels");
+        if (task.getProjectId() != null) {
+            com.opsflow.dao.model.Project project = projectMapper.selectById(task.getProjectId());
+            dto.setProjectName(project != null ? project.getName() : null);
+        }
 
         try {
             if (task.getDeployModules() != null && !task.getDeployModules().isEmpty()) {
@@ -536,8 +633,32 @@ public class DeployTaskController {
         }
 
         dto.setApprovalRecords(approvalService.listByTask(task.getId(), currentUsername));
-        deployTaskEditService.fillActionFlags(dto, task, currentUsername, userId, hasCreate, hasUnlock);
+        deployTaskEditService.fillActionFlags(dto, task, currentUsername, userId, hasCreate, hasUnlock, hasDelete);
         return dto;
+    }
+
+    /**
+     * 未开通 notify_integration 时去掉飞书渠道，避免 Community 写入无效配置。
+     */
+    private String sanitizeNotifyChannels(java.util.List<String> channels) {
+        String normalized = ApprovalNotifyDispatchServiceImpl.normalizeChannels(channels);
+        if (!StringUtils.hasText(normalized)) {
+            return normalized;
+        }
+        if (licenseService.isFeatureEnabled(LicenseFeatures.NOTIFY_INTEGRATION)) {
+            return normalized;
+        }
+        if (!normalized.contains(ApprovalNotifyDispatchServiceImpl.CHANNEL_FEISHU)) {
+            return normalized;
+        }
+        java.util.List<String> kept = new java.util.ArrayList<>();
+        for (String part : normalized.split(",")) {
+            String c = part.trim();
+            if (ApprovalNotifyDispatchServiceImpl.CHANNEL_INBOX.equals(c)) {
+                kept.add(c);
+            }
+        }
+        return ApprovalNotifyDispatchServiceImpl.normalizeChannels(kept);
     }
 
     private String sessionUsername(HttpSession session) {
@@ -639,10 +760,13 @@ public class DeployTaskController {
         if (items == null) {
             return details;
         }
+        Map<String, String> verifiedEnvs = deployImageVerifyService.verifiedEnvByImage(
+                items.stream().map(DeployModuleItemDTO::getImage).filter(StringUtils::hasText).collect(Collectors.toList()));
         for (DeployModuleItemDTO item : items) {
             String module = item.getImage();
             DeployModuleDetailDTO detail = new DeployModuleDetailDTO();
             detail.setImageFullName(module);
+            detail.setVerifiedEnv(verifiedEnvs.get(module));
             detail.setOwnerName(item.getOwnerName());
             detail.setOwnerId(item.getOwnerId());
             String serviceCode = extractServiceCode(module);

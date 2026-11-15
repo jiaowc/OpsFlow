@@ -40,5 +40,5 @@ public interface DeployTaskEditService {
     DeployTask publish(Long taskId, String username, Long userId, boolean hasUnlockPerm);
 
     void fillActionFlags(DeployTaskDTO dto, DeployTask task, String username, Long userId,
-                         boolean hasCreate, boolean hasUnlock);
+                         boolean hasCreate, boolean hasUnlock, boolean hasDelete);
 }

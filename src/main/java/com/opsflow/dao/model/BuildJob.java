@@ -43,14 +43,9 @@ public class BuildJob {
      * 合法值：branch、tag
      */
     private String gitType;
-    
-    private String commitId;
-    
+
     private Integer buildNumber;
 
-    /** 实际执行节点标识 */
-    private String buildNode;
-    
     /** 镜像 tag */
     private String imageTag;
     
@@ -62,9 +57,7 @@ public class BuildJob {
      * 合法值：pending、building、deploying、success、failed 等（见 BuildStatus）
      */
     private String status;
-    
-    private String buildLogUrl;
-    
+
     private String errorMessage;
     
     private Long creatorId;

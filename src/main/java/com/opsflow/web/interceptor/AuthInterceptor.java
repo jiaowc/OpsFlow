@@ -2,6 +2,7 @@ package com.opsflow.web.interceptor;
 
 import com.opsflow.service.PermissionService;
 import com.opsflow.web.security.RequiresPermission;
+import com.opsflow.web.security.SessionPermissionResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,9 @@ public class AuthInterceptor implements HandlerInterceptor {
     @Autowired
     private PermissionService permissionService;
 
+    @Autowired
+    private SessionPermissionResolver sessionPermissionResolver;
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         if (DEV_DISABLE_LOGIN_CHECK) {
@@ -48,6 +52,8 @@ public class AuthInterceptor implements HandlerInterceptor {
             path.equals("/health") ||
             path.startsWith("/api/health") ||
             path.startsWith("/api/system/version") ||
+            path.startsWith("/api/branding/public") ||
+            path.startsWith("/api/branding/logo") ||
             path.startsWith("/api/auth/login") ||
             path.startsWith("/api/auth/user") ||
             path.startsWith("/api/auth/feishu/") ||
@@ -57,7 +63,8 @@ public class AuthInterceptor implements HandlerInterceptor {
 
         if (path.startsWith("/api/")) {
             HttpSession session = request.getSession(false);
-            if (session == null || session.getAttribute("authenticated") == null) {
+            if (session == null || session.getAttribute("authenticated") == null
+                    || session.getAttribute("userId") == null) {
                 writeJson(response, HttpServletResponse.SC_UNAUTHORIZED, "未登录，请先登录");
                 return false;
             }
@@ -82,34 +89,12 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        List<String> permissions = resolvePermissions(session);
+        List<String> permissions = sessionPermissionResolver.resolvePermissions(session);
         if (permissionService.hasAnyPermission(permissions, annotation.value())) {
             return true;
         }
         writeJson(response, HttpServletResponse.SC_FORBIDDEN, "无权限执行此操作");
         return false;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<String> resolvePermissions(HttpSession session) {
-        Object cached = session.getAttribute("permissions");
-        if (cached instanceof List) {
-            return (List<String>) cached;
-        }
-        Long userId = (Long) session.getAttribute("userId");
-        if (userId != null) {
-            List<String> codes = permissionService.listPermissionCodesByUserId(userId);
-            session.setAttribute("permissions", codes);
-            session.setAttribute("roles", permissionService.listRoleCodesByUserId(userId));
-            return codes;
-        }
-        if ("admin".equals(session.getAttribute("user"))) {
-            List<String> all = Collections.singletonList(PermissionService.WILDCARD);
-            session.setAttribute("permissions", all);
-            session.setAttribute("roles", Collections.singletonList("ADMIN"));
-            return all;
-        }
-        return Collections.emptyList();
     }
 
     private void writeJson(HttpServletResponse response, int status, String message) throws Exception {

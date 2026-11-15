@@ -23,5 +23,10 @@ public class NodeEnvCheckResultDTO {
 
     private String summary;
 
+    /**
+     * 检测后写入的节点状态：在线 / 离线（以 SSH 能否连通为准）
+     */
+    private String status;
+
     private List<NodeEnvCheckItemDTO> items;
 }

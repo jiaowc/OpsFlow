@@ -1,4 +1,4 @@
-// License 导入与状态展示
+// License 导入与状态展示（订阅 / 功能码）
 
 function escLicenseHtml(text) {
     return String(text == null ? '' : text)
@@ -8,6 +8,10 @@ function escLicenseHtml(text) {
         .replace(/"/g, '&quot;');
 }
 
+function featureFlagLabel(code, enabled) {
+    return `${escLicenseHtml(code)}：${enabled ? '已开通' : '未开通'}`;
+}
+
 function renderLicenseStatusCard(status) {
     const card = document.getElementById('licenseStatusCard');
     if (!card) return;
@@ -15,25 +19,42 @@ function renderLicenseStatusCard(status) {
     const features = Array.isArray(s.features) ? s.features : [];
     const valid = !!s.valid;
     const present = !!s.present;
-    const badge = valid
-        ? '<span style="color:#059669;font-weight:600;">有效</span>'
-        : (present
-            ? '<span style="color:#d97706;font-weight:600;">无效/已过期</span>'
-            : '<span style="color:#6b7280;font-weight:600;">未导入</span>');
+    const inGrace = !!s.inGracePeriod;
+    let badge;
+    if (s.enforcementEnabled === false) {
+        badge = '<span style="color:#059669;font-weight:600;">强校验已关闭（开发模式）</span>';
+    } else if (valid && inGrace) {
+        badge = '<span style="color:#d97706;font-weight:600;">宽限期内（请续费）</span>';
+    } else if (valid) {
+        badge = '<span style="color:#059669;font-weight:600;">订阅有效</span>';
+    } else if (present) {
+        badge = '<span style="color:#d97706;font-weight:600;">无效/已过期</span>';
+    } else {
+        badge = '<span style="color:#6b7280;font-weight:600;">未导入（Community）</span>';
+    }
     const featureText = features.length
         ? features.map(f => `<code>${escLicenseHtml(f)}</code>`).join('、')
         : '-';
+    const daysText = s.daysRemaining == null
+        ? (s.expiresAt ? '-' : '永久/未设置')
+        : (s.daysRemaining >= 0 ? `剩余 ${s.daysRemaining} 天` : `已过期 ${Math.abs(s.daysRemaining)} 天`);
     card.innerHTML = `
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
             <div>
                 <div style="margin-bottom:6px;">状态：${badge}</div>
                 <div style="color:#374151;font-size:13px;line-height:1.7;">
                     <div>客户：${escLicenseHtml(s.customer || '-')}</div>
+                    <div>计划：${escLicenseHtml(s.plan || '-')}</div>
                     <div>License ID：${escLicenseHtml(s.licenseId || '-')}</div>
                     <div>签发时间：${escLicenseHtml(s.issuedAt || '-')}</div>
-                    <div>过期时间：${escLicenseHtml(s.expiresAt || '永久')}</div>
-                    <div>功能：${featureText}</div>
-                    <div>上线审批：${s.deployApprovalEnabled ? '已开通' : '未开通'}</div>
+                    <div>到期时间：${escLicenseHtml(s.expiresAt || '未设置')}</div>
+                    <div>订阅余量：${escLicenseHtml(daysText)}</div>
+                    <div>功能码：${featureText}</div>
+                    <div>${featureFlagLabel('deploy_approval', s.deployApprovalEnabled)}</div>
+                    <div>${featureFlagLabel('audit', s.auditEnabled)}</div>
+                    <div>${featureFlagLabel('notify_integration', s.notifyIntegrationEnabled)}</div>
+                    <div>${featureFlagLabel('prod_rollback', s.prodRollbackEnabled)}</div>
+                    <div>${featureFlagLabel('branding', s.brandingEnabled)}</div>
                 </div>
             </div>
             <div style="color:#6b7280;font-size:12px;max-width:320px;">${escLicenseHtml(s.message || '')}</div>
@@ -77,6 +98,12 @@ async function importLicenseFromForm() {
             applyPermissionUI();
         }
         renderLicenseStatusCard(data);
+        if (typeof loadBrandingAdminPanel === 'function') {
+            await loadBrandingAdminPanel();
+        }
+        if (typeof loadPublicBranding === 'function') {
+            await loadPublicBranding();
+        }
         alert('License 导入成功');
     } catch (e) {
         alert('导入失败: ' + (e.message || e));
@@ -88,7 +115,7 @@ async function clearLicenseFromForm() {
         alert('无权限清除 License');
         return;
     }
-    if (!confirm('确定清除已导入的 License？上线审批相关能力将立即不可用。')) {
+    if (!confirm('确定清除已导入的 License？商业功能（审批/审计/集成通知/生产回滚）将立即不可用。')) {
         return;
     }
     try {

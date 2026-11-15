@@ -33,12 +33,7 @@ public class BuildResponse {
      * 镜像标签
      */
     private String imageTag;
-    
-    /**
-     * 构建日志URL
-     */
-    private String buildLogUrl;
-    
+
     /**
      * 错误信息
      */
@@ -54,6 +49,4 @@ public class BuildResponse {
      */
     private LocalDateTime endTime;
 }
-
-
 

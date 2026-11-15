@@ -23,8 +23,6 @@ public class PipelineTemplateDTO {
 
     private String baseImage;
 
-    private Long envId;
-
     /**
      * 关联环境名称（展示用）
      */

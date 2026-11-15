@@ -1,7 +1,8 @@
 package com.opsflow.service.impl;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.opsflow.integration.feishu.FeishuJson;
 import com.opsflow.dao.mapper.ApprovalRecordMapper;
 import com.opsflow.dao.mapper.ClusterMapper;
 import com.opsflow.dao.model.ApprovalRecord;
@@ -18,6 +19,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -41,6 +43,8 @@ public class FeishuApprovalNotifyServiceImpl implements FeishuApprovalNotifyServ
     @Autowired
     private ClusterMapper clusterMapper;
 
+    private static final int MESSAGE_IDS_MAX_LENGTH = 2000;
+
     @Override
     public void notifyPendingApproval(ApprovalRecord record, DeployTask task) {
         if (!feishuConfig.isEnabled() || !feishuClient.isConfigured()) {
@@ -48,6 +52,10 @@ public class FeishuApprovalNotifyServiceImpl implements FeishuApprovalNotifyServ
             return;
         }
         if (record == null || record.getId() == null) {
+            return;
+        }
+        if (!record.listApproverCandidates().isEmpty()) {
+            notifyCandidates(record, task);
             return;
         }
 
@@ -64,7 +72,7 @@ public class FeishuApprovalNotifyServiceImpl implements FeishuApprovalNotifyServ
             return;
         }
 
-        JSONObject card = buildPendingCard(record, task);
+        ObjectNode card = buildPendingCard(record, task);
         String messageId = feishuClient.sendInteractiveCard(feishuId, card);
         if (!StringUtils.hasText(messageId)) {
             log.error("飞书审批卡片发送失败: recordId={}, feishuId={}", record.getId(), feishuId);
@@ -78,6 +86,36 @@ public class FeishuApprovalNotifyServiceImpl implements FeishuApprovalNotifyServ
         log.info("已推送飞书审批卡片: recordId={}, messageId={}", record.getId(), messageId);
     }
 
+    /** 多个候选审批人：给每个已绑定飞书的人各发一张卡片 */
+    private void notifyCandidates(ApprovalRecord record, DeployTask task) {
+        ObjectNode card = buildPendingCard(record, task);
+        List<String> messageIds = new ArrayList<>();
+        int length = 0;
+        for (String username : record.listApproverCandidates()) {
+            String feishuId = feishuUserResolveService.resolveFeishuUserId(username);
+            if (!StringUtils.hasText(feishuId)) {
+                log.warn("候选审批人未绑定飞书，跳过: recordId={}, username={}", record.getId(), username);
+                continue;
+            }
+            String messageId = feishuClient.sendInteractiveCard(feishuId, card);
+            if (!StringUtils.hasText(messageId)) {
+                log.error("飞书审批卡片发送失败: recordId={}, username={}", record.getId(), username);
+                continue;
+            }
+            if (length + messageId.length() + 1 <= MESSAGE_IDS_MAX_LENGTH) {
+                messageIds.add(messageId);
+                length += messageId.length() + 1;
+            }
+        }
+        if (messageIds.isEmpty()) {
+            return;
+        }
+        record.setFeishuMessageId(String.join(",", messageIds));
+        record.setUpdateTime(LocalDateTime.now());
+        approvalRecordMapper.updateById(record);
+        log.info("已推送飞书审批卡片给候选审批人: recordId={}, 卡片数={}", record.getId(), messageIds.size());
+    }
+
     @Override
     public void refreshCard(ApprovalRecord record, DeployTask task, String finalStatus, String operatorName) {
         if (!feishuConfig.isEnabled() || !feishuClient.isConfigured()) {
@@ -86,37 +124,42 @@ public class FeishuApprovalNotifyServiceImpl implements FeishuApprovalNotifyServ
         if (record == null || !StringUtils.hasText(record.getFeishuMessageId())) {
             return;
         }
-        JSONObject card = buildResultCard(record, task, finalStatus, operatorName);
-        boolean ok = feishuClient.updateInteractiveMessage(record.getFeishuMessageId(), card);
-        if (!ok) {
-            log.warn("更新飞书审批卡片失败: recordId={}, messageId={}",
-                    record.getId(), record.getFeishuMessageId());
+        ObjectNode card = buildResultCard(record, task, finalStatus, operatorName);
+        for (String messageId : record.getFeishuMessageId().split(",")) {
+            if (!StringUtils.hasText(messageId)) {
+                continue;
+            }
+            if (!feishuClient.updateInteractiveMessage(messageId.trim(), card)) {
+                log.warn("更新飞书审批卡片失败: recordId={}, messageId={}", record.getId(), messageId);
+            }
         }
     }
 
     @Override
-    public JSONObject buildPendingCard(ApprovalRecord record, DeployTask task) {
-        JSONObject card = new JSONObject();
-        JSONObject config = new JSONObject();
+    public ObjectNode buildPendingCard(ApprovalRecord record, DeployTask task) {
+        ObjectNode card = FeishuJson.newObject();
+        ObjectNode config = FeishuJson.newObject();
         config.put("wide_screen_mode", true);
-        card.put("config", config);
+        card.set("config", config);
 
-        JSONObject header = new JSONObject();
+        ObjectNode header = FeishuJson.newObject();
         header.put("template", "orange");
-        JSONObject title = new JSONObject();
+        ObjectNode title = FeishuJson.newObject();
         title.put("tag", "plain_text");
         title.put("content", "上线任务待审批通知");
-        header.put("title", title);
-        card.put("header", header);
+        header.set("title", title);
+        card.set("header", header);
 
-        JSONArray elements = new JSONArray();
+        ArrayNode elements = FeishuJson.newArray();
         elements.add(markdown(
                 "**任务编号：** " + safe(task != null ? task.getTaskNumber() : record.getTaskNumber()) + "\n"
                         + "**任务名称：** " + safe(task != null ? task.getTaskName() : "-") + "\n"
                         + "**上线集群：** " + safe(resolveClusterName(task)) + "\n"
                         + "**Namespace：** " + safe(task != null ? task.getK8sNamespace() : "-") + "\n"
                         + "**创建人：** " + safe(task != null ? task.getCreatorName() : "-") + "\n"
-                        + "**审批步骤：** 第 " + record.getCurrentStep() + " 步\n"
+                        + "**审批步骤：** 第 " + record.getCurrentStep() + " 步"
+                        + (!record.listApproverCandidates().isEmpty()
+                            ? "（" + safe(record.getApproverName()) + "，任一人审批即可）" : "") + "\n"
                         + "**上线模块：**\n" + formatModules(task)
         ));
 
@@ -126,12 +169,12 @@ public class FeishuApprovalNotifyServiceImpl implements FeishuApprovalNotifyServ
         } else {
             elements.add(note("请登录 OpsFlow「上线任务」页面完成审批（飞书内暂不支持直接同意/拒绝）。"));
         }
-        card.put("elements", elements);
+        card.set("elements", elements);
         return card;
     }
 
     @Override
-    public JSONObject buildResultCard(ApprovalRecord record, DeployTask task, String finalStatus, String operatorName) {
+    public ObjectNode buildResultCard(ApprovalRecord record, DeployTask task, String finalStatus, String operatorName) {
         String statusText;
         String template;
         if ("approved".equalsIgnoreCase(finalStatus)) {
@@ -145,20 +188,20 @@ public class FeishuApprovalNotifyServiceImpl implements FeishuApprovalNotifyServ
             template = "grey";
         }
 
-        JSONObject card = new JSONObject();
-        JSONObject config = new JSONObject();
+        ObjectNode card = FeishuJson.newObject();
+        ObjectNode config = FeishuJson.newObject();
         config.put("wide_screen_mode", true);
-        card.put("config", config);
+        card.set("config", config);
 
-        JSONObject header = new JSONObject();
+        ObjectNode header = FeishuJson.newObject();
         header.put("template", template);
-        JSONObject title = new JSONObject();
+        ObjectNode title = FeishuJson.newObject();
         title.put("tag", "plain_text");
         title.put("content", "上线审批" + statusText);
-        header.put("title", title);
-        card.put("header", header);
+        header.set("title", title);
+        card.set("header", header);
 
-        JSONArray elements = new JSONArray();
+        ArrayNode elements = FeishuJson.newArray();
         elements.add(markdown(
                 "**任务编号：** " + safe(task != null ? task.getTaskNumber() : record.getTaskNumber()) + "\n"
                         + "**任务名称：** " + safe(task != null ? task.getTaskName() : "-") + "\n"
@@ -168,29 +211,29 @@ public class FeishuApprovalNotifyServiceImpl implements FeishuApprovalNotifyServ
                         + "**审批意见：** " + safe(record.getComment())
         ));
         elements.add(note("本条为审批结果通知，请在 OpsFlow 中查看详情。"));
-        card.put("elements", elements);
+        card.set("elements", elements);
         return card;
     }
 
-    private JSONObject markdown(String content) {
-        JSONObject div = new JSONObject();
+    private ObjectNode markdown(String content) {
+        ObjectNode div = FeishuJson.newObject();
         div.put("tag", "div");
-        JSONObject text = new JSONObject();
+        ObjectNode text = FeishuJson.newObject();
         text.put("tag", "lark_md");
         text.put("content", content);
-        div.put("text", text);
+        div.set("text", text);
         return div;
     }
 
-    private JSONObject note(String content) {
-        JSONObject note = new JSONObject();
+    private ObjectNode note(String content) {
+        ObjectNode note = FeishuJson.newObject();
         note.put("tag", "note");
-        JSONArray elements = new JSONArray();
-        JSONObject text = new JSONObject();
+        ArrayNode elements = FeishuJson.newArray();
+        ObjectNode text = FeishuJson.newObject();
         text.put("tag", "plain_text");
         text.put("content", content);
         elements.add(text);
-        note.put("elements", elements);
+        note.set("elements", elements);
         return note;
     }
 
@@ -207,7 +250,7 @@ public class FeishuApprovalNotifyServiceImpl implements FeishuApprovalNotifyServ
             return "-";
         }
         try {
-            List<String> modules = JSONArray.parseArray(task.getDeployModules(), String.class);
+            List<String> modules = FeishuJson.parseStringList(task.getDeployModules());
             if (modules == null || modules.isEmpty()) {
                 return "-";
             }

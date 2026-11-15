@@ -1,13 +1,19 @@
 package com.opsflow.web.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.opsflow.api.dto.GitRefBatchRequest;
 import com.opsflow.api.dto.ServiceDTO;
 import com.opsflow.common.exception.BusinessException;
 import com.opsflow.dao.mapper.ComponentMapper;
 import com.opsflow.dao.mapper.ServiceMapper;
+import com.opsflow.dao.mapper.UserMapper;
 import com.opsflow.dao.model.Component;
 import com.opsflow.dao.model.Service;
+import com.opsflow.dao.model.User;
+import com.opsflow.service.ProjectAccessService;
+import com.opsflow.dao.mapper.ProjectMapper;
+import com.opsflow.dao.model.Project;
 import com.opsflow.service.ServiceGitRefService;
 import com.opsflow.service.util.GitRepoPathResolver;
 import org.springframework.beans.BeanUtils;
@@ -18,6 +24,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import com.opsflow.web.security.RequiresPermission;
 
@@ -37,33 +44,58 @@ public class ServiceController {
     @Autowired
     private ServiceGitRefService serviceGitRefService;
 
+    @Autowired
+    private ProjectAccessService projectAccessService;
+
+    @Autowired
+    private ProjectMapper projectMapper;
+
+    @Autowired
+    private UserMapper userMapper;
+
     /**
      * 创建服务
      */
     @RequiresPermission("service:manage")
     @PostMapping("/create")
     public ServiceDTO createService(@RequestBody ServiceDTO request) {
+        if (request.getProjectId() == null || projectMapper.selectById(request.getProjectId()) == null) {
+            throw new BusinessException("请选择所属项目");
+        }
+        projectAccessService.assertCanOperateProject(request.getProjectId());
         Service service = new Service();
         applyServiceFields(service, request, true);
+        service.setProjectId(request.getProjectId());
+        service.setOwnerUserId(request.getOwnerUserId());
         service.setStatus(request.getStatus() != null ? request.getStatus() : 1);
         service.setCreateTime(LocalDateTime.now());
         service.setUpdateTime(LocalDateTime.now());
-
         serviceMapper.insert(service);
 
         return toDto(service);
     }
 
     /**
-     * 查询服务列表
+     * 查询服务列表（仅当前用户可见项目的服务）
+     *
+     * @param projectId 为空表示「我的全部项目」
      */
     @RequiresPermission({"service:view", "service:manage", "deploy:create", "pipeline:view"})
     @GetMapping("/list")
-    public List<ServiceDTO> listServices() {
+    public List<ServiceDTO> listServices(@RequestParam(required = false) Long projectId) {
+        Set<Long> serviceIds = projectAccessService.accessibleServiceIds(projectId);
+        if (serviceIds != null && serviceIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
         QueryWrapper<Service> wrapper = new QueryWrapper<>();
-        wrapper.orderByAsc("project_name").orderByAsc("name").orderByAsc("id");
+        if (serviceIds != null) {
+            wrapper.in("id", serviceIds);
+        }
+        wrapper.orderByAsc("project_id").orderByAsc("name").orderByAsc("id");
         List<Service> services = serviceMapper.selectList(wrapper);
-        return services.stream().map(this::toDto).collect(Collectors.toList());
+        Map<Long, String> projectNames = projectMapper.selectList(null).stream()
+                .collect(Collectors.toMap(Project::getId, Project::getName));
+        return services.stream().map(s -> toDto(s, projectNames)).collect(Collectors.toList());
     }
 
     /**
@@ -76,11 +108,12 @@ public class ServiceController {
         if (service == null) {
             return null;
         }
+        projectAccessService.assertCanViewService(id);
         return toDto(service);
     }
 
     /**
-     * 更新服务
+     * 更新服务；负责人以请求为准（可清空），移动到其他项目需同时有两个项目的操作权限
      */
     @RequiresPermission("service:manage")
     @PutMapping("/{id}")
@@ -89,6 +122,14 @@ public class ServiceController {
         if (service == null) {
             return null;
         }
+        projectAccessService.assertCanOperateService(id);
+        if (request.getProjectId() != null && !request.getProjectId().equals(service.getProjectId())) {
+            if (projectMapper.selectById(request.getProjectId()) == null) {
+                throw new BusinessException("所属项目不存在");
+            }
+            projectAccessService.assertCanOperateProject(request.getProjectId());
+            service.setProjectId(request.getProjectId());
+        }
 
         applyServiceFields(service, request, false);
         if (request.getStatus() != null) {
@@ -96,6 +137,9 @@ public class ServiceController {
         }
         service.setUpdateTime(LocalDateTime.now());
         serviceMapper.updateById(service);
+        // updateById 会忽略 null 字段，清空负责人需显式 set
+        serviceMapper.update(null, new UpdateWrapper<Service>().eq("id", id).set("owner_user_id", request.getOwnerUserId()));
+        service.setOwnerUserId(request.getOwnerUserId());
 
         return toDto(service);
     }
@@ -157,16 +201,13 @@ public class ServiceController {
     @RequiresPermission("service:manage")
     @DeleteMapping("/{id}")
     public boolean deleteService(@PathVariable Long id) {
+        projectAccessService.assertCanOperateService(id);
         return serviceMapper.deleteById(id) > 0;
     }
 
     private void applyServiceFields(Service service, ServiceDTO request, boolean isCreate) {
         if (request.getName() != null) {
             service.setName(request.getName().trim());
-        }
-        if (request.getProjectName() != null) {
-            String project = request.getProjectName().trim();
-            service.setProjectName(project.isEmpty() ? null : project);
         }
         if (isCreate) {
             service.setCode(resolveUniqueServiceCode(service.getName()));
@@ -228,15 +269,40 @@ public class ServiceController {
     }
 
     private ServiceDTO toDto(Service service) {
+        Map<Long, String> projectNames = new HashMap<>();
+        if (service.getProjectId() != null) {
+            Project project = projectMapper.selectById(service.getProjectId());
+            if (project != null) {
+                projectNames.put(project.getId(), project.getName());
+            }
+        }
+        return toDto(service, projectNames);
+    }
+
+    private ServiceDTO toDto(Service service, Map<Long, String> projectNames) {
         ServiceDTO dto = new ServiceDTO();
         BeanUtils.copyProperties(service, dto);
+        if (service.getProjectId() != null && projectNames.containsKey(service.getProjectId())) {
+            dto.setProjectName(projectNames.get(service.getProjectId()));
+        }
         if (service.getComponentId() != null) {
             Component component = componentMapper.selectById(service.getComponentId());
             if (component != null) {
                 dto.setComponentName(component.getName());
             }
         }
+        if (service.getOwnerUserId() != null) {
+            dto.setOwnerName(displayName(userMapper.selectById(service.getOwnerUserId())));
+        }
         return dto;
+    }
+
+    private String displayName(User user) {
+        if (user == null) {
+            return null;
+        }
+        return user.getRealName() != null && !user.getRealName().trim().isEmpty()
+                ? user.getRealName().trim() + "(" + user.getUsername() + ")" : user.getUsername();
     }
 
     private String resolveUniqueServiceCode(String name) {

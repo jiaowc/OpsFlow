@@ -3,7 +3,6 @@ CREATE TABLE `env` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(50) NOT NULL COMMENT '环境名称：dev/test/demo/prod',
   `cluster_id` bigint COMMENT '关联集群ID',
-  `k8s_cluster` varchar(200) COMMENT 'K8s集群地址',
   `k8s_namespace` varchar(100) COMMENT '命名空间',
   `env_type` varchar(20) NOT NULL DEFAULT 'nonprod' COMMENT '环境类型：prod/nonprod',
   `status` tinyint DEFAULT 1 COMMENT '状态：1-启用 0-禁用',
@@ -27,11 +26,37 @@ CREATE TABLE `cluster` (
   KEY `idx_cluster_credential_id` (`credential_id`)
 ) COMMENT='集群配置表';
 
+-- 项目（多团队隔离）
+CREATE TABLE IF NOT EXISTS `project` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL COMMENT '项目名称',
+  `description` varchar(500) DEFAULT NULL COMMENT '描述',
+  `owner_user_id` bigint DEFAULT NULL COMMENT '负责人',
+  `status` tinyint NOT NULL DEFAULT 1 COMMENT '1启用 0禁用',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_project_name` (`name`)
+) COMMENT='项目';
+
+CREATE TABLE IF NOT EXISTS `project_member` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `project_id` bigint NOT NULL COMMENT '项目ID',
+  `user_id` bigint NOT NULL COMMENT '用户ID',
+  `role` varchar(20) NOT NULL DEFAULT 'DEVELOPER' COMMENT 'ADMIN项目管理员 / DEVELOPER开发 / VIEWER只读',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_project_member` (`project_id`, `user_id`),
+  KEY `idx_project_member_user` (`user_id`)
+) COMMENT='项目成员';
+
+INSERT INTO `project` (`id`, `name`, `description`) VALUES (1, '默认项目', '初始化创建的项目');
+
 -- 服务表
 CREATE TABLE `service` (
   `id` bigint NOT NULL AUTO_INCREMENT,
+  `project_id` bigint DEFAULT NULL COMMENT '所属项目',
   `name` varchar(100) NOT NULL COMMENT '服务名称',
-  `project_name` varchar(100) DEFAULT NULL COMMENT '所属项目',
   `code` varchar(50) NOT NULL COMMENT '服务代码',
   `git_repo` varchar(500) COMMENT 'Git仓库地址',
   `component_id` bigint COMMENT '关联 Git 组件ID',
@@ -49,11 +74,12 @@ CREATE TABLE `service` (
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_code` (`code`)
+  UNIQUE KEY `uk_code` (`code`),
+  KEY `idx_service_project` (`project_id`)
 ) COMMENT='服务/模块表';
 
-INSERT INTO `service` (`name`, `code`, `git_repo`, `default_branch`, `service_type`, `service_port`, `k8s_deployment`, `k8s_namespace`, `dockerfile_path`, `build_command`, `status`) VALUES
-('示例服务', 'demo-service', 'https://github.com/example/demo-service.git', 'develop', 'backend', 8080, 'demo-service', 'dev', 'Dockerfile', 'mvn clean package -DskipTests', 1);
+INSERT INTO `service` (`project_id`, `name`, `code`, `git_repo`, `default_branch`, `service_type`, `service_port`, `k8s_deployment`, `k8s_namespace`, `dockerfile_path`, `build_command`, `status`) VALUES
+(1, '示例服务', 'demo-service', 'https://github.com/example/demo-service.git', 'develop', 'backend', 8080, 'demo-service', 'dev', 'Dockerfile', 'mvn clean package -DskipTests', 1);
 
 -- 构建任务表
 CREATE TABLE `build_job` (
@@ -64,13 +90,10 @@ CREATE TABLE `build_job` (
   `env_id` bigint NOT NULL COMMENT '环境ID',
   `branch` varchar(100) NOT NULL COMMENT 'Git分支或Tag',
   `git_type` varchar(20) DEFAULT 'branch' COMMENT 'Git类型：branch/tag',
-  `commit_id` varchar(50) COMMENT '提交ID',
   `build_number` int COMMENT '构建序号',
-  `build_node` varchar(100) COMMENT '构建节点名称',
   `image_tag` varchar(200) COMMENT 'Docker镜像Tag',
   `image_full_name` varchar(500) COMMENT '完整镜像名称',
   `status` varchar(20) DEFAULT 'PENDING' COMMENT '状态：PENDING/BUILDING/DEPLOYING/SUCCESS/FAILED',
-  `build_log_url` varchar(500) COMMENT '构建日志URL',
   `error_message` text COMMENT '错误信息',
   `creator_id` bigint COMMENT '创建人ID',
   `start_time` datetime COMMENT '开始时间',
@@ -93,6 +116,15 @@ CREATE TABLE `build_node` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL COMMENT '节点名称',
   `label` varchar(100) COMMENT '节点标签',
+  `host` varchar(200) DEFAULT NULL COMMENT '主机地址',
+  `port` int DEFAULT NULL COMMENT '端口号',
+  `auth_type` varchar(20) DEFAULT NULL COMMENT '认证类型：password, private_key',
+  `username` varchar(100) DEFAULT NULL COMMENT 'SSH用户名',
+  `password` varchar(500) DEFAULT NULL COMMENT 'SSH密码（当authType为password时使用）',
+  `private_key` text COMMENT 'SSH私钥（当authType为private_key时使用）',
+  `private_key_passphrase` varchar(200) DEFAULT NULL COMMENT 'SSH私钥密码（如果私钥有密码）',
+  `node_type` varchar(20) DEFAULT NULL COMMENT '节点类型：build, deploy',
+  `work_dir` varchar(500) DEFAULT '/tmp/opsflow-workspace' COMMENT '远程工作目录根路径',
   `status` varchar(20) DEFAULT 'ONLINE' COMMENT '状态：ONLINE/OFFLINE',
   `description` varchar(500) COMMENT '描述',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
@@ -107,11 +139,10 @@ INSERT INTO `cluster` (`name`, `server`, `status`, `description`) VALUES
 ('cluster-test', 'https://k8s-test.example.com', 1, '测试集群'),
 ('cluster-demo', 'https://k8s-demo.example.com', 1, '演示集群');
 
-INSERT INTO `env` (`name`, `cluster_id`, `k8s_cluster`, `k8s_namespace`, `status`) VALUES
-('dev', 1, 'cluster-dev', 'dev', 1),
-('test', 2, 'cluster-test', 'test', 1),
-('demo', 3, 'cluster-demo', 'demo', 1);
-
+INSERT INTO `env` (`name`, `cluster_id`, `k8s_namespace`, `status`) VALUES
+('dev', 1, 'dev', 1),
+('test', 2, 'test', 1),
+('demo', 3, 'demo', 1);
 INSERT INTO `build_node` (`name`, `label`, `status`, `description`) VALUES
 ('node-1', 'linux', 'ONLINE', '构建节点1'),
 ('node-2', 'linux', 'ONLINE', '构建节点2'),
@@ -120,13 +151,13 @@ INSERT INTO `build_node` (`name`, `label`, `status`, `description`) VALUES
 -- 组件管理表（Harbor/GitLab 等外部系统连接配置）
 CREATE TABLE IF NOT EXISTS `component` (
   `id` bigint NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) NOT NULL COMMENT '组件名称',
+  `name` varchar(200) NOT NULL COMMENT '组件名称',
   `type` varchar(50) NOT NULL COMMENT '组件类型：harbor/gitlab/github/k8s等',
-  `url` varchar(500) COMMENT '访问地址',
-  `auth_type` varchar(50) COMMENT '认证类型',
+  `url` varchar(500) NOT NULL COMMENT '访问地址',
+  `auth_type` varchar(50) NOT NULL COMMENT '认证类型：api_key, username_password, token, oauth',
   `auth_config` text COMMENT '认证信息JSON',
   `credential_id` bigint COMMENT '关联钥匙串ID',
-  `description` varchar(500) COMMENT '描述',
+  `description` text COMMENT '描述',
   `status` tinyint DEFAULT 1 COMMENT '状态：1-启用 0-禁用',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -151,13 +182,11 @@ CREATE TABLE IF NOT EXISTS `credential` (
 -- Pipeline 模板表
 CREATE TABLE IF NOT EXISTS `pipeline` (
   `id` bigint NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) NOT NULL COMMENT 'Pipeline名称',
+  `name` varchar(200) NOT NULL COMMENT 'Pipeline名称',
   `pipeline_type` varchar(20) NOT NULL DEFAULT 'cicd' COMMENT '流水线类型: ci/cd/cicd',
-  `description` varchar(500) COMMENT '描述',
+  `description` text COMMENT 'Pipeline描述',
   `steps_config` text COMMENT '步骤配置JSON',
-  `script` text COMMENT 'Pipeline脚本（可选）',
   `parameter_definitions` text COMMENT '参数定义JSON',
-  `build_node_id` bigint COMMENT 'CI构建节点ID（兼容旧字段）',
   `build_node_ids` varchar(500) COMMENT 'CI构建节点ID列表，逗号分隔',
   `deploy_node_id` bigint COMMENT 'CD部署节点ID',
   `status` tinyint DEFAULT 1 COMMENT '1-启用 0-禁用',
@@ -176,7 +205,6 @@ CREATE TABLE IF NOT EXISTS `build_job_stage` (
   `step_name` varchar(100) NOT NULL COMMENT '步骤名称',
   `status` varchar(20) DEFAULT 'PENDING' COMMENT 'PENDING/RUNNING/SUCCESS/FAILURE/SKIPPED',
   `duration_ms` bigint DEFAULT 0 COMMENT '耗时毫秒',
-  `log_text` mediumtext COMMENT '阶段日志（兼容旧数据，新日志写入文件）',
   `log_path` varchar(500) DEFAULT NULL COMMENT '阶段日志相对路径',
   `log_preview` varchar(4000) DEFAULT NULL COMMENT '日志末尾预览',
   `error_message` text COMMENT '错误信息',
@@ -212,7 +240,6 @@ CREATE TABLE IF NOT EXISTS `pipeline_template` (
   `description` varchar(500) DEFAULT NULL COMMENT '描述',
   `content` mediumtext NOT NULL COMMENT '模版内容',
   `base_image` varchar(200) DEFAULT NULL COMMENT 'Dockerfile 基础镜像',
-  `env_id` bigint DEFAULT NULL COMMENT '已废弃：模版与步骤关联，不再关联环境',
   `service_type` varchar(50) DEFAULT NULL COMMENT 'Service 类型',
   `status` tinyint DEFAULT 1 COMMENT '1-启用 0-禁用',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
@@ -251,8 +278,8 @@ CREATE TABLE IF NOT EXISTS `pipeline_view_role` (
 -- 审批流定义
 CREATE TABLE IF NOT EXISTS `approval_flow` (
   `id` bigint NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) NOT NULL COMMENT '审批流名称',
-  `description` varchar(500) DEFAULT NULL COMMENT '描述',
+  `name` varchar(200) NOT NULL COMMENT '审批流名称',
+  `description` text COMMENT '描述',
   `steps` text COMMENT '审批步骤 JSON',
   `status` tinyint DEFAULT 1 COMMENT '1-启用 0-禁用',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
@@ -264,8 +291,9 @@ CREATE TABLE IF NOT EXISTS `approval_flow` (
 -- 上线任务
 CREATE TABLE IF NOT EXISTS `deploy_task` (
   `id` bigint NOT NULL AUTO_INCREMENT,
-  `task_number` varchar(50) NOT NULL COMMENT '任务编号',
-  `task_name` varchar(200) DEFAULT NULL COMMENT '任务名称',
+  `project_id` bigint DEFAULT NULL COMMENT '所属项目；为空表示升级前的历史任务',
+  `task_number` varchar(50) DEFAULT NULL COMMENT '任务编号',
+  `task_name` varchar(200) NOT NULL COMMENT '任务名称',
   `deploy_modules` text COMMENT '上线模块 JSON',
   `deploy_envs` text COMMENT '部署环境 ID JSON',
   `cluster_id` bigint DEFAULT NULL COMMENT '上线集群ID',
@@ -275,12 +303,12 @@ CREATE TABLE IF NOT EXISTS `deploy_task` (
   `deploy_mode` varchar(20) NOT NULL DEFAULT 'serial' COMMENT '部署策略: serial串行 / parallel有限并行',
   `deploy_parallelism` int NOT NULL DEFAULT 1 COMMENT '并行部署并发数，serial 时为 1',
   `notify_channels` varchar(100) DEFAULT 'inbox' COMMENT '通知渠道: inbox,feishu',
-  `approval_status` varchar(30) DEFAULT 'none' COMMENT 'none草稿/pending/approved/rejected',
-  `task_status` varchar(30) DEFAULT 'pending' COMMENT '任务状态',
+  `approval_status` varchar(20) DEFAULT 'pending' COMMENT '审批状态：pending, approved, rejected',
+  `task_status` varchar(20) DEFAULT 'pending' COMMENT '任务状态：pending, building, deploying, success, failed, cancelled',
   `locked` tinyint NOT NULL DEFAULT 0 COMMENT '是否锁定：0未锁定 1已锁定',
   `locked_by` varchar(100) DEFAULT NULL COMMENT '锁定人用户名',
   `locked_at` datetime DEFAULT NULL COMMENT '锁定时间',
-  `description` varchar(1000) DEFAULT NULL,
+  `description` text COMMENT '描述',
   `creator_id` bigint DEFAULT NULL,
   `creator_name` varchar(100) DEFAULT NULL,
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
@@ -290,7 +318,8 @@ CREATE TABLE IF NOT EXISTS `deploy_task` (
   UNIQUE KEY `uk_task_number` (`task_number`),
   KEY `idx_approval_flow` (`approval_flow_id`),
   KEY `idx_approval_status` (`approval_status`),
-  KEY `idx_task_pipeline` (`pipeline_template_id`)
+  KEY `idx_task_pipeline` (`pipeline_template_id`),
+  KEY `idx_deploy_task_project` (`project_id`)
 ) COMMENT='上线任务';
 
 -- 审批记录
@@ -298,14 +327,14 @@ CREATE TABLE IF NOT EXISTS `approval_record` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `task_id` bigint NOT NULL COMMENT '上线任务 ID',
   `task_number` varchar(50) DEFAULT NULL COMMENT '任务编号',
-  `approval_flow_id` bigint DEFAULT NULL COMMENT '审批流 ID',
-  `current_step` int NOT NULL COMMENT '步骤序号，从 1 开始',
+  `approval_flow_id` bigint NOT NULL COMMENT '审批流ID',
+  `current_step` int DEFAULT '1' COMMENT '当前审批步骤',
   `approver` varchar(100) DEFAULT NULL COMMENT '审批人用户名',
   `approver_name` varchar(100) DEFAULT NULL COMMENT '审批人显示名',
   `approver_feishu_id` varchar(100) DEFAULT NULL COMMENT '飞书用户 ID',
   `feishu_message_id` varchar(100) DEFAULT NULL COMMENT '飞书卡片消息ID',
-  `status` varchar(30) NOT NULL DEFAULT 'waiting' COMMENT 'waiting/pending/approved/rejected/cancelled',
-  `comment` varchar(1000) DEFAULT NULL COMMENT '审批意见',
+  `status` varchar(20) DEFAULT 'pending' COMMENT '审批状态：pending, approved, rejected, cancelled',
+  `comment` text COMMENT '审批意见',
   `approve_time` datetime DEFAULT NULL,
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -317,13 +346,13 @@ CREATE TABLE IF NOT EXISTS `approval_record` (
 -- 用户飞书账号映射
 CREATE TABLE IF NOT EXISTS `user_feishu` (
   `id` bigint NOT NULL AUTO_INCREMENT,
-  `user_id` bigint DEFAULT NULL COMMENT '系统用户ID',
-  `username` varchar(100) NOT NULL COMMENT '系统用户名',
+  `user_id` bigint NOT NULL COMMENT '系统用户ID',
+  `username` varchar(50) NOT NULL COMMENT '系统用户名',
   `feishu_user_id` varchar(100) DEFAULT NULL COMMENT '飞书 user_id',
   `feishu_open_id` varchar(100) DEFAULT NULL COMMENT '飞书 open_id',
   `feishu_union_id` varchar(100) DEFAULT NULL COMMENT '飞书 union_id',
-  `feishu_mobile` varchar(50) DEFAULT NULL COMMENT '飞书手机号',
-  `feishu_email` varchar(200) DEFAULT NULL COMMENT '飞书邮箱',
+  `feishu_mobile` varchar(20) DEFAULT NULL COMMENT '飞书手机号',
+  `feishu_email` varchar(100) DEFAULT NULL COMMENT '飞书邮箱',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -378,8 +407,6 @@ CREATE TABLE IF NOT EXISTS `permission` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL COMMENT '权限名称',
   `code` varchar(50) NOT NULL COMMENT '权限代码',
-  `resource` varchar(200) DEFAULT NULL COMMENT '资源路径（备注）',
-  `method` varchar(20) DEFAULT NULL COMMENT 'HTTP 方法（备注）',
   `description` varchar(500) DEFAULT NULL COMMENT '描述',
   `parent_id` bigint DEFAULT NULL COMMENT '父权限ID',
   `status` tinyint DEFAULT 1 COMMENT '状态：1-启用 0-禁用',
@@ -429,6 +456,41 @@ CREATE TABLE IF NOT EXISTS `inbox_message` (
   KEY `idx_inbox_user_read` (`username`, `read_flag`),
   KEY `idx_inbox_biz` (`biz_type`, `biz_id`)
 ) COMMENT='站内信';
+
+-- 操作审计日志
+CREATE TABLE IF NOT EXISTS `audit_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` bigint DEFAULT NULL COMMENT '操作人 ID',
+  `username` varchar(100) DEFAULT NULL COMMENT '操作人用户名',
+  `module` varchar(50) DEFAULT NULL COMMENT '模块',
+  `action` varchar(50) DEFAULT NULL COMMENT '动作',
+  `http_method` varchar(10) DEFAULT NULL COMMENT 'HTTP 方法',
+  `path` varchar(255) DEFAULT NULL COMMENT '请求路径',
+  `target_id` varchar(100) DEFAULT NULL COMMENT '操作对象 ID',
+  `request_summary` varchar(2000) DEFAULT NULL COMMENT '请求参数摘要（敏感字段已脱敏）',
+  `success` tinyint NOT NULL DEFAULT 1 COMMENT '1成功 0失败',
+  `status_code` int DEFAULT NULL COMMENT 'HTTP 状态码',
+  `error_message` varchar(500) DEFAULT NULL COMMENT '失败原因',
+  `client_ip` varchar(64) DEFAULT NULL COMMENT '客户端 IP',
+  `duration_ms` bigint DEFAULT NULL COMMENT '耗时（毫秒）',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_time` (`create_time`),
+  KEY `idx_audit_user_time` (`username`, `create_time`),
+  KEY `idx_audit_module_time` (`module`, `create_time`)
+) COMMENT='操作审计日志';
+
+-- 流水线 Git Webhook 自动构建开关
+CREATE TABLE IF NOT EXISTS `pipeline_webhook_trigger` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `anchor_job_id` bigint NOT NULL COMMENT '流水线任务（任务组首条 build_job）ID',
+  `enabled` tinyint NOT NULL DEFAULT 1 COMMENT '1 推送代码时自动构建 0 关闭',
+  `update_by` varchar(100) DEFAULT NULL COMMENT '最后修改人',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_webhook_anchor` (`anchor_job_id`)
+) COMMENT='流水线 Git Webhook 自动构建开关';
 
 -- 默认 Pipeline 模板
 INSERT INTO `pipeline` (`name`, `pipeline_type`, `description`, `steps_config`, `status`) VALUES

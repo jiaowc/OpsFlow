@@ -20,6 +20,9 @@ public class DeployTask {
     
     @TableId(type = IdType.AUTO)
     private Long id;
+
+    /** 所属项目；为空表示升级前的历史任务 */
+    private Long projectId;
     
     /** 任务编号，格式 TASK-yyyyMMddHHmmss */
     private String taskNumber;

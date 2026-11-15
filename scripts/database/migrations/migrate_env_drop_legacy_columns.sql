@@ -1,4 +1,5 @@
 -- 删除环境表遗留字段（可重复执行）
+SET NAMES utf8mb4;
 SET @dbname = DATABASE();
 
 SET @preparedStatement = (SELECT IF(

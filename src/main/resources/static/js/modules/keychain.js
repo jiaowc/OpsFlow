@@ -108,7 +108,7 @@ function buildCredentialConfigFields(credentialType, configData) {
                     <input type="password" name="passphrase" placeholder="${configData.passphrase === '******' ? '留空则不修改' : ''}">
                 </div>`;
         default:
-            return '<p style="color:#999;">请选择凭证类型</p>';
+            return '<p style="color:var(--text-4);">请选择凭证类型</p>';
     }
 }
 
@@ -181,7 +181,7 @@ function renderCredentialList(credentials) {
     const list = document.getElementById('credentialList');
     if (!list) return;
     if (!credentials.length) {
-        list.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:#999;">暂无钥匙</td></tr>';
+        list.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-4);">暂无钥匙</td></tr>';
         return;
     }
     list.innerHTML = credentials.map(item => `
@@ -189,7 +189,7 @@ function renderCredentialList(credentials) {
             <td>${escKeychainHtml(item.name)}</td>
             <td>${escKeychainHtml(getCredentialTypeLabel(item.credentialType))}</td>
             <td>${escKeychainHtml(item.description || '-')}</td>
-            <td>${item.status === 1 ? '<span style="color:#059669;">启用</span>' : '<span style="color:#dc2626;">禁用</span>'}</td>
+            <td>${item.status === 1 ? '<span class="status-tag is-on">启用</span>' : '<span class="status-tag is-off">禁用</span>'}</td>
             <td>
                 <div class="table-actions">
                     <button class="btn-edit" onclick="editCredential(${item.id})">修改</button>

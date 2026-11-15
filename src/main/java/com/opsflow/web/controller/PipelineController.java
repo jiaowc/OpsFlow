@@ -217,9 +217,7 @@ public class PipelineController {
                 : PipelineTypes.CICD);
         clone.setDescription(source.getDescription());
         clone.setStepsConfig(source.getStepsConfig());
-        clone.setScript(source.getScript());
         clone.setParameterDefinitions(source.getParameterDefinitions());
-        clone.setBuildNodeId(source.getBuildNodeId());
         clone.setBuildNodeIds(source.getBuildNodeIds());
         clone.setDeployNodeId(source.getDeployNodeId());
         clone.setStatus(source.getStatus() != null ? source.getStatus() : 1);
@@ -286,7 +284,7 @@ public class PipelineController {
             // 忽略解析错误
         }
 
-        List<Long> buildNodeIds = parseBuildNodeIds(pipeline.getBuildNodeIds(), pipeline.getBuildNodeId());
+        List<Long> buildNodeIds = parseBuildNodeIds(pipeline.getBuildNodeIds());
         dto.setBuildNodeIds(buildNodeIds);
         if (!buildNodeIds.isEmpty()) {
             List<String> names = new ArrayList<>();
@@ -330,45 +328,28 @@ public class PipelineController {
     }
 
     /**
-     * 将请求中的构建节点选择写入实体（兼容单选 buildNodeId 与多选 buildNodeIds）。
+     * 将请求中的构建节点选择写入实体。
      *
      * @param pipeline 待写入的实体
      * @param request 请求 DTO
      */
     private void applyBuildNodeSelections(Pipeline pipeline, PipelineDTO request) {
-        List<Long> buildNodeIds = normalizeBuildNodeIds(request.getBuildNodeIds(), request.getBuildNodeId());
-        pipeline.setBuildNodeId(buildNodeIds.isEmpty() ? null : buildNodeIds.get(0));
+        List<Long> buildNodeIds = new ArrayList<>();
+        if (request.getBuildNodeIds() != null) {
+            request.getBuildNodeIds().stream().filter(Objects::nonNull).distinct().forEach(buildNodeIds::add);
+        }
         pipeline.setBuildNodeIds(buildNodeIds.isEmpty()
             ? null
             : buildNodeIds.stream().map(String::valueOf).collect(Collectors.joining(",")));
     }
 
     /**
-     * 合并并去重构建节点 ID 列表，单选 ID 作为回退。
-     *
-     * @param buildNodeIds 多选 ID 列表
-     * @param buildNodeId 单选 ID（兼容旧字段）
-     * @return 去重后的 ID 列表
-     */
-    private List<Long> normalizeBuildNodeIds(List<Long> buildNodeIds, Long buildNodeId) {
-        List<Long> ids = new ArrayList<>();
-        if (buildNodeIds != null) {
-            buildNodeIds.stream().filter(Objects::nonNull).distinct().forEach(ids::add);
-        }
-        if (ids.isEmpty() && buildNodeId != null) {
-            ids.add(buildNodeId);
-        }
-        return ids;
-    }
-
-    /**
      * 解析实体中逗号分隔的构建节点 ID 字符串。
      *
      * @param buildNodeIds 逗号分隔的 ID 字符串
-     * @param fallbackBuildNodeId 回退单选 ID
      * @return 解析后的 ID 列表
      */
-    private List<Long> parseBuildNodeIds(String buildNodeIds, Long fallbackBuildNodeId) {
+    private List<Long> parseBuildNodeIds(String buildNodeIds) {
         List<Long> ids = new ArrayList<>();
         if (buildNodeIds != null && !buildNodeIds.trim().isEmpty()) {
             for (String part : buildNodeIds.split(",")) {
@@ -382,9 +363,6 @@ public class PipelineController {
                 } catch (NumberFormatException ignore) {
                 }
             }
-        }
-        if (ids.isEmpty() && fallbackBuildNodeId != null) {
-            ids.add(fallbackBuildNodeId);
         }
         return ids;
     }

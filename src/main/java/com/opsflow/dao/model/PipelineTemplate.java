@@ -30,8 +30,6 @@ public class PipelineTemplate {
 
     private String baseImage;
 
-    private Long envId;
-
     private String serviceType;
 
     private Integer status;

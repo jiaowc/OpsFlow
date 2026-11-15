@@ -1,43 +1,60 @@
 # OpsFlow 部署文档
 
-## 部署前准备
+部署方式优先级：
+
+1. **Docker Compose 一键安装（推荐）** → [DOCKER.md](./DOCKER.md)
+2. **传统 jar**（本文下方）
+3. **Kubernetes**（同一镜像编排，清单后续补充）
+
+## 方式 A：Docker Compose（推荐）
+
+```bash
+cp .env.example .env
+./scripts/deploy/compose-up.sh
+# 浏览器 http://localhost:8080 ，账号 admin / 123456
+```
+
+完整说明（外部库、备份、升级、排障）：[DOCKER.md](./DOCKER.md)。
+
+---
+
+## 方式 B：传统 jar 部署
 
 ### 1. 环境要求
 
 - JDK 1.8+
 - Maven 3.6+
 - MySQL 5.7+
-- 构建节点（SSH）
-- Kubernetes集群（已配置）
+- 构建节点（SSH，跑流水线时需要）
+- Kubernetes 集群（部署到 K8s 时需要）
 
 ### 2. 数据库准备
 
 ```bash
-# 创建数据库
-mysql -u root -p
-CREATE DATABASE opsflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-# 导入表结构
-mysql -u root -p opsflow < scripts/database/schema.sql
+# 建库、导入表结构与种子数据（角色权限、内置 admin 账号）、执行全部迁移；
+# 需先完成第 3 步的配置文件，脚本从中读取数据库连接
+bash scripts/database/init_db.sh --profile=prod
 ```
+
+种子数据中默认账号多为 `admin` / `123456`（以 `init.sql` 为准），首次登录后请在「用户管理」中修改密码。
 
 ### 3. 配置文件准备
 
 ```bash
-# 默认配置：config/application.yml
-# 按环境覆盖，例如：
-vim config/application-dev.yml
+# 部署目录下创建本机私有配置（不入库），填写 DB_PASSWORD；prod 还需 DB_URL
+cp config/application-local.yml.example config/application-local.yml
+vim config/application-local.yml
 ```
 
-## 部署步骤
+详见 [config/README.md](../../config/README.md)。
 
-### 方式一：使用部署脚本（推荐）
+### 4. 使用部署脚本
 
 ```bash
 # 编译并启动
 ./scripts/deploy/restart.sh
 
-# 按环境编译并启动（示例：dev）
+# 指定环境编译并启动（示例：dev）
 SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh
 
 # 或分步执行
@@ -45,37 +62,29 @@ SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh
 ./scripts/deploy/stop.sh    # 停止
 ```
 
-### 方式二：手动部署
+### 5. 手动部署
 
 ```bash
-# 1. 编译打包
+# 1. 编译打包（所有环境共用同一个 jar）
 mvn clean package -DskipTests
 
-# 或按环境打包（示例：dev）
-mvn clean package -Pdev -DskipTests
-
-# 2. 启动应用（默认使用 application.yml）
+# 2. 在部署目录下启动（默认环境）
 java -jar target/opsflow.jar
 
-# 3. 启动应用（示例：dev）
-SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar --spring.config.additional-location=file:./config/
+# 3. 指定环境启动（示例：dev）
+SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar
 ```
 
 ## 配置说明
 
 ### 配置文件位置
 
-- 默认配置：`config/application.yml`
-- 环境配置：`config/application-dev.yml`、`config/application-test.yml`、`config/application-prod.yml`
-- 不传参数默认使用 `application.yml`
-- 通过 `SPRING_PROFILES_ACTIVE` 选择环境覆盖配置
+所有应用配置都在部署目录（工作目录）下的 `config/`，jar 内不含配置文件，部署时需连同 `config/` 一起拷贝：
 
-### 配置优先级
-
-1. `SPRING_PROFILES_ACTIVE` / `--spring.profiles.active`
-2. 外部配置目录 `./config/`
-3. `application.yml`
-4. `application-<profile>.yml`
+- 公共配置：`config/application.yml`
+- 环境差异：`config/application-dev.yml`、`application-test.yml`、`application-prod.yml`
+- 本机私有配置：`config/application-local.yml`（不入库）
+- 通过 `SPRING_PROFILES_ACTIVE` 选择环境；数据库连接通过 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` 注入
 
 ## 日志管理
 
@@ -117,7 +126,9 @@ Type=simple
 User=opsflow
 WorkingDirectory=/opt/opsflow
 Environment=SPRING_PROFILES_ACTIVE=prod
-ExecStart=/usr/bin/java -jar /opt/opsflow/target/opsflow.jar --spring.config.additional-location=file:/opt/opsflow/config/
+# DB_URL / DB_PASSWORD 可写在 /opt/opsflow/config/application-local.yml，或用 EnvironmentFile 注入
+EnvironmentFile=-/opt/opsflow/opsflow.env
+ExecStart=/usr/bin/java -jar /opt/opsflow/target/opsflow.jar
 Restart=always
 RestartSec=10
 
@@ -190,8 +201,8 @@ mysql -u root -p opsflow < backup_20240109.sql
 ### 配置文件备份
 
 ```bash
-# 备份配置
-cp config/application.yml config/application.yml.backup
+# 备份本机私有配置
+cp config/application-local.yml config/application-local.yml.backup
 ```
 
 ## 升级指南

@@ -7,10 +7,7 @@ async function loadEnvs() {
     try {
         const response = await fetch('/api/env/list');
         if (response.ok) {
-            const envs = await response.json();
-            if (envs && envs.length > 0) {
-                mockEnvs = envs;
-            }
+            mockEnvs = await response.json() || [];
         }
     } catch (error) {
         console.error('Load envs error:', error);
@@ -34,10 +31,7 @@ async function loadServicesForSelect() {
     try {
         const response = await fetch('/api/service/list');
         if (response.ok) {
-            const services = await response.json();
-            if (services && services.length > 0) {
-                mockServices = services;
-            }
+            mockServices = await response.json() || [];
         }
     } catch (error) {
         console.error('Load services error:', error);
@@ -75,24 +69,10 @@ async function loadNodesForSelect() {
     try {
         const response = await fetch('/api/node/list');
         if (response.ok) {
-            const nodes = await response.json();
-            if (nodes && nodes.length > 0) {
-                mockNodes = nodes;
-            }
+            mockNodes = await response.json() || [];
         }
     } catch (error) {
         console.error('Load nodes error:', error);
-    }
-    
-    const nodeSelect = document.getElementById('buildNode');
-    if (nodeSelect) {
-        nodeSelect.innerHTML = '<option value="">随机选择</option>';
-        mockNodes.filter(n => n.nodeType === 'build').forEach(node => {
-            const option = document.createElement('option');
-            option.value = node.id;
-            option.textContent = `${node.name} (${node.status})`;
-            nodeSelect.appendChild(option);
-        });
     }
 }
 
@@ -201,9 +181,9 @@ function formatDate(dateString) {
 // 格式化状态显示
 function formatStatus(status) {
     if (status === 1 || status === '1' || status === true) {
-        return '<span style="color: #059669;">启用</span>';
+        return '<span class="status-tag is-on">启用</span>';
     }
-    return '<span style="color: #dc2626;">禁用</span>';
+    return '<span class="status-tag is-off">禁用</span>';
 }
 
 // 防抖函数

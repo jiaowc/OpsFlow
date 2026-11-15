@@ -1,38 +1,34 @@
 .git
-.gitignore
+.github
 .vscode
 .idea
 .env
-*.md
+.env.*
+!.env.example
 
-# 只需要 target/opsflow.jar，其它编译产物可忽略
-target/*
-!target/opsflow.jar
-
+# 构建产物与运行时数据（镜像内重新编译）
+target/
 logs/
 data/
 uploads/
+*.log
+
+# 文档与本地联调环境（体积大、与产品镜像无关）
 docs/
-scripts/
+scripts/local/
+agent-transcripts/
+*.md
+!README.md
 
-# 本地敏感配置运行时挂载，不打进镜像
-config/application.yml
-config/application-*.yml
+# 本机敏感配置不打进镜像（运行时用环境变量或挂载）
+config/application-local.yml
+config/*.example
+config/*.md
 
-src/
-pom.xml
-
+# IDE / OS
 *.iml
 *.swp
 *.tmp
 *.bak
 .DS_Store
-
-api/
-common/
-dao/
-integration/
-service/
-web/
-app/
-admin/
+Thumbs.db

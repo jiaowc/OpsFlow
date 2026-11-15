@@ -38,7 +38,7 @@ function renderEnvList(envs) {
     const emptyCell = '<span style="color:#9ca3af;">-</span>';
     
     if (envs.length === 0) {
-        envList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">暂无环境</td></tr>';
+        envList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-4);">暂无环境</td></tr>';
         return;
     }
     
@@ -51,12 +51,12 @@ function renderEnvList(envs) {
             </td>
             <td>${env.k8sNamespace ? escapeHtml(env.k8sNamespace) : emptyCell}</td>
             <td style="white-space:nowrap;">${formatEnvType(env.envType, env.name)}</td>
-            <td>${env.status === 1 ? '<span style="color: #059669;">启用</span>' : '<span style="color: #dc2626;">禁用</span>'}</td>
+            <td>${env.status === 1 ? '<span class="status-tag is-on">启用</span>' : '<span class="status-tag is-off">禁用</span>'}</td>
             <td>
-                <div class="table-actions">
+                ${hasPermission('env:manage') ? `<div class="table-actions">
                     <button class="btn-edit env-edit-btn" data-env-id="${env.id}">修改</button>
                     <button class="btn-danger env-delete-btn" data-env-id="${env.id}">删除</button>
-                </div>
+                </div>` : '<span style="color:#9ca3af;">-</span>'}
             </td>
         </tr>
     `).join('');

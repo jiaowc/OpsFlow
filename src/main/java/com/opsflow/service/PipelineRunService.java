@@ -43,7 +43,12 @@ public interface PipelineRunService {
     /**
      * 分页查询流水线任务历史
      */
-    PipelineJobPageResult listPipelineJobsPage(Long envId, int page, int pageSize);
+    PipelineJobPageResult listPipelineJobsPage(Long envId, Long projectId, int page, int pageSize);
+
+    /**
+     * 分页查询流水线任务历史（支持关键词搜索）。
+     */
+    PipelineJobPageResult listPipelineJobsPage(Long envId, Long projectId, String keyword, int page, int pageSize);
 
     /**
      * 查询构建任务阶段
@@ -55,6 +60,14 @@ public interface PipelineRunService {
      * 必须在创建任务的同一事务中调用：会锁住服务行直到事务提交，保证并发提交时串行判断。
      */
     void assertNoRunningBuild(Long serviceId, Long envId);
+
+    /**
+     * 锁住服务行后查询该服务在此环境运行中的任务（与 {@link #assertNoRunningBuild} 同一把锁），不抛异常。
+     *
+     * @param excludeJobId 不计入的任务（通常是待启动的任务自身）
+     * @return 运行中任务的编号；空闲时返回 null
+     */
+    String findRunningJobNumber(Long serviceId, Long envId, Long excludeJobId);
 
     /**
      * 查询阶段日志
@@ -97,6 +110,34 @@ public interface PipelineRunService {
      * 对已有任务触发一次新构建（不新增任务行）
      */
     BuildResponse rebuildPipelineJob(Long jobId);
+
+    /**
+     * 校验当前用户可查看该构建记录（环境视图 + 项目成员）
+     */
+    void assertJobAccessible(Long jobId);
+
+    /**
+     * 流水线任务所在环境是否为生产环境
+     */
+    boolean isProdEnvJob(Long jobId);
+
+    /**
+     * 设置流水线任务是否在代码推送时自动构建
+     */
+    void setWebhookEnabled(Long jobId, boolean enabled);
+
+    /**
+     * 处理 Git 分支推送：触发所有开启了自动构建、仓库与分支均匹配的非生产环境流水线任务。
+     *
+     * @param repoKeys 推送仓库的归一化路径集合（见 {@link com.opsflow.common.util.GitRepoKey}）
+     * @return triggered / skipped 明细
+     */
+    java.util.Map<String, Object> triggerByGitPush(java.util.Set<String> repoKeys, String branch, String pusher);
+
+    /**
+     * 推送触发的单次重新构建（独立事务，保证「运行中校验 + 新建记录」在同一把服务行锁内完成）
+     */
+    BuildResponse rebuildForWebhook(Long anchorJobId, String creatorName);
 
     /**
      * 查询可回滚的历史成功版本（同服务、同环境，含镜像地址）

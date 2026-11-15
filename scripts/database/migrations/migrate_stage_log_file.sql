@@ -7,7 +7,7 @@ SET @col_exists = (
     WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = 'build_job_stage' AND COLUMN_NAME = 'log_path'
 );
 SET @sql = IF(@col_exists = 0,
-    'ALTER TABLE `build_job_stage` ADD COLUMN `log_path` varchar(500) DEFAULT NULL COMMENT ''阶段日志相对路径'' AFTER `log_text`',
+    'ALTER TABLE `build_job_stage` ADD COLUMN `log_path` varchar(500) DEFAULT NULL COMMENT ''阶段日志相对路径'' AFTER `duration_ms`',
     'SELECT 1');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;

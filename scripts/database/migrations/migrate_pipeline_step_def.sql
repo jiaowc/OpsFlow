@@ -1,4 +1,5 @@
 -- 可复用 Pipeline 步骤定义表
+SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS `pipeline_step_def` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL COMMENT '步骤名称',

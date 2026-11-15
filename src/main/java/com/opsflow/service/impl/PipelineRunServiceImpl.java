@@ -1,5 +1,6 @@
 package com.opsflow.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,6 +19,7 @@ import com.opsflow.common.constant.BuildStatus;
 import com.opsflow.common.constant.PipelineTypes;
 import com.opsflow.common.exception.BusinessException;
 import com.opsflow.common.util.BuildJobCreatorUtils;
+import com.opsflow.common.util.GitRepoKey;
 import com.opsflow.common.util.JobNumberGenerator;
 import com.opsflow.dao.mapper.*;
 import com.opsflow.dao.model.*;
@@ -25,6 +27,7 @@ import com.opsflow.integration.harbor.HarborCredentialService;
 import com.opsflow.integration.pipeline.PipelineExecutionContext;
 import com.opsflow.integration.pipeline.PipelineExecutionResult;
 import com.opsflow.integration.pipeline.PipelineExecutor;
+import com.opsflow.integration.pipeline.PipelineJobDispatcher;
 import com.opsflow.integration.pipeline.PipelineStageListener;
 import com.opsflow.integration.pipeline.StageLogStore;
 import com.opsflow.integration.ssh.SshClient;
@@ -33,6 +36,7 @@ import com.opsflow.service.DeployTaskCdService;
 import com.opsflow.service.PipelineRunService;
 import com.opsflow.service.PipelineStepResolveService;
 import com.opsflow.service.PipelineViewService;
+import com.opsflow.service.ProjectAccessService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -40,6 +44,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -126,6 +131,15 @@ public class PipelineRunServiceImpl implements PipelineRunService {
 
     @Autowired
     private PipelineViewService pipelineViewService;
+
+    @Autowired
+    private PipelineJobDispatcher pipelineJobDispatcher;
+
+    @Autowired
+    private PipelineWebhookTriggerMapper pipelineWebhookTriggerMapper;
+
+    @Autowired
+    private ProjectAccessService projectAccessService;
 
     /**
      * 通过代理调用，确保 @Async 生效（避免同类自调用变成同步阻塞）
@@ -221,9 +235,12 @@ public class PipelineRunServiceImpl implements PipelineRunService {
     }
 
     private void dispatchBuildJobExecution(Long buildJobId) {
-        log.info("事务已提交，启动流水线执行线程: jobId={}", buildJobId);
-        java.util.concurrent.CompletableFuture.runAsync(() -> {
+        log.info("事务已提交，提交流水线执行: jobId={}", buildJobId);
+        pipelineJobDispatcher.submit(buildJobId, waitedMillis -> {
             try {
+                if (waitedMillis >= 1000) {
+                    markActualStart(buildJobId, waitedMillis);
+                }
                 doExecuteBuildJob(buildJobId);
             } catch (Exception e) {
                 log.error("流水线执行线程异常, jobId={}", buildJobId, e);
@@ -233,6 +250,16 @@ public class PipelineRunServiceImpl implements PipelineRunService {
                 }
             }
         });
+    }
+
+    /** 排队结束、真正开始执行时刷新开始时间，避免耗时把排队时间算进去 */
+    private void markActualStart(Long buildJobId, long waitedMillis) {
+        BuildJob update = new BuildJob();
+        update.setId(buildJobId);
+        update.setStartTime(LocalDateTime.now());
+        update.setUpdateTime(LocalDateTime.now());
+        buildJobMapper.updateById(update);
+        log.info("流水线任务排队 {} 秒后开始执行: jobId={}", waitedMillis / 1000, buildJobId);
     }
 
     /**
@@ -336,6 +363,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
                                 buildJobId, buildJob.getDeployTaskId(), e);
                     }
                 }
+                wakeServiceWaitersAfterCommit(buildJob);
             }
         } finally {
             activeRunningJobIds.remove(buildJobId);
@@ -344,13 +372,19 @@ public class PipelineRunServiceImpl implements PipelineRunService {
 
     @Override
     public List<PipelineJobViewDTO> listPipelineJobs(Long envId) {
-        return listPipelineJobsPage(envId, 1, 10).getItems();
+        return listPipelineJobsPage(envId, null, null, 1, 10).getItems();
     }
 
     @Override
-    public PipelineJobPageResult listPipelineJobsPage(Long envId, int page, int pageSize) {
+    public PipelineJobPageResult listPipelineJobsPage(Long envId, Long projectId, int page, int pageSize) {
+        return listPipelineJobsPage(envId, projectId, null, page, pageSize);
+    }
+
+    @Override
+    public PipelineJobPageResult listPipelineJobsPage(Long envId, Long projectId, String keyword, int page, int pageSize) {
         page = Math.max(1, page);
         pageSize = normalizePageSize(pageSize);
+        String filterKeyword = normalizePipelineListKeyword(keyword);
 
         pipelineViewService.assertAccessibleEnv(envId);
 
@@ -369,13 +403,23 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             }
             filterEnvIds = allowedEnvIds;
         }
+        Set<Long> filterServiceIds = projectAccessService.accessibleServiceIds(projectId);
+        if (filterServiceIds != null && filterServiceIds.isEmpty()) {
+            PipelineJobPageResult empty = new PipelineJobPageResult();
+            empty.setItems(Collections.emptyList());
+            empty.setTotal(0);
+            empty.setPage(page);
+            empty.setPageSize(pageSize);
+            empty.setTotalPages(0);
+            return empty;
+        }
 
-        long total = buildJobMapper.countPipelineJobGroups(filterEnvId, filterEnvIds);
+        long total = buildJobMapper.countPipelineJobGroups(filterEnvId, filterEnvIds, filterServiceIds, filterKeyword);
         int offset = (page - 1) * pageSize;
         List<PipelineJobViewDTO> items = new ArrayList<>();
         if (total > 0 && offset < total) {
             List<BuildJobGroupPageRow> rows = buildJobMapper.selectPipelineJobGroupPage(
-                    filterEnvId, filterEnvIds, offset, pageSize);
+                    filterEnvId, filterEnvIds, filterServiceIds, filterKeyword, offset, pageSize);
             Set<Long> jobIds = new HashSet<>();
             for (BuildJobGroupPageRow row : rows) {
                 if (row.getLatestId() != null) {
@@ -421,6 +465,20 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             return pageSize;
         }
         return 10;
+    }
+
+    private String normalizePipelineListKeyword(String keyword) {
+        if (keyword == null) {
+            return null;
+        }
+        String trimmed = keyword.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (trimmed.length() > 100) {
+            trimmed = trimmed.substring(0, 100);
+        }
+        return trimmed;
     }
 
     @Override
@@ -475,7 +533,6 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             view.setBranch(highlightJob.getBranch());
         }
 
-        fillAverageStageTimes(view, buildHistory);
         return view;
     }
 
@@ -562,11 +619,15 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         dto.setBranch(latestBuild.getBranch());
         dto.setGitType(resolveJobGitType(displayJob));
         dto.setStatus(latestBuild.getStatus());
+        dto.setQueuePosition(pipelineJobDispatcher.queuePosition(latestBuild.getId()));
+        dto.setQueued(dto.getQueuePosition() > 0);
         boolean groupRunning = isGroupRunning(anchor);
         dto.setBuilding(groupRunning);
         dto.setFromDeployTask(fromDeployTask);
         dto.setEditable(!groupRunning && !fromDeployTask);
         dto.setDeletable(!groupRunning);
+        dto.setWebhookEnabled(!fromDeployTask && isWebhookEnabled(anchor.getId()));
+        dto.setOperable(projectAccessService.canOperateService(anchor.getServiceId()));
         dto.setServiceId(anchor.getServiceId());
         dto.setEnvId(anchor.getEnvId());
         dto.setPipelineTemplateId(anchor.getPipelineTemplateId());
@@ -589,7 +650,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             Pipeline pipeline = pipelineMapper.selectById(anchor.getPipelineTemplateId());
             if (pipeline != null) {
                 dto.setPipelineTemplateName(pipeline.getName());
-                dto.setBuildNodeDisplay(resolveNodeDisplay(pipeline.getBuildNodeId()));
+                dto.setBuildNodeDisplay(resolveNodeDisplay(firstBuildNodeId(pipeline)));
                 dto.setDeployNodeDisplay(resolveNodeDisplay(pipeline.getDeployNodeId()));
             }
         }
@@ -657,7 +718,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         String deployNode = null;
 
         for (BuildJobStage stage : stages) {
-            String node = extractNodeDisplay(firstNonEmpty(stage.getLogPreview(), stage.getLogText()));
+            String node = extractNodeDisplay(stage.getLogPreview());
             if (node == null || node.isEmpty()) {
                 continue;
             }
@@ -674,7 +735,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
 
         Pipeline pipeline = job.getPipelineTemplateId() != null ? pipelineMapper.selectById(job.getPipelineTemplateId()) : null;
         if (buildNode == null || buildNode.isEmpty()) {
-            buildNode = pipeline != null ? resolveNodeDisplay(pipeline.getBuildNodeId()) : "本机";
+            buildNode = pipeline != null ? resolveNodeDisplay(firstBuildNodeId(pipeline)) : "本机";
         }
         if (deployNode == null || deployNode.isEmpty()) {
             deployNode = pipeline != null ? resolveNodeDisplay(pipeline.getDeployNodeId()) : "本机";
@@ -710,42 +771,6 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         String line = lineEnd >= 0 ? logText.substring(start, lineEnd) : logText.substring(start);
         String value = line.substring(marker.length()).trim();
         return value.isEmpty() ? null : value;
-    }
-
-    private void fillAverageStageTimes(PipelineViewDTO view, List<BuildHistoryDTO> buildHistory) {
-        Map<String, List<Long>> durationsByStage = new HashMap<>();
-        List<Long> fullRunDurations = new ArrayList<>();
-
-        for (BuildHistoryDTO build : buildHistory) {
-            if (build.getTotalDuration() != null && build.getTotalDuration() > 0) {
-                fullRunDurations.add(build.getTotalDuration());
-            }
-            if (build.getStages() == null) {
-                continue;
-            }
-            for (PipelineStageDTO stage : build.getStages()) {
-                if (stage.getDurationMillis() != null && stage.getDurationMillis() > 0) {
-                    durationsByStage.computeIfAbsent(stage.getName(), k -> new ArrayList<>())
-                        .add(stage.getDurationMillis());
-                }
-            }
-        }
-
-        Map<String, Long> averageStageTimes = new LinkedHashMap<>();
-        Map<String, String> averageStageTimesText = new LinkedHashMap<>();
-        for (Map.Entry<String, List<Long>> entry : durationsByStage.entrySet()) {
-            long avg = (long) entry.getValue().stream().mapToLong(Long::longValue).average().orElse(0);
-            averageStageTimes.put(entry.getKey(), avg);
-            averageStageTimesText.put(entry.getKey(), formatDuration(avg));
-        }
-        view.setAverageStageTimes(averageStageTimes);
-        view.setAverageStageTimesText(averageStageTimesText);
-
-        if (!fullRunDurations.isEmpty()) {
-            long avgFull = (long) fullRunDurations.stream().mapToLong(Long::longValue).average().orElse(0);
-            view.setAverageFullRunTime(avgFull);
-            view.setAverageFullRunTimeText(formatDuration(avgFull));
-        }
     }
 
     @Override
@@ -826,23 +851,40 @@ public class PipelineRunServiceImpl implements PipelineRunService {
     @Override
     @Transactional
     public void assertNoRunningBuild(Long serviceId, Long envId) {
+        String running = findRunningJobNumber(serviceId, envId, null);
+        if (running != null) {
+            throw new BusinessException("该服务在此环境已有任务在运行（" + running + "），请等待完成后再试");
+        }
+    }
+
+    @Override
+    @Transactional
+    public String findRunningJobNumber(Long serviceId, Long envId, Long excludeJobId) {
+        if (serviceId == null) {
+            return null;
+        }
         // 先锁服务行，让同一服务的并发提交排队；再用当前读（FOR UPDATE）查运行中任务，
         // 避免可重复读隔离级别下读到事务开始前的旧快照
         serviceMapper.selectOne(
             new QueryWrapper<com.opsflow.dao.model.Service>().eq("id", serviceId).last("FOR UPDATE")
         );
-        List<BuildJob> running = buildJobMapper.selectList(
-            new QueryWrapper<BuildJob>()
+        QueryWrapper<BuildJob> wrapper = new QueryWrapper<BuildJob>()
                 .eq("service_id", serviceId)
-                .eq("env_id", envId)
-                .in("status", BuildStatus.BUILDING, BuildStatus.DEPLOYING)
-                .last("FOR UPDATE")
-        );
-        for (BuildJob job : running) {
+                .in("status", BuildStatus.BUILDING, BuildStatus.DEPLOYING);
+        if (envId != null) {
+            wrapper.eq("env_id", envId);
+        } else {
+            wrapper.isNull("env_id");
+        }
+        if (excludeJobId != null) {
+            wrapper.ne("id", excludeJobId);
+        }
+        for (BuildJob job : buildJobMapper.selectList(wrapper.last("FOR UPDATE"))) {
             if (isJobRunning(job)) {
-                throw new BusinessException("该服务在此环境已有任务在运行（" + job.getJobNumber() + "），请等待完成后再试");
+                return job.getJobNumber();
             }
         }
+        return null;
     }
 
     @Override
@@ -895,20 +937,18 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             return result;
         }
 
-        // 兼容旧数据：整段落在 log_text
-        String legacy = stage.getLogText();
-        if (legacy == null || legacy.isEmpty()) {
-            if (stage.getLogPreview() != null && !stage.getLogPreview().isEmpty()) {
-                legacy = stage.getLogPreview();
-            } else if (stage.getErrorMessage() != null && !stage.getErrorMessage().isEmpty()) {
-                legacy = stage.getErrorMessage();
-            } else if (running) {
-                legacy = "步骤执行中，正在等待日志输出...";
-            } else {
-                legacy = "暂无日志";
-            }
+        // 无日志文件（已被保留策略清理或尚未产生）时回退到摘要
+        String fallback;
+        if (stage.getLogPreview() != null && !stage.getLogPreview().isEmpty()) {
+            fallback = stage.getLogPreview();
+        } else if (stage.getErrorMessage() != null && !stage.getErrorMessage().isEmpty()) {
+            fallback = stage.getErrorMessage();
+        } else if (running) {
+            fallback = "步骤执行中，正在等待日志输出...";
+        } else {
+            fallback = "暂无日志";
         }
-        byte[] bytes = legacy.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] bytes = fallback.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         result.put("size", (long) bytes.length);
         long start = Math.max(0L, offset);
         if (start >= bytes.length) {
@@ -939,6 +979,9 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         result.put("taskName", buildJob.getTaskName());
         result.put("status", buildJob.getStatus());
         result.put("building", BuildStatus.BUILDING.equals(buildJob.getStatus()) || BuildStatus.DEPLOYING.equals(buildJob.getStatus()));
+        int queuePosition = pipelineJobDispatcher.queuePosition(buildJobId);
+        result.put("queued", queuePosition > 0);
+        result.put("queuePosition", queuePosition);
         result.put("errorMessage", buildJob.getErrorMessage());
         result.put("stages", getBuildStages(buildJobId));
         result.put("isPipeline", true);
@@ -982,7 +1025,16 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         if (ref.getDeployTaskId() != null) {
             return deployTaskCdService.retryCdJob(ref.getId());
         }
+        projectAccessService.assertCanOperateService(ref.getServiceId());
+        return startRebuild(ref, getCurrentUserId(), getCurrentUsername());
+    }
 
+    /**
+     * 按任务组最近一次配置新建一次构建；不做登录态/视图权限校验，调用方负责。
+     *
+     * @param creatorId 为 null 时沿用上次构建的创建人
+     */
+    private BuildResponse startRebuild(BuildJob ref, Long creatorId, String creatorName) {
         BuildJob anchor = resolveAnchorJob(ref);
         BuildJob configSource = resolveLatestJobInGroup(anchor);
 
@@ -999,14 +1051,13 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         newJob.setBranch(configSource.getBranch());
         newJob.setGitType(normalizeGitType(configSource.getGitType()));
         newJob.setPipelineTemplateId(configSource.getPipelineTemplateId());
-        newJob.setBuildNode(configSource.getBuildNode());
         // Run 必须跑完整 CI+CD：若上次是回滚，buildParameters 会残留 rollback=true，需剔除
         newJob.setBuildParameters(copyParamsForFullRebuild(configSource.getBuildParameters()));
         newJob.setStatus(BuildStatus.BUILDING);
         newJob.setStartTime(LocalDateTime.now());
         BuildJobCreatorUtils.stampCreator(objectMapper, newJob,
-                getCurrentUserId() != null ? getCurrentUserId() : configSource.getCreatorId(),
-                getCurrentUsername());
+                creatorId != null ? creatorId : configSource.getCreatorId(),
+                creatorName);
         buildJobMapper.insert(newJob);
 
         // 同步准备阶段 + 提交后异步执行
@@ -1019,6 +1070,119 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         response.setStatus(BuildStatus.BUILDING);
         response.setStartTime(newJob.getStartTime());
         return response;
+    }
+
+    private boolean isWebhookEnabled(Long anchorJobId) {
+        if (anchorJobId == null) {
+            return false;
+        }
+        PipelineWebhookTrigger trigger = pipelineWebhookTriggerMapper.selectOne(
+                new LambdaQueryWrapper<PipelineWebhookTrigger>()
+                        .eq(PipelineWebhookTrigger::getAnchorJobId, anchorJobId)
+                        .last("LIMIT 1"));
+        return trigger != null && Integer.valueOf(1).equals(trigger.getEnabled());
+    }
+
+    @Override
+    public void setWebhookEnabled(Long jobId, boolean enabled) {
+        BuildJob ref = buildJobMapper.selectById(jobId);
+        if (ref == null) {
+            throw new BusinessException("流水线任务不存在");
+        }
+        assertJobEnvAccessible(ref);
+        projectAccessService.assertCanOperateService(ref.getServiceId());
+        if (ref.getDeployTaskId() != null) {
+            throw new BusinessException("上线任务产生的流水线不支持自动构建");
+        }
+        BuildJob anchor = resolveAnchorJob(ref);
+        if (enabled) {
+            Env env = anchor.getEnvId() != null ? envMapper.selectById(anchor.getEnvId()) : null;
+            if (env != null && env.isProdEnv()) {
+                throw new BusinessException("生产环境不支持推送自动构建，请通过上线任务发布");
+            }
+            if ("tag".equals(normalizeGitType(resolveLatestJobInGroup(anchor).getGitType()))) {
+                throw new BusinessException("按 Tag 构建的任务不支持推送自动构建，请改为分支");
+            }
+        }
+        PipelineWebhookTrigger existing = pipelineWebhookTriggerMapper.selectOne(
+                new LambdaQueryWrapper<PipelineWebhookTrigger>()
+                        .eq(PipelineWebhookTrigger::getAnchorJobId, anchor.getId())
+                        .last("LIMIT 1"));
+        if (existing == null) {
+            if (!enabled) {
+                return;
+            }
+            PipelineWebhookTrigger trigger = new PipelineWebhookTrigger();
+            trigger.setAnchorJobId(anchor.getId());
+            trigger.setEnabled(1);
+            trigger.setUpdateBy(getCurrentUsername());
+            pipelineWebhookTriggerMapper.insert(trigger);
+        } else {
+            existing.setEnabled(enabled ? 1 : 0);
+            existing.setUpdateBy(getCurrentUsername());
+            existing.setUpdateTime(LocalDateTime.now());
+            pipelineWebhookTriggerMapper.updateById(existing);
+        }
+    }
+
+    @Override
+    public Map<String, Object> triggerByGitPush(Set<String> repoKeys, String branch, String pusher) {
+        List<Map<String, Object>> triggered = new ArrayList<>();
+        List<Map<String, Object>> skipped = new ArrayList<>();
+        List<PipelineWebhookTrigger> triggers = pipelineWebhookTriggerMapper.selectList(
+                new LambdaQueryWrapper<PipelineWebhookTrigger>().eq(PipelineWebhookTrigger::getEnabled, 1));
+        String creatorName = "webhook" + (pusher != null && !pusher.trim().isEmpty() ? "(" + pusher.trim() + ")" : "");
+
+        for (PipelineWebhookTrigger trigger : triggers) {
+            BuildJob anchor = buildJobMapper.selectById(trigger.getAnchorJobId());
+            if (anchor == null || anchor.getDeployTaskId() != null) {
+                continue;
+            }
+            BuildJob latest = resolveLatestJobInGroup(anchor);
+            if (!"branch".equals(normalizeGitType(latest.getGitType()))
+                    || !branch.equals(latest.getBranch() != null ? latest.getBranch().trim() : null)) {
+                continue;
+            }
+            com.opsflow.dao.model.Service service = latest.getServiceId() != null
+                    ? serviceMapper.selectById(latest.getServiceId()) : null;
+            if (service == null || !repoKeys.contains(GitRepoKey.normalize(service.getGitRepo()))) {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("taskId", anchor.getId());
+            item.put("taskName", latest.getTaskName());
+            Env env = latest.getEnvId() != null ? envMapper.selectById(latest.getEnvId()) : null;
+            if (env != null && env.isProdEnv()) {
+                item.put("reason", "生产环境不支持推送自动构建");
+                skipped.add(item);
+                continue;
+            }
+            try {
+                BuildResponse response = self.rebuildForWebhook(anchor.getId(), creatorName);
+                item.put("jobNumber", response.getJobNumber());
+                triggered.add(item);
+                log.info("Webhook 触发构建: task={}, branch={}, job={}, pusher={}",
+                        latest.getTaskName(), branch, response.getJobNumber(), pusher);
+            } catch (BusinessException e) {
+                item.put("reason", e.getMessage());
+                skipped.add(item);
+                log.info("Webhook 跳过构建: task={}, branch={}, reason={}", latest.getTaskName(), branch, e.getMessage());
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("triggered", triggered);
+        result.put("skipped", skipped);
+        return result;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public BuildResponse rebuildForWebhook(Long anchorJobId, String creatorName) {
+        BuildJob anchor = buildJobMapper.selectById(anchorJobId);
+        if (anchor == null) {
+            throw new BusinessException("流水线任务不存在");
+        }
+        return startRebuild(anchor, null, creatorName);
     }
 
     @Override
@@ -1072,6 +1236,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             throw new BusinessException("流水线任务不存在");
         }
         assertJobEnvAccessible(ref);
+        projectAccessService.assertCanOperateService(ref.getServiceId());
         BuildJob anchor = resolveAnchorJob(ref);
         BuildJob latest = resolveLatestJobInGroup(anchor);
         if (isGroupRunning(anchor)) {
@@ -1208,7 +1373,6 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             stage.setStartTime(null);
             stage.setEndTime(null);
             stage.setLogPreview(null);
-            stage.setLogText(null);
             // 保留 logPath，执行时 onStageStart 会覆盖写入新日志
             if (stage.getLogPath() == null || stage.getLogPath().isEmpty()) {
                 stage.setLogPath(stageLogStore.relativePath(buildJobId, stage.getId()));
@@ -1309,8 +1473,10 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             throw new BusinessException("任务运行中，无法编辑");
         }
 
+        projectAccessService.assertCanOperateService(buildJob.getServiceId());
         validateUpdateRequest(request);
         pipelineViewService.assertAccessibleEnv(request.getEnvId());
+        projectAccessService.assertCanOperateService(request.getServiceId());
 
         com.opsflow.dao.model.Service service = serviceMapper.selectById(request.getServiceId());
         if (service == null) {
@@ -1331,6 +1497,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
 
         buildJob.setUpdateTime(LocalDateTime.now());
 
+        Long anchorJobId = resolveAnchorJob(buildJob).getId();
         List<BuildJob> groupJobs = listJobsInGroup(buildJob);
         for (BuildJob job : groupJobs) {
             job.setTaskName(taskName);
@@ -1356,6 +1523,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             throw new BusinessException("流水线任务不存在");
         }
         assertJobEnvAccessible(buildJob);
+        projectAccessService.assertCanOperateService(buildJob.getServiceId());
         if (buildJob.getDeployTaskId() != null) {
             if (isJobRunning(buildJob)) {
                 throw new BusinessException("任务运行中，无法删除");
@@ -1368,12 +1536,15 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             throw new BusinessException("任务运行中，无法删除");
         }
 
+        Long anchorJobId = resolveAnchorJob(buildJob).getId();
         List<BuildJob> groupJobs = listJobsInGroup(buildJob);
         for (BuildJob job : groupJobs) {
             buildJobStageMapper.delete(new QueryWrapper<BuildJobStage>().eq("build_job_id", job.getId()));
             stageLogStore.deleteJobLogs(job.getId());
             buildJobMapper.deleteById(job.getId());
         }
+        pipelineWebhookTriggerMapper.delete(new LambdaQueryWrapper<PipelineWebhookTrigger>()
+                .eq(PipelineWebhookTrigger::getAnchorJobId, anchorJobId));
         return true;
     }
 
@@ -1397,11 +1568,60 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         return BuildStatus.BUILDING.equals(job.getStatus()) || BuildStatus.DEPLOYING.equals(job.getStatus());
     }
 
+    /**
+     * 任务结束后唤醒因同一服务被占用而排队的上线任务模块；有事务时等提交后再唤醒，
+     * 否则排队方的新事务会等待本事务持有的行锁
+     */
+    private void wakeServiceWaitersAfterCommit(BuildJob job) {
+        if (job == null || job.getServiceId() == null) {
+            return;
+        }
+        Long serviceId = job.getServiceId();
+        Long envId = job.getEnvId();
+        Runnable wake = () -> {
+            try {
+                deployTaskCdService.wakeWaitingCdJobs(serviceId, envId);
+            } catch (Exception e) {
+                log.error("唤醒排队的上线任务失败: serviceId={}, envId={}", serviceId, envId, e);
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    wake.run();
+                }
+            });
+        } else {
+            wake.run();
+        }
+    }
+
+    @Override
+    public boolean isProdEnvJob(Long jobId) {
+        BuildJob job = jobId != null ? buildJobMapper.selectById(jobId) : null;
+        if (job == null || job.getEnvId() == null) {
+            return false;
+        }
+        Env env = envMapper.selectById(job.getEnvId());
+        return env != null && env.isProdEnv();
+    }
+
+    @Override
+    public void assertJobAccessible(Long jobId) {
+        BuildJob job = jobId != null ? buildJobMapper.selectById(jobId) : null;
+        if (job == null) {
+            throw new BusinessException("流水线任务不存在");
+        }
+        assertJobEnvAccessible(job);
+    }
+
     private void assertJobEnvAccessible(BuildJob job) {
         if (job == null) {
             return;
         }
         pipelineViewService.assertAccessibleEnv(job.getEnvId());
+        projectAccessService.assertCanViewService(job.getServiceId());
     }
 
     private Long getCurrentUserId() {
@@ -1449,6 +1669,9 @@ public class PipelineRunServiceImpl implements PipelineRunService {
             return;
         }
         if (!BuildStatus.BUILDING.equals(job.getStatus()) && !BuildStatus.DEPLOYING.equals(job.getStatus())) {
+            return;
+        }
+        if (pipelineJobDispatcher.isQueued(job.getId())) {
             return;
         }
 
@@ -1540,6 +1763,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
                 log.error("回写上线任务状态失败(recover), jobId={}", job.getId(), e);
             }
         }
+        wakeServiceWaitersAfterCommit(job);
     }
 
     private PipelineJobViewDTO toJobView(BuildJob job) {
@@ -1835,7 +2059,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         PipelineExecutionContext.ExecutionOptions options = new PipelineExecutionContext.ExecutionOptions();
         options.setAutoDeploy(true);
         if (pipeline != null) {
-            options.setBuildNodeId(selectedBuildNodeId != null ? selectedBuildNodeId : pipeline.getBuildNodeId());
+            options.setBuildNodeId(selectedBuildNodeId);
             options.setDeployNodeId(pipeline.getDeployNodeId());
         }
         context.setOptions(options);
@@ -1897,7 +2121,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         if (pipeline == null) {
             return null;
         }
-        List<Long> candidateIds = parseBuildNodeIds(pipeline.getBuildNodeIds(), pipeline.getBuildNodeId());
+        List<Long> candidateIds = parseBuildNodeIds(pipeline.getBuildNodeIds());
         if (candidateIds.isEmpty()) {
             return null;
         }
@@ -1925,7 +2149,12 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         return candidateIds.get(0);
     }
 
-    private List<Long> parseBuildNodeIds(String buildNodeIds, Long fallbackBuildNodeId) {
+    private Long firstBuildNodeId(Pipeline pipeline) {
+        List<Long> ids = parseBuildNodeIds(pipeline.getBuildNodeIds());
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private List<Long> parseBuildNodeIds(String buildNodeIds) {
         List<Long> ids = new ArrayList<>();
         if (buildNodeIds != null && !buildNodeIds.trim().isEmpty()) {
             for (String part : buildNodeIds.split(",")) {
@@ -1939,9 +2168,6 @@ public class PipelineRunServiceImpl implements PipelineRunService {
                 } catch (NumberFormatException ignore) {
                 }
             }
-        }
-        if (ids.isEmpty() && fallbackBuildNodeId != null) {
-            ids.add(fallbackBuildNodeId);
         }
         return ids;
     }
@@ -1984,7 +2210,6 @@ public class PipelineRunServiceImpl implements PipelineRunService {
                 stage.setStartTime(LocalDateTime.now());
                 stage.setUpdateTime(LocalDateTime.now());
                 stage.setErrorMessage(null);
-                stage.setLogText(null);
 
                 String relativePath = stageLogStore.relativePath(stage.getBuildJobId(), stage.getId());
                 stage.setLogPath(relativePath);
@@ -2021,7 +2246,6 @@ public class PipelineRunServiceImpl implements PipelineRunService {
                     if (now - lastFlushMs >= FLUSH_INTERVAL_MS) {
                         stage.setLogPreview(normalizeLogPreview(
                             stageLogStore.tailPreview(path, StageLogStore.DEFAULT_PREVIEW_CHARS)));
-                        stage.setLogText(null);
                         stage.setUpdateTime(LocalDateTime.now());
                         buildJobStageMapper.updateById(stage);
                         lastFlushMs = now;
@@ -2059,7 +2283,6 @@ public class PipelineRunServiceImpl implements PipelineRunService {
                     stage.setErrorMessage(errorMessage);
                     stage.setLogPreview(normalizeLogPreview(
                         stageLogStore.tailPreview(path, StageLogStore.DEFAULT_PREVIEW_CHARS)));
-                    stage.setLogText(null);
                     stage.setEndTime(LocalDateTime.now());
                     stage.setUpdateTime(LocalDateTime.now());
                     buildJobStageMapper.updateById(stage);
@@ -2085,7 +2308,6 @@ public class PipelineRunServiceImpl implements PipelineRunService {
                     stage.setDurationMs(0L);
                     stage.setErrorMessage(null);
                     stage.setLogPreview(normalizeLogPreview(text));
-                    stage.setLogText(null);
                     stage.setStartTime(LocalDateTime.now());
                     stage.setEndTime(LocalDateTime.now());
                     stage.setUpdateTime(LocalDateTime.now());
@@ -2135,6 +2357,7 @@ public class PipelineRunServiceImpl implements PipelineRunService {
                 log.error("回写上线任务状态失败(fail), jobId={}", buildJob.getId(), e);
             }
         }
+        wakeServiceWaitersAfterCommit(buildJob);
     }
 
     private String resolveTaskName(BuildRequest request, com.opsflow.dao.model.Service service) {

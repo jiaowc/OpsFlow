@@ -87,7 +87,7 @@ function renderOverviewViews(views) {
     }
     box.style.display = 'flex';
     box.innerHTML = `
-        <div class="overview-views-label">流水线视图</div>
+        <div class="overview-views-label">工作视图</div>
         <div class="overview-views-list">
             ${views.map(v => `
                 <button type="button" class="overview-view-chip"

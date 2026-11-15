@@ -3,7 +3,6 @@ package com.opsflow.api.dto;
 import lombok.Data;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * 流水线阶段视图（某 Job 的构建历史 + 阶段信息）
@@ -40,12 +39,4 @@ public class PipelineViewDTO {
     private Integer pageSize;
 
     private Integer totalPages;
-
-    private Map<String, Long> averageStageTimes;
-
-    private Map<String, String> averageStageTimesText;
-
-    private Long averageFullRunTime;
-
-    private String averageFullRunTimeText;
 }

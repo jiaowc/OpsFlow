@@ -11,7 +11,7 @@
 async function loadApprovalFlows() {
     const approvalList = document.getElementById('approvalList');
     if (!approvalList) return;
-    approvalList.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:#999;">加载中...</td></tr>';
+    approvalList.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-4);">加载中...</td></tr>';
 
     try {
         const response = await fetch('/api/approval/list');
@@ -40,53 +40,69 @@ function renderApprovalList(approvals) {
     if (!approvalList) return;
 
     if (!approvals.length) {
-        approvalList.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #999;">暂无审批流，请点击「创建审批流」</td></tr>';
+        approvalList.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: var(--text-4);">暂无审批流，请点击「创建审批流」</td></tr>';
         return;
     }
 
     approvalList.innerHTML = approvals.map(approval => {
         const steps = approval.steps || [];
-        const stepNames = steps.map((s, i) => escApprovalHtml(s.approverName || s.approver || ('步骤' + (s.step || i + 1)))).join(' → ');
+        const stepNames = steps.map((s, i) => escApprovalHtml((s.approverName || s.approver || ('步骤' + (s.step || i + 1)))
+            + ((s.approvers || []).length > 1 ? '（任一）' : ''))).join(' → ');
         return `
             <tr>
                 <td>${escApprovalHtml(approval.name)}</td>
                 <td>${escApprovalHtml(approval.description || '-')}</td>
                 <td title="${stepNames}">${steps.length}${stepNames ? '（' + stepNames + '）' : ''}</td>
                 <td>${approval.status === 1 || approval.status == null
-                    ? '<span style="color: #059669;">启用</span>'
-                    : '<span style="color: #dc2626;">禁用</span>'}</td>
+                    ? '<span class="status-tag is-on">启用</span>'
+                    : '<span class="status-tag is-off">禁用</span>'}</td>
                 <td>
-                    <div class="table-actions">
+                    ${hasPermission('approval:manage') ? `<div class="table-actions">
                         <button class="btn-edit" onclick="editApproval(${approval.id})">修改</button>
                         <button class="btn-danger" onclick="deleteApproval(${approval.id})">删除</button>
-                    </div>
+                    </div>` : '<span style="color:#9ca3af;">-</span>'}
                 </td>
             </tr>
         `;
     }).join('');
 }
 
-async function loadApprovalUserOptions(selectedUsername) {
-    let users = [];
+async function loadApprovalUsers() {
     try {
-        const response = await fetch('/api/user/list');
-        if (response.ok) {
-            users = await response.json() || [];
+        const resp = await fetch('/api/user/options');
+        if (resp.ok) {
+            const users = await resp.json() || [];
+            return users.filter(u => u.status === 1 || u.status == null);
         }
     } catch (e) {
         console.warn('Load users for approval failed', e);
     }
-    let html = '<option value="">不指定（任意登录用户可审批）</option>';
-    users.filter(u => u.status === 1 || u.status == null).forEach(u => {
-        const username = u.username || '';
-        const label = (u.realName ? `${u.realName} (${username})` : username);
-        const selected = selectedUsername && String(selectedUsername) === String(username) ? ' selected' : '';
-        html += `<option value="${escApprovalHtml(username)}" data-real-name="${escApprovalHtml(u.realName || '')}"${selected}>${escApprovalHtml(label)}</option>`;
-    });
-    return html;
+    return [];
 }
 
-function buildApprovalStepRowHtml(step, userOptionsHtml) {
+function buildApprovalApproverListHtml(users, selected) {
+    const selectedSet = new Set((selected || []).map(u => String(u).toLowerCase()));
+    const known = new Set(users.map(u => String(u.username || '').toLowerCase()));
+    const items = users.map(u => ({
+        username: u.username || '',
+        label: u.realName ? `${u.realName} (${u.username})` : (u.username || ''),
+        realName: u.realName || ''
+    }));
+    (selected || []).filter(u => u && !known.has(String(u).toLowerCase()))
+        .forEach(u => items.push({ username: u, label: `${u}（已停用或不存在）`, realName: '' }));
+    if (!items.length) {
+        return '<div class="checkbox-list-empty">暂无可选用户</div>';
+    }
+    return items.map(u => `
+        <label class="checkbox-list-item" data-search="${escApprovalHtml(u.label.toLowerCase())}">
+            <input type="checkbox" class="approval-step-approver" value="${escApprovalHtml(u.username)}"
+                data-real-name="${escApprovalHtml(u.realName)}" onchange="onApprovalApproverChange(this)"
+                ${selectedSet.has(u.username.toLowerCase()) ? 'checked' : ''}>
+            <span>${escApprovalHtml(u.label)}</span>
+        </label>`).join('');
+}
+
+function buildApprovalStepRowHtml(step, approverListHtml) {
     step = step || {};
     return `
         <div class="approval-step-row" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;padding:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;">
@@ -95,8 +111,9 @@ function buildApprovalStepRowHtml(step, userOptionsHtml) {
                 <input type="number" class="approval-step-no" min="1" value="${step.step || 1}" style="width:100%;">
             </div>
             <div style="flex:1;">
-                <label style="font-size:12px;color:#6b7280;">审批人</label>
-                <select class="approval-step-approver" onchange="onApprovalApproverChange(this)">${userOptionsHtml}</select>
+                <label style="font-size:12px;color:#6b7280;">审批人（可多选，任一人审批即可；不选则任意登录用户可审批）</label>
+                <input type="text" placeholder="搜索用户" oninput="filterApprovalApprovers(this)" style="margin-bottom:4px;">
+                <div class="checkbox-list approval-step-approvers" style="max-height:140px;overflow:auto;">${approverListHtml}</div>
             </div>
             <div style="flex:1;">
                 <label style="font-size:12px;color:#6b7280;">显示名</label>
@@ -114,30 +131,37 @@ function buildApprovalStepRowHtml(step, userOptionsHtml) {
     `;
 }
 
-function onApprovalApproverChange(select) {
-    const row = select.closest('.approval-step-row');
+function onApprovalApproverChange(checkbox) {
+    const row = checkbox.closest('.approval-step-row');
     if (!row) return;
     const nameInput = row.querySelector('.approval-step-approver-name');
-    const opt = select.options[select.selectedIndex];
-    if (nameInput && opt) {
-        const realName = opt.getAttribute('data-real-name') || '';
-        if (realName) {
-            nameInput.value = realName;
-        } else if (!select.value) {
-            nameInput.value = '';
-        }
-    }
+    if (!nameInput) return;
+    nameInput.value = Array.from(row.querySelectorAll('.approval-step-approver:checked'))
+        .map(el => el.getAttribute('data-real-name') || el.value)
+        .join(' / ');
 }
 window.onApprovalApproverChange = onApprovalApproverChange;
+
+function filterApprovalApprovers(input) {
+    const keyword = (input.value || '').trim().toLowerCase();
+    const row = input.closest('.approval-step-row');
+    if (!row) return;
+    row.querySelectorAll('.approval-step-approvers .checkbox-list-item').forEach(item => {
+        item.style.display = !keyword || item.dataset.search.includes(keyword) ? '' : 'none';
+    });
+}
+window.filterApprovalApprovers = filterApprovalApprovers;
 
 async function addApprovalStepRow(prefill) {
     const container = document.getElementById('approvalStepsContainer');
     if (!container) return;
-    const selected = prefill && prefill.approver ? prefill.approver : '';
-    const options = await loadApprovalUserOptions(selected);
+    const selected = prefill && prefill.approvers && prefill.approvers.length
+        ? prefill.approvers
+        : (prefill && prefill.approver ? [prefill.approver] : []);
+    const users = await loadApprovalUsers();
     const index = container.querySelectorAll('.approval-step-row').length + 1;
     const step = Object.assign({ step: index }, prefill || {});
-    container.insertAdjacentHTML('beforeend', buildApprovalStepRowHtml(step, options));
+    container.insertAdjacentHTML('beforeend', buildApprovalStepRowHtml(step, buildApprovalApproverListHtml(users, selected)));
 }
 window.addApprovalStepRow = addApprovalStepRow;
 
@@ -161,13 +185,15 @@ function collectApprovalStepsFromForm() {
     const steps = [];
     rows.forEach((row, i) => {
         const stepNo = parseInt(row.querySelector('.approval-step-no').value, 10) || (i + 1);
-        const approver = (row.querySelector('.approval-step-approver').value || '').trim();
+        const approvers = Array.from(row.querySelectorAll('.approval-step-approver:checked')).map(el => el.value);
         const approverName = (row.querySelector('.approval-step-approver-name').value || '').trim();
         const required = row.querySelector('.approval-step-required').checked;
+        const approver = approvers.length === 1 ? approvers[0] : null;
         steps.push({
             step: stepNo,
-            approver: approver || null,
-            approverName: approverName || (approver || null),
+            approver,
+            approvers: approvers.length > 1 ? approvers : null,
+            approverName: approverName || approver,
             required
         });
     });

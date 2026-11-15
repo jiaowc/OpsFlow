@@ -15,6 +15,11 @@ import java.util.List;
 public class DeployTaskDTO {
     
     private Long id;
+
+    /** 所属项目 */
+    private Long projectId;
+
+    private String projectName;
     
     /** 任务编号 */
     private String taskNumber;
@@ -100,12 +105,7 @@ public class DeployTaskDTO {
      * 该任务触发的 CD 构建任务 ID 列表（按模块拆分）
      */
     private List<Long> buildJobIds;
-    
-    /**
-     * 传递给流水线执行的自定义参数（键值对）
-     */
-    private java.util.Map<String, String> pipelineParameters;
-    
+
     /**
      * 审批状态：pending / approved / rejected / none
      */
@@ -127,6 +127,9 @@ public class DeployTaskDTO {
 
     /** 当前用户是否可编辑（未锁定且有 create 权限） */
     private Boolean canEdit;
+
+    /** 当前用户是否可删除（有 deploy:delete，且非发布中） */
+    private Boolean canDelete;
 
     /** 当前用户是否可锁定 */
     private Boolean canLock;

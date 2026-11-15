@@ -156,7 +156,11 @@ public class ApprovalServiceImpl implements ApprovalService {
             record.setTaskNumber(task.getTaskNumber());
             record.setApprovalFlowId(flow.getId());
             record.setCurrentStep(stepDef.getStep() != null ? stepDef.getStep() : (i + 1));
-            record.setApprover(trimToNull(stepDef.getApprover()));
+            if (stepDef.getApprovers() != null && stepDef.getApprovers().size() > 1) {
+                record.setApproverCandidates(ApprovalRecord.joinCandidates(stepDef.getApprovers()));
+            } else {
+                record.setApprover(trimToNull(stepDef.getApprover()));
+            }
             record.setApproverName(trimToNull(stepDef.getApproverName()));
             if (StringUtils.hasText(record.getApprover())) {
                 record.setApproverFeishuId(feishuUserResolveService.resolveFeishuUserId(record.getApprover()));
@@ -206,10 +210,16 @@ public class ApprovalServiceImpl implements ApprovalService {
         }
         QueryWrapper<ApprovalRecord> wrapper = new QueryWrapper<>();
         wrapper.eq("status", STATUS_PENDING);
-        wrapper.and(w -> w.eq("approver", currentUsername.trim()).or().isNull("approver").or().eq("approver", ""));
+        String me = currentUsername.trim();
+        wrapper.and(w -> w
+                .and(x -> x.and(c -> c.isNull("approver_candidates").or().eq("approver_candidates", ""))
+                        .and(y -> y.eq("approver", me).or().isNull("approver").or().eq("approver", "")))
+                .or().like("approver_candidates",
+                        ApprovalRecord.CANDIDATE_SEPARATOR + me + ApprovalRecord.CANDIDATE_SEPARATOR));
         wrapper.orderByDesc("create_time");
         List<ApprovalRecord> records = approvalRecordMapper.selectList(wrapper);
-        return records.stream().map(r -> {
+        // LIKE 中 _ 是通配符，用户名含下划线时可能误匹配，按精确规则再过滤一次
+        return records.stream().filter(r -> canApprove(r, currentUsername)).map(r -> {
             DeployTask task = deployTaskMapper.selectById(r.getTaskId());
             return toDto(r, currentUsername, task);
         }).collect(Collectors.toList());
@@ -504,6 +514,10 @@ public class ApprovalServiceImpl implements ApprovalService {
     private boolean canApprove(ApprovalRecord record, String currentUsername) {
         if (currentUsername == null || currentUsername.trim().isEmpty()) {
             return false;
+        }
+        List<String> candidates = record.listApproverCandidates();
+        if (!candidates.isEmpty()) {
+            return candidates.stream().anyMatch(name -> name.equalsIgnoreCase(currentUsername.trim()));
         }
         String approver = record.getApprover();
         if (approver == null || approver.trim().isEmpty()) {

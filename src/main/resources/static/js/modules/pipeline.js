@@ -17,6 +17,10 @@ const PIPELINE_VIEW_STORAGE_KEY = 'opsflow_pipeline_view_id';
 
 const PIPELINE_PAGE_SIZE_KEY = 'opsflow_pipeline_page_size';
 const PIPELINE_PAGE_SIZE_OPTIONS = [10, 20, 50];
+const PIPELINE_LIST_PAGE_SIZE_KEY = 'opsflow.pipeline.listPageSize';
+let pipelineListPage = 1;
+let pipelineJobSearchKeyword = '';
+let pipelineSearchTimer = null;
 const PIPELINE_GIT_TYPE_OPTIONS = [
     { value: 'branch', label: '分支' },
     { value: 'tag', label: 'Tag' }
@@ -71,8 +75,13 @@ function resolvePipelineRunJobId(job) {
     return job.id;
 }
 
+const PIPELINE_NOT_OPERABLE_TITLE = "你不是该服务所属项目的开发成员（只读或非成员），不能执行此操作";
+
 function isPipelineRunDisabled(job) {
     if (typeof hasPermission === 'function' && !hasPermission('pipeline:run')) {
+        return true;
+    }
+    if (!job.fromDeployTask && job.operable === false) {
         return true;
     }
     if (job.building) {
@@ -110,6 +119,9 @@ function getPipelineRunButtonTitle(job) {
     if (typeof hasPermission === 'function' && !hasPermission('pipeline:run')) {
         return '无运行权限';
     }
+    if (!job.fromDeployTask && job.operable === false) {
+        return PIPELINE_NOT_OPERABLE_TITLE;
+    }
     if (job.fromDeployTask && job.blockedReason && !canRetryCdPipelineJob(job)) {
         return job.blockedReason;
     }
@@ -119,16 +131,38 @@ function getPipelineRunButtonTitle(job) {
     return '';
 }
 
+/** 「回滚部署」可回滚所有环境；「回滚非生产环境」只能回滚非生产环境；生产还需 prod_rollback License */
+function hasRollbackPermissionFor(job) {
+    if (typeof hasPermission !== 'function') {
+        return true;
+    }
+    if (job && job.prodEnv) {
+        if (typeof hasFeature === 'function' && !hasFeature('prod_rollback')) {
+            return false;
+        }
+        return hasPermission('pipeline:rollback');
+    }
+    return hasPermission('pipeline:rollback')
+        || hasPermission('pipeline:rollback:nonprod');
+}
+
 function canRollbackPipelineJob(job) {
-    if (typeof hasPermission === 'function' && !hasPermission('pipeline:rollback')) {
+    if (!hasRollbackPermissionFor(job)) {
         return false;
     }
-    return !!job.rollbackable && !job.building;
+    return !!job.rollbackable && !job.building && job.operable !== false;
 }
 
 function getPipelineRollbackButtonTitle(job) {
-    if (typeof hasPermission === 'function' && !hasPermission('pipeline:rollback')) {
-        return '无回滚权限';
+    if (job && job.prodEnv && typeof hasFeature === 'function' && !hasFeature('prod_rollback')) {
+        return typeof t === 'function' ? t('license.feature.prodRollback')
+            : '生产环境回滚为 Pro 订阅功能，请导入含 prod_rollback 的 License';
+    }
+    if (!hasRollbackPermissionFor(job)) {
+        return job && job.prodEnv ? '生产环境回滚需要「回滚部署」权限' : '无回滚权限';
+    }
+    if (job.operable === false) {
+        return PIPELINE_NOT_OPERABLE_TITLE;
     }
     if (job.building) {
         return '任务运行中，暂不可回滚';
@@ -139,12 +173,16 @@ function getPipelineRollbackButtonTitle(job) {
     return '暂无可回滚的历史镜像版本（需同服务/环境下至少 2 个成功镜像，且流水线为 CD 或 CI/CD）';
 }
 
+function canPipeline(permission) {
+    return typeof hasPermission !== 'function' || hasPermission(permission);
+}
+
 function renderPipelineGitRefCell(job) {
     if (job.fromDeployTask) {
         const tag = escapeHtml(job.branch || '-');
         return `
         <td class="pipeline-git-ref-cell" title="上线任务自动创建的 CD 任务使用镜像 Tag，不能手动修改">
-            <div style="width:fit-content;min-width:110px;max-width:150px;">
+            <div style="width:fit-content;min-width:100px;max-width:150px;">
                 <span style="display:inline-block;padding:4px 8px;font-size:12px;border:1px solid #e5e7eb;border-radius:4px;background:#f9fafb;color:#374151;">
                     ${tag}
                 </span>
@@ -153,9 +191,9 @@ function renderPipelineGitRefCell(job) {
     `;
     }
     const gitType = normalizePipelineGitType(job.gitType);
-    const editable = job.editable !== false && !job.building;
+    const editable = canPipeline('pipeline:edit') && job.editable !== false && !job.building && job.operable !== false;
     const disabledAttr = editable ? '' : ' disabled';
-    const cellStyle = 'width:fit-content;min-width:110px;max-width:150px;';
+    const cellStyle = 'width:fit-content;min-width:100px;max-width:150px;';
     const selectStyle = 'width:100%;padding:3px 24px 3px 6px;font-size:12px;border:1px solid #e5e7eb;border-radius:4px;background:#fff;';
     return `
         <td class="pipeline-git-ref-cell"
@@ -171,6 +209,7 @@ function renderPipelineGitRefCell(job) {
                         data-current-branch="${escapeHtml(job.branch || '')}">
                     <option value="${escapeHtml(job.branch || '')}" selected>${escapeHtml(job.branch || '-')}</option>
                 </select>
+                ${job.webhookEnabled ? '<span class="pipeline-webhook-badge" title="代码推送到该分支时自动构建">⚡ 推送构建</span>' : ''}
             </div>
         </td>
     `;
@@ -334,12 +373,61 @@ function renderPaginationBar(page, totalPages, total, onPageFnName) {
     `;
 }
 
+function getPipelineListPageSize() {
+    const saved = parseInt(localStorage.getItem(PIPELINE_LIST_PAGE_SIZE_KEY), 10);
+    return PIPELINE_PAGE_SIZE_OPTIONS.includes(saved) ? saved : 20;
+}
+
+function getPipelineJobSearchKeyword() {
+    return (pipelineJobSearchKeyword || '').trim();
+}
+
+function applyPipelineJobFilters() {
+    const input = document.getElementById('pipelineSearchInput');
+    const next = ((input && input.value) || '').trim();
+    if (pipelineSearchTimer) {
+        clearTimeout(pipelineSearchTimer);
+    }
+    pipelineSearchTimer = setTimeout(() => {
+        pipelineJobSearchKeyword = next;
+        pipelineListPage = 1;
+        renderPipelineListPage();
+    }, 300);
+}
+window.applyPipelineJobFilters = applyPipelineJobFilters;
+
+function fetchCurrentPipelineListPage() {
+    return fetchPipelineJobsPage(pipelineListPage, getPipelineListPageSize());
+}
+
+function gotoPipelineListPage(page) {
+    pipelineListPage = Math.max(parseInt(page, 10) || 1, 1);
+    renderPipelineListPage();
+}
+window.gotoPipelineListPage = gotoPipelineListPage;
+
+function changePipelineListPageSize(size) {
+    const normalized = PIPELINE_PAGE_SIZE_OPTIONS.includes(size) ? size : 20;
+    localStorage.setItem(PIPELINE_LIST_PAGE_SIZE_KEY, String(normalized));
+    pipelineListPage = 1;
+    renderPipelineListPage();
+}
+window.changePipelineListPageSize = changePipelineListPageSize;
+
 async function fetchPipelineJobsPage(page, pageSize) {
     const params = new URLSearchParams();
     params.set('page', String(page || 1));
     params.set('pageSize', String(pageSize || 10));
     if (currentPipelineViewEnvId) {
         params.set('envId', String(currentPipelineViewEnvId));
+    }
+    const projectId = typeof getCurrentProjectId === 'function' ? getCurrentProjectId() : '';
+    if (projectId) {
+        params.set('projectId', projectId);
+    }
+    const keyword = getPipelineJobSearchKeyword();
+    if (keyword) {
+        params.set('keyword', keyword);
     }
     const response = await fetch(`/api/pipeline-run/jobs?${params.toString()}`);
     if (!response.ok) {
@@ -415,6 +503,7 @@ function selectPipelineView(viewId) {
         currentPipelineViewEnvId = view.envId;
         localStorage.setItem(PIPELINE_VIEW_STORAGE_KEY, String(view.id));
     }
+    pipelineListPage = 1;
     renderPipelineViewTabs();
     if (!currentPipelineJobId) {
         renderPipelineListPage();
@@ -424,12 +513,13 @@ window.selectPipelineView = selectPipelineView;
 
 function renderPipelineViewTabs() {
     const tabs = document.getElementById('pipelineViewTabs');
+    const toolbar = document.getElementById('pipelineListToolbar');
     if (!tabs) return;
     if (currentPipelineJobId) {
-        tabs.style.display = 'none';
+        if (toolbar) toolbar.style.display = 'none';
         return;
     }
-    tabs.style.display = 'flex';
+    if (toolbar) toolbar.style.display = 'flex';
     const manageViews = canManagePipelineViews();
     const allActive = currentPipelineViewId == null && manageViews ? ' active' : '';
     let html = '';
@@ -459,7 +549,7 @@ function renderPipelineViewTabs() {
         `;
     }
     if (!pipelineViewCache.length && !manageViews) {
-        html = `<div style="padding:8px 4px;color:#9ca3af;font-size:13px;">暂无可访问的流水线视图，请联系管理员分配</div>`;
+        html = `<div style="padding:8px 4px;color:#9ca3af;font-size:13px;">暂无可访问的工作视图，请联系管理员分配</div>`;
     }
     tabs.innerHTML = html;
     if (manageViews) {
@@ -565,7 +655,7 @@ async function reorderPipelineViews(sourceId, targetId) {
 async function loadPipelineViewsAdmin() {
     const list = document.getElementById('pipelineViewList');
     if (!list) return;
-    list.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;color:#999;">加载中...</td></tr>';
+    list.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-4);">加载中...</td></tr>';
     const views = await loadPipelineViews(true);
     renderPipelineViewsAdminList(views);
     renderPipelineViewTabs();
@@ -576,7 +666,7 @@ function renderPipelineViewsAdminList(views) {
     const list = document.getElementById('pipelineViewList');
     if (!list) return;
     if (!views || !views.length) {
-        list.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:#999;">暂无视图，请点击「添加视图」创建</td></tr>';
+        list.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-4);">暂无视图，请点击「添加视图」创建</td></tr>';
         return;
     }
     list.innerHTML = views.map(view => {
@@ -677,12 +767,12 @@ async function showCreatePipelineViewModal() {
             <div class="form-item">
                 <label>关联环境 *</label>
                 <select name="envId" required>${renderPipelineViewEnvOptions(envs)}</select>
-                <small style="color:#666;">该视图下仅显示所选环境的流水线任务</small>
+                <small style="color:var(--text-3);">该视图下仅显示所选环境的流水线任务</small>
             </div>
             <div class="form-item">
                 <label>可见角色</label>
                 ${renderPipelineViewRoleCheckboxes(roles, [])}
-                <small style="color:#666;">不勾选则仅管理员可见；勾选后对应角色可在流水线页看到此视图</small>
+                <small style="color:var(--text-3);">不勾选则仅管理员可见；勾选后对应角色可在流水线页看到此视图</small>
             </div>
             <div class="form-item">
                 <label>描述</label>
@@ -759,7 +849,7 @@ async function showEditPipelineViewModal(viewId) {
                 <div class="form-item">
                     <label>可见角色</label>
                     ${renderPipelineViewRoleCheckboxes(roles, view.roleIds || [])}
-                    <small style="color:#666;">不勾选则仅管理员可见</small>
+                    <small style="color:var(--text-3);">不勾选则仅管理员可见</small>
                 </div>
                 <div class="form-item">
                     <label>描述</label>
@@ -846,15 +936,15 @@ function setPipelineSectionMode(mode) {
     const headerRefreshBtn = document.getElementById('pipelineHeaderRefreshBtn');
     const detailRefreshBtn = document.getElementById('pipelineDetailRefreshBtn');
     const backToListBtn = document.getElementById('pipelineBackToListBtn');
-    const viewTabs = document.getElementById('pipelineViewTabs');
+    const listToolbar = document.getElementById('pipelineListToolbar');
 
     const isDetail = mode === 'detail';
-    if (title) title.textContent = isDetail ? '阶段视图' : '流水线视图';
-    if (createBtn) createBtn.style.display = isDetail ? 'none' : '';
+    if (title) title.textContent = isDetail ? '阶段视图' : '工作视图';
+    if (createBtn) createBtn.style.display = (isDetail || !hasPermission('pipeline:run')) ? 'none' : '';
     if (headerRefreshBtn) headerRefreshBtn.style.display = isDetail ? 'none' : '';
     if (detailRefreshBtn) detailRefreshBtn.style.display = isDetail ? '' : 'none';
     if (backToListBtn) backToListBtn.style.display = isDetail ? '' : 'none';
-    if (viewTabs) viewTabs.style.display = isDetail ? 'none' : 'flex';
+    if (listToolbar) listToolbar.style.display = isDetail ? 'none' : 'flex';
 }
 
 async function loadPipelineJobsView() {
@@ -877,18 +967,23 @@ async function renderPipelineListPage() {
     if (!canManagePipelineViews() && (!pipelineViewCache || !pipelineViewCache.length)) {
         container.innerHTML = `
             <div style="padding: 48px; text-align: center; color: #6b7280;">
-                <div style="font-size:15px;margin-bottom:8px;">暂无可访问的流水线视图</div>
+                <div style="font-size:15px;margin-bottom:8px;">暂无可访问的工作视图</div>
                 <div style="font-size:13px;">请联系管理员在「流水线配置 → 视图管理」中为你的角色分配视图权限</div>
             </div>`;
         return;
     }
 
     container.innerHTML = `
-        <div style="padding: 40px; text-align: center; color: #999;">正在加载流水线任务...</div>
+        <div style="padding: 40px; text-align: center; color: var(--text-4);">正在加载流水线任务...</div>
     `;
 
     try {
-        const data = await fetchPipelineJobsPage(1, 10);
+        let data = await fetchCurrentPipelineListPage();
+        // 切换项目或删除 Job 后当前页可能已不存在，退回最后一页
+        if (data && data.total > 0 && !(data.items || []).length && pipelineListPage > 1) {
+            pipelineListPage = Math.max(data.totalPages || 1, 1);
+            data = await fetchCurrentPipelineListPage();
+        }
         renderPipelineJobsTable(data, container);
     } catch (error) {
         console.error('Load pipeline jobs error:', error);
@@ -935,35 +1030,55 @@ function renderMiniStagesForJob(job) {
     const stages = job.latestStages || [];
     const buildId = job.latestBuildId || job.id;
     if (!stages.length) {
-        return `<span style="font-size:12px;color:#9ca3af;">暂无构建记录</span>`;
+        return `<span class="pipeline-mini-empty">暂无构建记录</span>`;
     }
     return `
-        <div style="display:flex;flex-wrap:nowrap;gap:6px;align-items:center;white-space:nowrap;overflow-x:auto;overflow-y:hidden;">
-            <span style="font-size:11px;color:#6b7280;white-space:nowrap;margin-right:2px;"
+        <div class="pipeline-mini-stages">
+            <span class="pipeline-mini-status"
                   title="构建 ${escapeHtml(job.jobNumber || buildId)} · ${escapeHtml(job.lastDurationText || '-')}">
-                ${getStatusIcon(job.status, job.building)}
+                ${job.queued
+                    ? `<span class="pipeline-queued-badge" title="执行线程已满，等待空闲后自动开始">排队中 · 第${escapeHtml(job.queuePosition)}位</span>`
+                    : getStatusIcon(job.status, job.building)}
             </span>
             ${stages.map(stage => `
-                <div title="${escapeHtml(stage.name || '')} · ${escapeHtml(stage.durationText || '-')}"
+                <div class="pipeline-mini-stage"
+                     title="${escapeHtml(stage.name || '')} · ${escapeHtml(stage.durationText || '-')}"
                      data-pipeline-action="stage-log"
                      data-job-id="${escapeHtml(buildId)}"
                      data-stage-id="${escapeHtml(stage.id)}"
                      data-stage-name="${escapeHtml(stage.name || '阶段')}"
-                     style="flex:0 0 auto;min-width:76px;max-width:120px;padding:5px 6px;border-radius:6px;font-size:11px;text-align:center;
-                            background:${getStageBg(stage.status)};border:1px solid #e5e7eb;cursor:pointer;">
-                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:clip;line-height:1.2;">
-                        ${escapeHtml(stage.name || '阶段')}
-                    </div>
-                    <div style="margin-top:2px;line-height:1;">${getStageStatusIcon(stage.status)}</div>
+                     style="background:${getStageBg(stage.status)};">
+                    <div class="pipeline-mini-stage-name">${escapeHtml(stage.name || '阶段')}</div>
+                    <div class="pipeline-mini-stage-icon">${getStageStatusIcon(stage.status)}</div>
                 </div>
             `).join('')}
         </div>
     `;
 }
 
+/** 仓库地址只显示 host/路径，完整地址放在 title 里。 */
+function shortenGitRepo(repo) {
+    return String(repo || '')
+        .replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')
+        .replace(/^git@/i, '')
+        .replace(/\.git$/i, '');
+}
+
 function renderPipelineCreatorCell(job) {
     const name = job.creatorName ? escapeHtml(job.creatorName) : '-';
     return `<td class="pipeline-col-creator" title="${name}">${name}</td>`;
+}
+
+function renderPipelineListFooter(pageData) {
+    const total = pageData?.total || 0;
+    const page = pageData?.page || pipelineListPage;
+    const totalPages = pageData?.totalPages || 1;
+    return `
+        <div class="pipeline-list-footer">
+            ${renderPageSizeSelect(getPipelineListPageSize(), 'window.changePipelineListPageSize')}
+            ${renderPaginationBar(page, totalPages, total, 'window.gotoPipelineListPage')}
+        </div>
+    `;
 }
 
 function renderPipelineJobsTable(pageData, container) {
@@ -974,11 +1089,16 @@ function renderPipelineJobsTable(pageData, container) {
         : '当前视图：全部';
 
     if (!jobs.length) {
+        const searching = !!getPipelineJobSearchKeyword();
         container.innerHTML = `
-            <div style="padding: 40px; text-align: center; color: #999;">
+            <div style="padding: 40px; text-align: center; color: var(--text-4);">
                 <p>${viewHint}</p>
-                <p style="margin-top:12px;">暂无 Job</p>
-                <p style="font-size: 13px; margin-top: 8px;">可点击「新建 Job」创建，或切换其他视图查看</p>
+                <p style="margin-top:12px;">${searching ? '没有符合条件的 Job' : '暂无 Job'}</p>
+                <p style="font-size: 13px; margin-top: 8px;">${
+                    searching
+                        ? '可尝试修改关键词，或切换其他视图'
+                        : (canPipeline('pipeline:run') ? '可点击「新建 Job」创建，或切换其他视图查看' : '可切换其他视图查看')
+                }</p>
             </div>
         `;
         return;
@@ -987,16 +1107,16 @@ function renderPipelineJobsTable(pageData, container) {
     container.innerHTML = `
         <div class="pipeline-jobs-table">
             <div style="font-size: 13px; color: #6b7280; margin-bottom: 10px;">${viewHint} · 点击服务名称进入阶段视图</div>
-            <table class="pipeline-table">
+            <div class="table-container">
+            <table class="pipeline-table data-table">
                 <thead>
                     <tr>
-                        <th style="width:84px;">部署环境</th>
-                        <th style="width:180px;">服务名称</th>
-                        <th style="width:260px;">仓库地址</th>
-                        <th style="width:130px;">tag/branch</th>
-                        <th>最近构建</th>
-                        <th style="width:96px;">构建用户</th>
-                        <th style="width: 210px;">操作</th>
+                        <th style="width:52px;">环境</th>
+                        <th style="width:160px;">服务 / 仓库</th>
+                        <th style="width:120px;">tag/branch</th>
+                        <th class="pipeline-col-stages">最近构建</th>
+                        <th style="width:68px;">构建用户</th>
+                        <th class="pipeline-col-actions">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1004,31 +1124,29 @@ function renderPipelineJobsTable(pageData, container) {
                         <tr data-job-id="${job.id}">
                             <td class="pipeline-col-env">${escapeHtml(job.envName || '-')}</td>
                             <td class="pipeline-col-service">
-                                <a href="javascript:void(0)" data-pipeline-action="detail" data-job-id="${job.id}"
-                                   style="font-weight: 500; color: #2563eb; text-decoration: none;"
-                                   onmouseover="this.style.textDecoration='underline'"
-                                   onmouseout="this.style.textDecoration='none'">
+                                <a href="javascript:void(0)" class="pipeline-service-link" data-pipeline-action="detail" data-job-id="${job.id}">
                                     ${escapeHtml(job.serviceName || job.taskName || job.name || '-')}
                                 </a>
-                            </td>
-                            <td class="pipeline-col-repo" style="font-size:12px;" title="${escapeHtml(job.gitRepo || '')}">
-                                ${escapeHtml(job.gitRepo || '-')}
+                                <div class="pipeline-service-repo" title="${escapeHtml(job.gitRepo || '')}">${escapeHtml(shortenGitRepo(job.gitRepo) || '-')}</div>
                             </td>
                             ${renderPipelineGitRefCell(job)}
                             <td class="pipeline-col-stages">${renderMiniStagesForJob(job)}</td>
                             ${renderPipelineCreatorCell(job)}
-                            <td>
+                            <td class="pipeline-col-actions">
                                 <div class="pipeline-job-actions">
-                                    <button class="btn-success" onclick="window.triggerPipelineBuild(${resolvePipelineRunJobId(job)}, ${job.id})" ${isPipelineRunDisabled(job) ? 'disabled' : ''} title="${escapeHtml(getPipelineRunButtonTitle(job) || (job.fromDeployTask ? '重试上线任务 CD 部署' : ''))}">${getPipelineRunButtonLabel(job)}</button>
-                                    ${(typeof hasPermission !== 'function' || hasPermission('pipeline:rollback')) ? `<button class="btn-secondary btn-rollback" onclick="window.showPipelineRollbackModal(${resolvePipelineRunJobId(job)}, ${job.id})" ${canRollbackPipelineJob(job) ? '' : 'disabled'} title="${escapeHtml(getPipelineRollbackButtonTitle(job))}">回滚</button>` : ''}
-                                    ${(typeof hasPermission !== 'function' || hasPermission('pipeline:edit')) ? `<button class="btn-edit" onclick="window.showEditPipelineTaskModal(${job.id})" ${job.editable === false ? 'disabled' : ''}>编辑</button>` : ''}
-                                    ${(typeof hasPermission !== 'function' || hasPermission('pipeline:delete')) ? `<button class="btn-danger" onclick="window.deletePipelineTask(${job.fromDeployTask ? (job.latestBuildId || job.id) : job.id})" ${job.deletable === false ? 'disabled' : ''} title="${job.fromDeployTask ? '删除本次上线任务触发的 CD 记录' : ''}">删除</button>` : ''}
+                                    ${canPipeline('pipeline:run') ? `<button class="btn-success" onclick="window.triggerPipelineBuild(${resolvePipelineRunJobId(job)}, ${job.id})" ${isPipelineRunDisabled(job) ? 'disabled' : ''} title="${escapeHtml(getPipelineRunButtonTitle(job) || (job.fromDeployTask ? '重试上线任务 CD 部署' : ''))}">${getPipelineRunButtonLabel(job)}</button>` : ''}
+                                    ${hasRollbackPermissionFor(job) ? `<button class="btn-secondary btn-rollback" onclick="window.showPipelineRollbackModal(${resolvePipelineRunJobId(job)}, ${job.id})" ${canRollbackPipelineJob(job) ? '' : 'disabled'} title="${escapeHtml(getPipelineRollbackButtonTitle(job))}">回滚</button>` : ''}
+                                    <button class="btn-secondary" onclick='window.showServiceInstances(${job.id}, ${escapeHtml(JSON.stringify(`${job.taskName || job.serviceName || ""} · ${job.envName || ""}`))})' title="查看该服务在此环境的 Pod 状态、日志与事件（只读）">实例</button>
+                                    ${canPipeline('pipeline:edit') ? `<button class="btn-edit" onclick="window.showEditPipelineTaskModal(${job.id})" ${job.editable === false || job.operable === false ? "disabled" : ""} title="${job.operable === false ? PIPELINE_NOT_OPERABLE_TITLE : ""}">编辑</button>` : ''}
+                                    ${canPipeline('pipeline:delete') ? `<button class="btn-danger" onclick="window.deletePipelineTask(${job.fromDeployTask ? (job.latestBuildId || job.id) : job.id})" ${job.deletable === false || job.operable === false ? "disabled" : ""} title="${job.operable === false ? PIPELINE_NOT_OPERABLE_TITLE : (job.fromDeployTask ? "删除本次上线任务触发的 CD 记录" : "")}">删除</button>` : ''}
                                 </div>
                             </td>
                         </tr>
                     `).join('')}
                 </tbody>
             </table>
+            </div>
+            ${renderPipelineListFooter(pageData)}
         </div>
     `;
 
@@ -1111,7 +1229,7 @@ function startPipelineListPolling() {
         }
         const renderToken = pipelineListRenderToken;
         try {
-            const data = await fetchPipelineJobsPage(1, 10);
+            const data = await fetchCurrentPipelineListPage();
             // 点击服务名称进入详情后，丢弃过期的列表渲染
             if (renderToken !== pipelineListRenderToken || currentPipelineJobId) {
                 return;
@@ -1176,7 +1294,7 @@ async function showPipelineDetail(jobId) {
 
     container.innerHTML = `
         <div id="pipelineStageViewContainer" style="background: #fff; padding: 20px; border-radius: 6px; border: 1px solid #e5e7eb;">
-            <div style="padding: 40px; text-align: center; color: #999;">加载阶段视图...</div>
+            <div style="padding: 40px; text-align: center; color: var(--text-4);">加载阶段视图...</div>
         </div>
     `;
 
@@ -1235,36 +1353,6 @@ function renderPipelineStageViewHtml(view) {
     const highlightId = view.highlightJobId;
     const builds = view.buildHistory || [];
 
-    let averageStagesHtml = '';
-    if (view.averageStageTimesText && Object.keys(view.averageStageTimesText).length > 0) {
-        const maxDuration = Math.max(...Object.values(view.averageStageTimes || {}), 1);
-        averageStagesHtml = `
-            <div style="margin: 16px 0; padding: 14px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
-                <div style="font-size: 13px; color: #374151; margin-bottom: 10px;">
-                    <strong>平均阶段耗时</strong>
-                    <span style="color: #6b7280; margin-left: 8px;">（本页完整运行约 ${escapeHtml(view.averageFullRunTimeText || '-') }）</span>
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-                    ${Object.entries(view.averageStageTimesText).map(([name, time]) => {
-                        const duration = view.averageStageTimes[name] || 0;
-                        const widthPercent = maxDuration > 0 ? (duration / maxDuration * 100) : 0;
-                        return `
-                            <div style="min-width: 160px; flex: 1;">
-                                <div style="display:flex;justify-content:space-between;font-size:12px;color:#6b7280;">
-                                    <span>${escapeHtml(name)}</span>
-                                    <span>${escapeHtml(time)}</span>
-                                </div>
-                                <div style="height:6px;background:#e5e7eb;border-radius:3px;margin-top:4px;">
-                                    <div style="height:100%;width:${widthPercent}%;background:#667eea;border-radius:3px;"></div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>
-        `;
-    }
-
     const buildsHtml = builds.length ? builds.map(build => {
         const isHighlight = String(build.jobId) === String(highlightId);
         const stages = build.stages || [];
@@ -1305,13 +1393,7 @@ function renderPipelineStageViewHtml(view) {
                     · ${escapeHtml(view.serviceName || '-')} / ${escapeHtml(view.envName || '-')} / ${escapeHtml(view.branch || '-')}
                     · ${escapeHtml(view.pipelineTemplateName || '-')}
                 </div>
-                <div class="pipeline-view-summary-sub">
-                    CI 节点: ${escapeHtml(view.buildNodeDisplay || '本机')} / CD 节点: ${escapeHtml(view.deployNodeDisplay || '本机')}
-                </div>
-                <div class="pipeline-view-summary-status">${getStatusIcon(view.currentStatus, false)} <span>${escapeHtml(view.currentStatus || '-')}</span></div>
             </div>
-
-            ${averageStagesHtml}
 
             <div class="pipeline-build-history">
                 <div class="pipeline-build-history-header">
@@ -1352,15 +1434,17 @@ window.gotoPipelineStageViewPage = gotoPipelineStageViewPage;
 
 function renderStageCard(jobId, stage) {
     const bg = getStageBg(stage.status);
+    const duration = stage.durationText || '-';
     return `
         <div class="pipeline-stage-card"
              style="background: ${bg};"
+             title="${escapeHtml(stage.name || '阶段')} · ${escapeHtml(duration)}"
              data-pipeline-action="stage-log"
              data-job-id="${escapeHtml(jobId)}"
              data-stage-id="${escapeHtml(stage.id)}"
              data-stage-name="${escapeHtml(stage.name || '阶段')}">
             <div class="pipeline-stage-card-name">${escapeHtml(stage.name || '阶段')}</div>
-            <div class="pipeline-stage-card-duration">${escapeHtml(stage.durationText || '-')}</div>
+            <div class="pipeline-stage-card-duration">${escapeHtml(duration)}</div>
             <div class="pipeline-stage-card-status">${getStageStatusIcon(stage.status)}</div>
         </div>
     `;
@@ -1384,7 +1468,7 @@ async function showPipelineStageLog(jobId, stageId, stageName) {
     window.showModal(
         `阶段日志 - ${stageName || '阶段'}`,
         `<div id="pipelineStageLogMeta" style="padding:8px 16px 0;font-size:12px;color:#6b7280;">加载中...</div>
-         <div id="pipelineStageLogBox" style="padding:12px 16px 20px;color:#999;">加载中...</div>`,
+         <div id="pipelineStageLogBox" style="padding:12px 16px 20px;color:var(--text-4);">加载中...</div>`,
         null
     );
 
@@ -1664,17 +1748,22 @@ async function openPipelineTaskModal(jobId) {
             </div>
             <div class="form-item">
                 <label>服务 *</label>
-                <select name="serviceId" id="pipelineTaskServiceSelect" required>
-                    <option value="">请选择服务</option>
-                    ${services.map(s => `
-                        <option value="${s.id}"
-                                ${editingJob && String(s.id) === String(editingJob.serviceId) ? 'selected' : ''}
-                                data-service-name="${escapeHtml(s.name)}"
-                                data-git-repo="${escapeHtml(s.gitRepo || '')}">
-                            ${escapeHtml(s.name)} (${escapeHtml(s.code || s.name)})
-                        </option>
-                    `).join('')}
-                </select>
+                <div class="searchable-select" id="pipelineTaskServicePicker">
+                    <input type="text" class="searchable-select-input" id="pipelineTaskServiceSearch"
+                           placeholder="搜索并选择服务" autocomplete="off" spellcheck="false">
+                    <div class="searchable-select-dropdown" id="pipelineTaskServiceDropdown" hidden></div>
+                    <select name="serviceId" id="pipelineTaskServiceSelect" required class="searchable-select-native">
+                        <option value="">请选择服务</option>
+                        ${services.map(s => `
+                            <option value="${s.id}"
+                                    ${editingJob && String(s.id) === String(editingJob.serviceId) ? 'selected' : ''}
+                                    data-service-name="${escapeHtml(s.name)}"
+                                    data-git-repo="${escapeHtml(s.gitRepo || '')}">
+                                ${escapeHtml(s.name)} (${escapeHtml(s.code || s.name)})
+                            </option>
+                        `).join('')}
+                    </select>
+                </div>
             </div>
             <div class="form-item">
                 <label>Pipeline 模板 *</label>
@@ -1702,7 +1791,7 @@ async function openPipelineTaskModal(jobId) {
                     </select>
                     <button type="button" class="btn-secondary" onclick="loadPipelineGitRefs()">加载</button>
                 </div>
-                <small id="pipelineTaskRefHint" style="color:#666;display:block;margin-top:4px;">选择服务与 Git 类型后，点击「加载」获取${getPipelineGitTypeLabel(defaultGitType)}列表</small>
+                <small id="pipelineTaskRefHint" style="color:var(--text-3);display:block;margin-top:4px;">选择服务与 Git 类型后，点击「加载」获取${getPipelineGitTypeLabel(defaultGitType)}列表</small>
             </div>
             ${isEdit ? '' : `
             <div class="form-item">
@@ -1710,6 +1799,12 @@ async function openPipelineTaskModal(jobId) {
                     <input type="checkbox" name="autoDeploy" checked> 构建完成后自动部署
                 </label>
             </div>`}
+            <div class="form-item">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" name="webhookEnabled" data-original="${isEdit && editingJob?.webhookEnabled ? "1" : "0"}" ${isEdit && editingJob?.webhookEnabled ? "checked" : ""}> 代码推送到该分支时自动构建
+                </label>
+                <small id="pipelineWebhookHint" style="color:var(--text-3);display:block;margin-top:4px;">仅对非生产环境、按分支构建的任务生效</small>
+            </div>
         </form>
     `;
 
@@ -1718,13 +1813,148 @@ async function openPipelineTaskModal(jobId) {
 
     setTimeout(() => {
         bindPipelineTaskFormSuggest(formId);
+        initPipelineServiceSearchableSelect();
         const serviceSelect = document.getElementById('pipelineTaskServiceSelect');
         const initialServiceId = serviceSelect?.value;
         const initialBranch = editingJob?.branch || '';
         if (initialServiceId) {
             loadServiceBranches(initialServiceId, initialBranch);
         }
+        renderPipelineWebhookHint();
     }, 100);
+}
+
+function initPipelineServiceSearchableSelect() {
+    const picker = document.getElementById('pipelineTaskServicePicker');
+    const select = document.getElementById('pipelineTaskServiceSelect');
+    const search = document.getElementById('pipelineTaskServiceSearch');
+    const dropdown = document.getElementById('pipelineTaskServiceDropdown');
+    if (!picker || !select || !search || !dropdown || picker.dataset.ready === '1') return;
+    picker.dataset.ready = '1';
+
+    const items = Array.from(select.options).slice(1).map(opt => ({
+        value: opt.value,
+        label: (opt.textContent || '').trim(),
+        name: (opt.getAttribute('data-service-name') || '').trim(),
+        code: (() => {
+            const text = (opt.textContent || '').trim();
+            const m = text.match(/\(([^)]+)\)\s*$/);
+            return m ? m[1].trim() : '';
+        })()
+    }));
+
+    function selectedLabel() {
+        if (!select.value || select.selectedIndex <= 0) return '';
+        return (select.options[select.selectedIndex].textContent || '').trim();
+    }
+
+    function syncDisplay() {
+        search.value = selectedLabel();
+        if (!search.value) {
+            search.placeholder = '搜索并选择服务';
+        }
+    }
+
+    function render(filterText) {
+        const q = (filterText || '').trim().toLowerCase();
+        const matched = items.filter(it => {
+            if (!q) return true;
+            return it.label.toLowerCase().includes(q)
+                || it.name.toLowerCase().includes(q)
+                || it.code.toLowerCase().includes(q);
+        });
+        if (!matched.length) {
+            dropdown.innerHTML = '<div class="searchable-select-empty">无匹配服务</div>';
+            return;
+        }
+        dropdown.innerHTML = matched.map(it => `
+            <button type="button" class="searchable-select-option${it.value === select.value ? ' is-active' : ''}"
+                    data-value="${escapeHtml(it.value)}">${escapeHtml(it.label)}</button>
+        `).join('');
+    }
+
+    function openDropdown(clearForSearch) {
+        picker.classList.add('is-open');
+        dropdown.hidden = false;
+        if (clearForSearch) {
+            search.value = '';
+        }
+        render(search.value);
+    }
+
+    function closeDropdown() {
+        picker.classList.remove('is-open');
+        dropdown.hidden = true;
+        syncDisplay();
+    }
+
+    search.addEventListener('focus', () => openDropdown(true));
+    search.addEventListener('click', () => openDropdown(true));
+    search.addEventListener('input', () => {
+        openDropdown(false);
+        render(search.value);
+    });
+    search.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeDropdown();
+            search.blur();
+        }
+    });
+
+    dropdown.addEventListener('mousedown', (e) => {
+        // 避免点选项时 input 失焦先关闭
+        e.preventDefault();
+    });
+    dropdown.addEventListener('click', (e) => {
+        const btn = e.target.closest('.searchable-select-option');
+        if (!btn) return;
+        select.value = btn.getAttribute('data-value') || '';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        closeDropdown();
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!picker.contains(e.target)) {
+            closeDropdown();
+        }
+    });
+
+    syncDisplay();
+}
+
+async function renderPipelineWebhookHint() {
+    const hint = document.getElementById('pipelineWebhookHint');
+    if (!hint) return;
+    try {
+        const resp = await fetch('/api/webhook/info');
+        if (!resp.ok) return;
+        const info = await resp.json();
+        const url = `${window.location.origin}${info.path || '/api/webhook/git'}`;
+        hint.innerHTML = info.enabled
+            ? `在 Git 仓库添加 Push 事件 Webhook：<code>${escapeHtml(url)}</code>，密钥填写服务端配置的 OPSFLOW_WEBHOOK_SECRET。仅对非生产环境、按分支构建的任务生效`
+            : '<span style="color:#b45309;">服务端未配置 OPSFLOW_WEBHOOK_SECRET，Webhook 暂不可用</span>';
+    } catch (e) {
+        // 提示信息加载失败不影响表单
+    }
+}
+
+async function savePipelineWebhookSetting(jobId, enabled) {
+    const resp = await fetch(`/api/pipeline-run/${jobId}/webhook`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+    });
+    if (!resp.ok) {
+        let message = resp.statusText;
+        try {
+            const body = await resp.json();
+            message = body.message || body.error || message;
+        } catch (e) {
+            // ignore
+        }
+        throw new Error(message);
+    }
 }
 
 async function loadServiceBranches(serviceId, selectedBranch, options = {}) {
@@ -1847,11 +2077,21 @@ async function submitEditPipelineTask() {
             throw new Error(result.message || result.error || response.statusText || '更新失败');
         }
 
+        const webhookBox = form.querySelector('[name="webhookEnabled"]');
+        let webhookError = '';
+        if (webhookBox && (webhookBox.checked ? '1' : '0') !== webhookBox.dataset.original) {
+            try {
+                await savePipelineWebhookSetting(jobId, webhookBox.checked);
+            } catch (e) {
+                webhookError = e.message;
+            }
+        }
+
         if (typeof window.closeModal === 'function') {
             window.closeModal();
         }
         await loadPipelineJobsView();
-        alert('任务已更新');
+        alert(webhookError ? '任务已更新，但推送自动构建设置失败: ' + webhookError : '任务已更新');
     } catch (error) {
         console.error('Update pipeline task error:', error);
         alert('更新失败: ' + error.message);
@@ -2131,6 +2371,14 @@ async function submitCreatePipelineTask() {
 
         if (!response.ok) {
             throw new Error(result.message || result.error || response.statusText || '创建失败');
+        }
+
+        if (result.jobId && form.querySelector('[name="webhookEnabled"]')?.checked) {
+            try {
+                await savePipelineWebhookSetting(result.jobId, true);
+            } catch (e) {
+                alert('Job 已创建，但推送自动构建设置失败: ' + e.message);
+            }
         }
 
         if (typeof window.closeModal === 'function') {

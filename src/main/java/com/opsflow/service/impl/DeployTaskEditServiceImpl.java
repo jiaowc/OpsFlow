@@ -304,12 +304,12 @@ public class DeployTaskEditServiceImpl implements DeployTaskEditService {
 
     @Override
     public void fillActionFlags(DeployTaskDTO dto, DeployTask task, String username, Long userId,
-                                boolean hasCreate, boolean hasUnlock) {
+                                boolean hasCreate, boolean hasUnlock, boolean hasDelete) {
         boolean locked = isLocked(task);
         String approval = norm(task.getApprovalStatus());
         String status = norm(task.getTaskStatus());
-        boolean terminalDeploy = "deploying".equals(status) || "building".equals(status)
-                || "success".equals(status);
+        boolean inFlight = "deploying".equals(status) || "building".equals(status);
+        boolean terminalDeploy = inFlight || "success".equals(status);
         boolean creator = isCreator(task, username, userId);
         boolean hasModules = !DeployModuleJson.parseImages(task.getDeployModules()).isEmpty();
         boolean privileged = creator || hasUnlock;
@@ -317,6 +317,8 @@ public class DeployTaskEditServiceImpl implements DeployTaskEditService {
         boolean blockedByApproval = "pending".equals(approval) || "approved".equals(approval);
 
         dto.setCanEdit(hasCreate && !locked && !terminalDeploy && !blockedByApproval);
+        // 发布中不可删；其余状态由 deploy:delete 控制
+        dto.setCanDelete(hasDelete && !inFlight);
         dto.setCanLock(hasCreate && !locked && !terminalDeploy && !blockedByApproval
                 && privileged && hasModules);
         dto.setCanUnlock(locked && !terminalDeploy
