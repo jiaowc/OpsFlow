@@ -1,14 +1,13 @@
+# 公共配置（所有环境共用）。应用配置文件只放在 config/ 目录，需在项目根目录（或容器 /app）下启动。
+# 环境由 SPRING_PROFILES_ACTIVE=dev|test|prod 选择，application-<env>.yml 只写与本文件不同的项。
+# 数据库连接统一用 DB_URL / DB_USERNAME / DB_PASSWORD 注入：环境变量，或不入库的 config/application-local.yml。
 spring:
   application:
     name: opsflow
-  # 默认不写 spring.profiles.active：
-  # - 本地/外部 config 直接用本文件
-  # - 打包 -Pdev/-Ptest/-Pprod 时由 jar 内 application.properties 注入
-  # - 运行时也可通过 SPRING_PROFILES_ACTIVE 覆盖
   datasource:
-    url: "jdbc:mysql://127.0.0.1:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai"
-    username: root
-    password: "Y4djc+pAyEW=ANp"
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
   web:
     resources:
@@ -27,8 +26,7 @@ mybatis-plus:
 server:
   port: 8080
 
-# 飞书 / LDAP 等集成配置已迁移到「系统设置」页面（写入 system_config 表），此处不再维护。
-
+# 飞书 / LDAP 等集成配置在「系统设置」页面维护（system_config 表），不在配置文件中。
 opsflow:
   # License 强校验：false=关闭（功能全开）；后期改为 true 重新启用
   license:
@@ -38,5 +36,14 @@ opsflow:
 
 logging:
   level:
-    com.opsflow: DEBUG
+    com.opsflow: INFO
     root: INFO
+
+# 本机覆盖配置：未激活 profile 时在这里引入；激活了 profile 时由 application-<env>.yml 引入，
+# 这样 application-local.yml 总是优先于当前环境文件（同一文件只会被导入一次）。
+---
+spring:
+  config:
+    activate:
+      on-profile: default
+    import: "optional:file:./config/application-local.yml"
