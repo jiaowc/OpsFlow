@@ -158,7 +158,10 @@ public class K8sCredentialService {
         while (content.contains(delimiter)) {
             delimiter += "_X";
         }
-        return "cat <<'" + delimiter + "' > " + NodeCommandHelper.shellQuote(filePath) + "\n"
+        // umask 077：kubeconfig 仅属主可读；trap EXIT：本次 SSH 命令结束即删除，避免残留在部署节点 /tmp
+        return "umask 077\n"
+            + "trap " + NodeCommandHelper.shellQuote("rm -f " + NodeCommandHelper.shellQuote(filePath)) + " EXIT\n"
+            + "cat <<'" + delimiter + "' > " + NodeCommandHelper.shellQuote(filePath) + "\n"
             + content + "\n" + delimiter + "\n"
             + "export KUBECONFIG=" + NodeCommandHelper.shellQuote(filePath) + "\n";
     }

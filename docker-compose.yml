@@ -59,6 +59,8 @@ services:
       DB_USERNAME: opsflow
       DB_PASSWORD: ${MYSQL_PASSWORD:-opsflow}
       OPSFLOW_WEBHOOK_SECRET: ${OPSFLOW_WEBHOOK_SECRET:-}
+      # 凭据加密主密钥（Base64 的 32 字节）；留空则首次启动自动生成 ./data/secret.key，务必备份
+      OPSFLOW_SECRET_KEY: ${OPSFLOW_SECRET_KEY:-}
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data

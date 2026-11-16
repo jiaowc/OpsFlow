@@ -1,28 +1,39 @@
 package com.opsflow.web.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.opsflow.api.dto.BuildNodeDTO;
 import com.opsflow.api.dto.NodeEnvCheckResultDTO;
+import com.opsflow.common.exception.BusinessException;
 import com.opsflow.dao.mapper.BuildNodeMapper;
 import com.opsflow.dao.model.BuildNode;
 import com.opsflow.service.NodeService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import com.opsflow.web.security.RequiresPermission;
 
 /**
  * 节点管理控制器
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/node")
 public class NodeController {
 
     public static final String DEFAULT_NODE_WORK_DIR = "~/opsflow";
+
+    /** 只读字段：不允许从请求写入 */
+    private static final String[] READ_ONLY_FIELDS = {"hostKeyFingerprint", "hasPassword", "hasPrivateKey"};
+
+    private static final String[] UPDATE_IGNORED_FIELDS = {"id", "createTime",
+            "hostKeyFingerprint", "hasPassword", "hasPrivateKey"};
 
     @Autowired
     private BuildNodeMapper buildNodeMapper;
@@ -34,7 +45,7 @@ public class NodeController {
     @PostMapping("/create")
     public BuildNodeDTO createNode(@RequestBody BuildNodeDTO request) {
         BuildNode node = new BuildNode();
-        BeanUtils.copyProperties(request, node);
+        BeanUtils.copyProperties(request, node, READ_ONLY_FIELDS);
         if (node.getWorkDir() == null || node.getWorkDir().trim().isEmpty()) {
             node.setWorkDir(DEFAULT_NODE_WORK_DIR);
         } else {
@@ -82,7 +93,9 @@ public class NodeController {
         String oldPassword = node.getPassword();
         String oldPrivateKey = node.getPrivateKey();
         String oldPassphrase = node.getPrivateKeyPassphrase();
-        BeanUtils.copyProperties(request, node, "id", "createTime");
+        String oldHost = node.getHost();
+        int oldPort = effectivePort(node.getPort());
+        BeanUtils.copyProperties(request, node, UPDATE_IGNORED_FIELDS);
         if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
             node.setPassword(oldPassword);
         }
@@ -96,7 +109,47 @@ public class NodeController {
         node.setUpdateTime(LocalDateTime.now());
         buildNodeMapper.updateById(node);
 
+        // 地址或端口变了，就是另一台机器：清空旧指纹，下次连接重新首次信任
+        boolean addressChanged = !Objects.equals(trimToNull(oldHost), trimToNull(node.getHost()))
+                || oldPort != effectivePort(node.getPort());
+        if (addressChanged) {
+            clearHostKey(id);
+            node.setHostKey(null);
+            node.setHostKeyFingerprint(null);
+        }
+
         return toDto(node);
+    }
+
+    /**
+     * 重置 SSH 主机指纹：节点重装系统或更换主机后使用，下次连接时重新记录
+     */
+    @RequiresPermission("node:manage")
+    @PostMapping("/{id}/reset-host-key")
+    public BuildNodeDTO resetHostKey(@PathVariable Long id) {
+        BuildNode node = buildNodeMapper.selectById(id);
+        if (node == null) {
+            throw new BusinessException("节点不存在");
+        }
+        clearHostKey(id);
+        log.warn("节点 SSH 主机指纹已重置: id={} name={} 旧指纹={}", id, node.getName(), node.getHostKeyFingerprint());
+        node.setHostKey(null);
+        node.setHostKeyFingerprint(null);
+        return toDto(node);
+    }
+
+    private void clearHostKey(Long id) {
+        UpdateWrapper<BuildNode> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", id).set("host_key", null).set("host_key_fingerprint", null);
+        buildNodeMapper.update(null, wrapper);
+    }
+
+    private static int effectivePort(Integer port) {
+        return port != null && port > 0 ? port : 22;
+    }
+
+    private static String trimToNull(String s) {
+        return s == null || s.trim().isEmpty() ? null : s.trim();
     }
 
     @RequiresPermission("node:manage")
@@ -113,7 +166,10 @@ public class NodeController {
 
     private BuildNodeDTO toDto(BuildNode node) {
         BuildNodeDTO dto = new BuildNodeDTO();
-        BeanUtils.copyProperties(node, dto);
+        // 密码 / 私钥 / 私钥口令一律不回传前端（列表接口 pipeline:view 也能访问）
+        BeanUtils.copyProperties(node, dto, "password", "privateKey", "privateKeyPassphrase");
+        dto.setHasPassword(node.getPassword() != null && !node.getPassword().isEmpty());
+        dto.setHasPrivateKey(node.getPrivateKey() != null && !node.getPrivateKey().trim().isEmpty());
         dto.setWorkDir(normalizeWorkDir(dto.getWorkDir()));
         return dto;
     }

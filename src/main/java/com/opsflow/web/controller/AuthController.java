@@ -2,6 +2,7 @@ package com.opsflow.web.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.opsflow.common.util.PasswordHasher;
+import com.opsflow.common.util.PasswordPolicy;
 import com.opsflow.dao.mapper.UserMapper;
 import com.opsflow.dao.model.User;
 import com.opsflow.integration.feishu.FeishuSSO;
@@ -34,6 +35,9 @@ import java.util.UUID;
 public class AuthController {
 
     private static final String FEISHU_SSO_STATE_KEY = "FEISHU_SSO_STATE";
+
+    /** session 标记：本地用户使用弱口令登录，必须先改密（AuthInterceptor 据此拦截其他 API） */
+    public static final String MUST_CHANGE_PASSWORD_KEY = "mustChangePassword";
 
     @Autowired
     private UserMapper userMapper;
@@ -107,8 +111,13 @@ public class AuthController {
         bindSession(session, user.getUsername(), user.getId(),
                 permissionService.listRoleCodesByUserId(user.getId()),
                 permissionService.listPermissionCodesByUserId(user.getId()));
+        boolean mustChangePassword = isLocalUser(user) && PasswordPolicy.isWeak(user.getUsername(), password);
+        if (mustChangePassword) {
+            session.setAttribute(MUST_CHANGE_PASSWORD_KEY, Boolean.TRUE);
+        }
 
         result.put("success", true);
+        result.put(MUST_CHANGE_PASSWORD_KEY, mustChangePassword);
         result.put("token", session.getId());
         result.put("username", user.getUsername());
         result.put("roles", session.getAttribute("roles"));
@@ -267,11 +276,77 @@ public class AuthController {
             result.put("userId", session.getAttribute("userId"));
             result.put("roles", session.getAttribute("roles"));
             result.put("permissions", session.getAttribute("permissions"));
+            result.put(MUST_CHANGE_PASSWORD_KEY, Boolean.TRUE.equals(session.getAttribute(MUST_CHANGE_PASSWORD_KEY)));
+            Object uid = session.getAttribute("userId");
+            User user = uid instanceof Long ? userMapper.selectById((Long) uid) : null;
+            result.put("localUser", user != null && isLocalUser(user));
         } else {
             result.put("authenticated", false);
         }
 
         return result;
+    }
+
+    /**
+     * 修改密码（仅本地用户）：校验旧密码，新密码需 ≥ 8 位且不命中弱口令；成功后清除强制改密标记。
+     */
+    @PostMapping("/change-password")
+    public Map<String, Object> changePassword(@RequestBody Map<String, String> body, HttpSession session) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", false);
+
+        Object userId = session.getAttribute("userId");
+        if (!Boolean.TRUE.equals(session.getAttribute("authenticated")) || !(userId instanceof Long)) {
+            result.put("message", "未登录，请先登录");
+            return result;
+        }
+        User user = userMapper.selectById((Long) userId);
+        if (user == null) {
+            result.put("message", "用户不存在");
+            return result;
+        }
+        if (!isLocalUser(user)) {
+            result.put("message", "仅本地用户可修改密码，飞书/LDAP 用户请在对应系统中修改");
+            return result;
+        }
+
+        String oldPassword = body != null ? body.get("oldPassword") : null;
+        String newPassword = body != null ? body.get("newPassword") : null;
+        if (!StringUtils.hasText(oldPassword) || !StringUtils.hasText(newPassword)) {
+            result.put("message", "旧密码和新密码不能为空");
+            return result;
+        }
+        if (!PasswordHasher.matches(oldPassword, user.getPassword())) {
+            result.put("message", "旧密码不正确");
+            return result;
+        }
+        if (newPassword.length() < PasswordPolicy.MIN_LENGTH) {
+            result.put("message", "新密码长度不能少于 " + PasswordPolicy.MIN_LENGTH + " 位");
+            return result;
+        }
+        if (PasswordPolicy.isWeak(user.getUsername(), newPassword)) {
+            result.put("message", "新密码过于简单（不能为常见弱口令或与用户名相同）");
+            return result;
+        }
+        if (newPassword.equals(oldPassword)) {
+            result.put("message", "新密码不能与旧密码相同");
+            return result;
+        }
+
+        User update = new User();
+        update.setId(user.getId());
+        update.setPassword(PasswordHasher.hash(newPassword));
+        userMapper.updateById(update);
+        session.removeAttribute(MUST_CHANGE_PASSWORD_KEY);
+
+        result.put("success", true);
+        result.put("message", "密码修改成功");
+        return result;
+    }
+
+    /** source 为空（历史数据）或 local 视为本地用户 */
+    private static boolean isLocalUser(User user) {
+        return !StringUtils.hasText(user.getSource()) || "local".equalsIgnoreCase(user.getSource().trim());
     }
 
     /**

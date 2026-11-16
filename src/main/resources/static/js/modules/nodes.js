@@ -52,12 +52,13 @@ function renderNodeList(nodes) {
                 <td>${node.name}</td>
                 <td>${nodeTypeText}</td>
                 <td>${node.label || '-'}</td>
-                <td>${sshAddress}</td>
+                <td title="${escapeNodeHtml(node.hostKeyFingerprint ? '主机指纹: ' + node.hostKeyFingerprint : '尚未记录主机指纹（首次连接时自动记录）')}">${sshAddress}${node.hostKeyFingerprint ? ' <span style="color:#059669;font-size:12px;">🔒</span>' : ''}</td>
                 <td style="font-size:12px;max-width:180px;word-break:break-all;" title="${escapeNodeHtml(workDir)}">${escapeNodeHtml(workDir)}</td>
                 <td>${authTypeText}</td>
                 <td>${node.status === '在线' ? '<span style="color: #059669;">在线</span>' : '<span style="color: #dc2626;">离线</span>'}</td>
                 <td>
                     ${(hasPermission('node:manage') && (node.nodeType === 'build' || node.nodeType === 'deploy')) ? `<button class="btn-secondary" onclick="checkNodeEnvironment(${node.id}, '${(node.name || '').replace(/'/g, "\\'")}', '${node.nodeType}')" style="margin-right:6px;">环境检测</button>` : ''}
+                    ${hasPermission('node:manage') && node.hostKeyFingerprint ? `<button class="btn-secondary" onclick="resetNodeHostKey(${node.id})" style="margin-right:6px;" title="节点重装系统或更换主机后使用">重置指纹</button>` : ''}
                     ${hasPermission('node:manage') ? `<button class="btn-edit" onclick="editNode(${node.id})">修改</button>
                     <button class="btn-danger" onclick="deleteNode(${node.id})">删除</button>` : ''}
                 </td>
@@ -284,14 +285,14 @@ async function editNode(id) {
                 <div id="editNodePrivateKeyFields" style="display: ${node.authType === 'private_key' ? 'block' : 'none'};">
                     <div class="form-item">
                         <label>SSH私钥</label>
-                        <textarea name="privateKey" rows="8" placeholder="留空则不修改私钥">${node.privateKey || ''}</textarea>
+                        <textarea name="privateKey" rows="8" placeholder="${node.hasPrivateKey ? '已保存私钥，留空则不修改' : '请粘贴完整的私钥内容'}"></textarea>
                         <div style="margin-top: 4px; font-size: 12px; color: var(--text-3);">
                             提示：留空则不修改私钥，如需修改请粘贴完整的私钥内容
                         </div>
                     </div>
                     <div class="form-item">
                         <label>私钥密码（可选）</label>
-                        <input type="password" name="privateKeyPassphrase" value="${node.privateKeyPassphrase || ''}" placeholder="如果私钥有密码保护，请输入密码">
+                        <input type="password" name="privateKeyPassphrase" placeholder="留空则不修改；私钥有密码保护时填写">
                     </div>
                 </div>
             </form>
@@ -382,6 +383,25 @@ function escapeNodeHtml(text) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+}
+
+// 重置 SSH 主机指纹（节点重装系统 / 更换主机后使用）
+async function resetNodeHostKey(id) {
+    if (!confirm('仅在确认节点已重装系统或更换主机时重置。\n重置后下次连接将重新记录指纹，若此时存在中间人将无法识别。确定重置？')) return;
+    try {
+        const response = await fetch(`/api/node/${id}/reset-host-key`, { method: 'POST' });
+        if (!response.ok) {
+            const text = await response.text();
+            let msg = text;
+            try { msg = JSON.parse(text).message || text; } catch (e) { /* 非 JSON */ }
+            alert('重置失败: ' + msg);
+            return;
+        }
+        alert('已重置，下次连接时将重新记录主机指纹');
+        loadNodes();
+    } catch (e) {
+        alert('重置失败: ' + e.message);
+    }
 }
 
 // 节点环境检测

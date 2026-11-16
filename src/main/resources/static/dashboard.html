@@ -90,6 +90,7 @@
                         </svg>
                     </button>
                     <div class="user-menu-dropdown">
+                        <button type="button" class="user-menu-item" id="changePasswordMenuItem" onclick="showChangePasswordModal(false)">修改密码</button>
                         <button type="button" class="user-menu-item is-danger" onclick="logout()" data-i18n="header.logout">退出登录</button>
                     </div>
                 </div>
@@ -1250,7 +1251,7 @@
     <div id="modalContainer"></div>
     
     <!-- 核心模块 -->
-    <script src="/js/core.js?v=21"></script>
+    <script src="/js/core.js?v=22"></script>
     <script src="/js/utils.js?v=3"></script>
     <script src="/js/dashboard.js?v=11"></script>
     
@@ -1263,7 +1264,7 @@
     <script src="/js/modules/environments.js?v=3"></script>
     <script src="/js/modules/clusters.js?v=3"></script>
     <script src="/js/modules/approval.js?v=5"></script>
-    <script src="/js/modules/nodes.js?v=4"></script>
+    <script src="/js/modules/nodes.js?v=5"></script>
     <script src="/js/modules/users.js?v=8"></script>
     <script src="/js/modules/keychain.js?v=1"></script>
     <script src="/js/modules/step-def.js?v=17"></script>

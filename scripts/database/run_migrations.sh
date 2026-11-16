@@ -106,6 +106,8 @@ run_sql "${MIGRATIONS_DIR}/migrate_project.sql" "project / project_member 项目
 run_sql "${MIGRATIONS_DIR}/migrate_approval_multi_approver.sql" "审批步骤多审批人"
 run_sql "${MIGRATIONS_DIR}/migrate_fix_comment_encoding.sql" "修复乱码字段注释"
 run_sql "${MIGRATIONS_DIR}/migrate_drop_unused_columns.sql" "删除不再使用的字段"
+run_sql "${MIGRATIONS_DIR}/migrate_build_node_host_key.sql" "build_node SSH 主机指纹"
+run_sql "${MIGRATIONS_DIR}/migrate_secret_column_width.sql" "凭据加密存储列宽"
 
 echo
 echo "全部迁移执行完成"

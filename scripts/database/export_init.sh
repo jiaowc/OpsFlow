@@ -56,6 +56,12 @@ mysqldump "${DUMP_COMMON[@]}" --routines --triggers --no-data \
 mysqldump "${DUMP_COMMON[@]}" --complete-insert --skip-extended-insert \
   --no-create-info "$DB_NAME" "${MASTER_TABLES[@]}" > "${TMP_DIR}/data.sql"
 
+# 加密存储的凭据（enc:v1:...）绑定本机主密钥，带到新环境也解不开：导出时一律置空，新环境重新录入
+ENC_COUNT="$(grep -oE "'enc:v1:[A-Za-z0-9+/=]+'" "${TMP_DIR}/data.sql" | wc -l | tr -d ' ')"
+sed -E "s#'enc:v1:[A-Za-z0-9+/=]+'#NULL#g" "${TMP_DIR}/data.sql" > "${TMP_DIR}/data.scrubbed.sql"
+mv "${TMP_DIR}/data.scrubbed.sql" "${TMP_DIR}/data.sql"
+echo "已置空加密凭据字段: ${ENC_COUNT} 个"
+
 {
   cat <<EOF
 -- OpsFlow 一键初始化（结构 + 当前配置数据）

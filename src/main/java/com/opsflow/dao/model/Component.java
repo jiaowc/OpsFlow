@@ -1,8 +1,10 @@
 package com.opsflow.dao.model;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.opsflow.common.crypto.EncryptedStringTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -10,7 +12,7 @@ import java.time.LocalDateTime;
  * 组件实体
  */
 @Data
-@TableName("component")
+@TableName(value = "component", autoResultMap = true)
 public class Component {
     
     @TableId(type = IdType.AUTO)
@@ -37,8 +39,9 @@ public class Component {
     private String authType;
     
     /**
-     * 认证信息（JSON格式存储，根据authType不同而不同）
+     * 认证信息（JSON格式存储，根据authType不同而不同；落库加密，读出自动解密）
      */
+    @TableField(typeHandler = EncryptedStringTypeHandler.class)
     private String authConfig;
 
     /**

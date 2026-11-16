@@ -23,6 +23,9 @@ import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -240,10 +243,53 @@ public class GitRefService {
     }
 
     private List<String> listFromGitRemote(String gitRepo, String type, Long componentId) throws Exception {
-        String authUrl = gitCredentialService.injectCredentials(gitRepo, componentId);
         String lsFlag = "tag".equals(type) ? "--tags" : "--heads";
-        ProcessBuilder builder = new ProcessBuilder("git", "ls-remote", lsFlag, authUrl);
+        String credLine = gitCredentialService.buildCredentialStoreLine(gitRepo, componentId);
+        Path credFile = null;
+        try {
+            List<String> cmd = new ArrayList<>();
+            cmd.add("git");
+            if (credLine != null) {
+                // token 只写入 600 权限的临时 store 文件，不出现在进程参数里
+                credFile = createCredentialFile(credLine);
+                cmd.add("-c");
+                cmd.add("credential.helper=");
+                cmd.add("-c");
+                cmd.add("credential.helper=store --file='" + credFile.toAbsolutePath() + "'");
+            }
+            cmd.add("ls-remote");
+            cmd.add(lsFlag);
+            cmd.add(gitRepo);
+            return runLsRemote(cmd, type);
+        } finally {
+            if (credFile != null) {
+                try {
+                    Files.deleteIfExists(credFile);
+                } catch (Exception e) {
+                    log.warn("删除 Git 临时凭据文件失败: {}", credFile);
+                }
+            }
+        }
+    }
+
+    private Path createCredentialFile(String credLine) throws java.io.IOException {
+        Path file;
+        try {
+            file = Files.createTempFile("opsflow-git-cred-", ".tmp",
+                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        } catch (UnsupportedOperationException e) {
+            // 非 POSIX 文件系统（如 Windows）退化为默认权限
+            file = Files.createTempFile("opsflow-git-cred-", ".tmp");
+        }
+        Files.write(file, (credLine + "\n").getBytes(StandardCharsets.UTF_8));
+        return file;
+    }
+
+    private List<String> runLsRemote(List<String> cmd, String type) throws Exception {
+        ProcessBuilder builder = new ProcessBuilder(cmd);
         builder.redirectErrorStream(true);
+        // 禁止 git 在无凭据时尝试交互式询问用户名密码
+        builder.environment().put("GIT_TERMINAL_PROMPT", "0");
         Process process = builder.start();
 
         Set<String> names = new LinkedHashSet<>();

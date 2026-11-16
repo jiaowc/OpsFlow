@@ -47,6 +47,12 @@ public class ComponentController {
     private static final int READ_TIMEOUT_MS = 5000;
     private static final long TEST_CACHE_TTL_MS = 2 * 60 * 1000L;
 
+    /** 组件认证配置中的密钥类字段：响应中打码，请求中为空或掩码时保留原值 */
+    private static final java.util.Set<String> SECRET_AUTH_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "password", "token", "apiKey", "clientSecret", "privateKey", "passphrase", "configContent", "kubeconfig"));
+
+    private static final String SECRET_MASK = "******";
+
     private final ConcurrentHashMap<Long, CachedTestResult> testResultCache = new ConcurrentHashMap<>();
 
     private static class CachedTestResult {
@@ -692,6 +698,13 @@ public class ComponentController {
                     component.getAuthConfig(),
                     new TypeReference<Map<String, String>>() {}
                 );
+                // 密钥类字段只返回掩码；前端原样回传掩码时 applyAuthFromRequest 会保留旧值
+                for (Map.Entry<String, String> entry : authConfig.entrySet()) {
+                    if (SECRET_AUTH_KEYS.contains(entry.getKey())
+                            && entry.getValue() != null && !entry.getValue().isEmpty()) {
+                        entry.setValue(SECRET_MASK);
+                    }
+                }
                 dto.setAuthConfig(authConfig);
             }
         } catch (Exception e) {
@@ -736,6 +749,7 @@ public class ComponentController {
             return;
         }
 
+        String previousAuthType = component.getAuthType();
         component.setCredentialId(null);
         component.setAuthType(request.getAuthType());
 
@@ -744,18 +758,19 @@ public class ComponentController {
         }
 
         Map<String, String> newAuthConfig = new HashMap<>(request.getAuthConfig());
-        if ("username_password".equals(request.getAuthType()) || "oauth".equals(request.getAuthType())) {
-            Map<String, String> oldAuthConfig = parseAuthConfig(component.getAuthConfig());
-            if ("username_password".equals(request.getAuthType())) {
-                if ((newAuthConfig.get("password") == null || newAuthConfig.get("password").isEmpty())
-                        && oldAuthConfig.containsKey("password")) {
-                    newAuthConfig.put("password", oldAuthConfig.get("password"));
-                }
-            } else if ("oauth".equals(request.getAuthType())) {
-                if ((newAuthConfig.get("clientSecret") == null || newAuthConfig.get("clientSecret").isEmpty())
-                        && oldAuthConfig.containsKey("clientSecret")) {
-                    newAuthConfig.put("clientSecret", oldAuthConfig.get("clientSecret"));
-                }
+        // 密钥类字段留空或为掩码 → 保留原值（同一认证类型下）
+        boolean sameAuthType = request.getAuthType().equals(previousAuthType);
+        Map<String, String> oldAuthConfig = sameAuthType ? parseAuthConfig(component.getAuthConfig()) : new HashMap<>();
+        for (String key : SECRET_AUTH_KEYS) {
+            String value = newAuthConfig.get(key);
+            boolean unchanged = value == null || value.isEmpty() || SECRET_MASK.equals(value);
+            if (!unchanged) {
+                continue;
+            }
+            if (oldAuthConfig.containsKey(key)) {
+                newAuthConfig.put(key, oldAuthConfig.get(key));
+            } else if (value != null && SECRET_MASK.equals(value)) {
+                newAuthConfig.remove(key);
             }
         }
         component.setAuthConfig(objectMapper.writeValueAsString(newAuthConfig));

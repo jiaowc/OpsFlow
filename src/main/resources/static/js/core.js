@@ -207,6 +207,15 @@ async function loadUserInfo() {
             const user = await response.json();
             currentUser = user;
             document.getElementById('username').textContent = user.username || '用户';
+            const changePwdItem = document.getElementById('changePasswordMenuItem');
+            if (changePwdItem) {
+                changePwdItem.style.display = user.localUser === false ? 'none' : '';
+            }
+            if (user.mustChangePassword) {
+                // 弱口令登录：其他 API 均被后端 403 拦截，先强制改密
+                showChangePasswordModal(true);
+                return;
+            }
             await loadLicenseStatus();
             applyPermissionUI();
             await refreshProjectSwitcher();
@@ -283,6 +292,100 @@ async function logout() {
     localStorage.removeItem('token');
     window.location.href = '/index.html';
 }
+
+// 修改密码弹窗：force=true 时为弱口令强制改密（无关闭/取消，独立容器，不受 closeModal 影响）
+function showChangePasswordModal(force) {
+    const menu = document.getElementById('userMenu');
+    if (menu) menu.classList.remove('open');
+    let host = document.getElementById('changePasswordModalHost');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'changePasswordModalHost';
+        document.body.appendChild(host);
+    }
+    host.innerHTML = `
+        <div class="modal-overlay"${force ? '' : ' onclick="closeChangePasswordModal(event)"'}>
+            <div class="modal" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h3>${force ? '请先修改初始密码' : '修改密码'}</h3>
+                    ${force ? '' : '<button class="modal-close" onclick="closeChangePasswordModal()">&times;</button>'}
+                </div>
+                <div class="modal-body">
+                    ${force ? '<p style="margin:0 0 12px;color:#d9534f;">当前密码过于简单（弱口令），修改后才能继续使用系统。</p>' : ''}
+                    <div class="form-item">
+                        <label>旧密码 *</label>
+                        <input type="password" id="cpOldPassword" autocomplete="current-password">
+                    </div>
+                    <div class="form-item">
+                        <label>新密码 *</label>
+                        <input type="password" id="cpNewPassword" autocomplete="new-password" placeholder="至少 8 位，不能为常见弱口令或与用户名相同">
+                    </div>
+                    <div class="form-item">
+                        <label>确认新密码 *</label>
+                        <input type="password" id="cpConfirmPassword" autocomplete="new-password">
+                    </div>
+                    <div id="cpError" style="color:#d9534f;min-height:18px;"></div>
+                </div>
+                <div class="modal-footer">
+                    ${force ? '<button class="btn-secondary" onclick="logout()">退出登录</button>' : '<button class="btn-secondary" onclick="closeChangePasswordModal()">取消</button>'}
+                    <button class="btn-primary" id="cpSubmitBtn" onclick="submitChangePassword()">确认修改</button>
+                </div>
+            </div>
+        </div>
+    `;
+    const first = document.getElementById('cpOldPassword');
+    if (first) first.focus();
+}
+
+function closeChangePasswordModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    const host = document.getElementById('changePasswordModalHost');
+    if (host) host.innerHTML = '';
+}
+
+async function submitChangePassword() {
+    const oldPassword = document.getElementById('cpOldPassword').value;
+    const newPassword = document.getElementById('cpNewPassword').value;
+    const confirmPassword = document.getElementById('cpConfirmPassword').value;
+    const errorEl = document.getElementById('cpError');
+    const btn = document.getElementById('cpSubmitBtn');
+    errorEl.textContent = '';
+    if (!oldPassword || !newPassword) {
+        errorEl.textContent = '旧密码和新密码不能为空';
+        return;
+    }
+    if (newPassword.length < 8) {
+        errorEl.textContent = '新密码长度不能少于 8 位';
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        errorEl.textContent = '两次输入的新密码不一致';
+        return;
+    }
+    btn.disabled = true;
+    try {
+        const resp = await fetch('/api/auth/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ oldPassword, newPassword })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && data.success) {
+            alert('密码修改成功');
+            window.location.reload();
+            return;
+        }
+        errorEl.textContent = data.message || '修改失败';
+    } catch (error) {
+        errorEl.textContent = '修改失败：' + ((error && error.message) || '网络错误');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+window.showChangePasswordModal = showChangePasswordModal;
+window.closeChangePasswordModal = closeChangePasswordModal;
+window.submitChangePassword = submitChangePassword;
 
 // 顶栏用户菜单（退出登录收在里面）
 function toggleUserMenu() {

@@ -35,4 +35,16 @@ public class BuildNodeDTO {
     private String status;
 
     private String description;
+
+    /**
+     * SSH 主机指纹（只读，响应用；请求中的值会被忽略）
+     */
+    private String hostKeyFingerprint;
+
+    /**
+     * 是否已保存密码 / 私钥（只读，响应中不再回传密钥原文）
+     */
+    private Boolean hasPassword;
+
+    private Boolean hasPrivateKey;
 }

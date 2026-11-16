@@ -54,6 +54,17 @@ IDE 中运行 `OpsFlowApplication` 时，工作目录也要设为项目根目录
   `./scripts/deploy/start.sh --docker` 还会把项目 `config/` 挂载到 `/app/config`，并透传宿主机上已设置的 `DB_*` 环境变量。容器内访问宿主机 MySQL 需用 `host.docker.internal`。
 - **K8s**：`SPRING_PROFILES_ACTIVE` 放 ConfigMap，`DB_PASSWORD` 放 Secret，均以环境变量注入。
 
+## 凭据加密主密钥
+
+钥匙串、组件认证信息、节点 SSH 密码/私钥以 AES-256-GCM 加密存库，主密钥按以下顺序取得：
+
+1. 环境变量 `OPSFLOW_SECRET_KEY`：Base64 编码的 32 字节，可用 `openssl rand -base64 32` 生成；
+2. 密钥文件 `OPSFLOW_SECRET_KEY_FILE`（默认 `./data/secret.key`，相对启动目录）：不存在时首次启动自动生成，权限 600。
+
+- 多实例或 K8s 部署请显式设置 `OPSFLOW_SECRET_KEY`（放 Secret），所有实例必须一致；
+- 主密钥丢失或更换后，已保存的凭据无法解密（页面上显示为未配置），只能重新录入，请与数据库一起备份；
+- 从旧版本升级：先执行 `bash scripts/database/run_migrations.sh`（新增 `build_node.host_key` 等列），再启动应用，启动时会自动把历史明文凭据加密回写。
+
 ## 覆盖其它配置项
 
 任何配置项都可以写在 `config/application-local.yml` 中，它的优先级高于 `application.yml` 和当前激活的 `application-<env>.yml`

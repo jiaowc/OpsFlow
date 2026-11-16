@@ -1,8 +1,10 @@
 package com.opsflow.dao.model;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.opsflow.common.crypto.EncryptedStringTypeHandler;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -11,7 +13,7 @@ import java.time.LocalDateTime;
  * 钥匙串凭证实体
  */
 @Data
-@TableName("credential")
+@TableName(value = "credential", autoResultMap = true)
 public class Credential {
 
     @TableId(type = IdType.AUTO)
@@ -28,8 +30,9 @@ public class Credential {
     private String credentialType;
 
     /**
-     * 凭证配置 JSON
+     * 凭证配置 JSON（落库加密，读出自动解密）
      */
+    @TableField(typeHandler = EncryptedStringTypeHandler.class)
     private String configData;
 
     private String description;

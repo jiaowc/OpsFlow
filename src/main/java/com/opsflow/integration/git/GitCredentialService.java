@@ -8,6 +8,9 @@ import com.opsflow.integration.credential.ResolvedAuth;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URI;
+import java.net.URLEncoder;
 import java.util.Map;
 
 /**
@@ -28,7 +31,10 @@ public class GitCredentialService {
      *
      * @param gitRepo     原始仓库地址
      * @param componentId 服务关联的组件 ID，可为 null（则按仓库类型取最新启用的组件）
+     * @deprecated 带凭据的 URL 会被写进 .git/config 并出现在进程参数里，
+     *             请改用 {@link #buildCredentialStoreLine(String, Long)} 配合临时 credential store
      */
+    @Deprecated
     public String injectCredentials(String gitRepo, Long componentId) {
         if (gitRepo == null || gitRepo.isEmpty()) {
             return gitRepo;
@@ -73,6 +79,69 @@ public class GitCredentialService {
             log.debug("注入 Git 凭据失败", e);
         }
         return gitRepo;
+    }
+
+    /**
+     * 生成 git credential-store 文件中的一行：{@code scheme://user:token@host[:port]}。
+     * 配合 {@code git -c credential.helper= -c credential.helper="store --file=<临时文件>"} 使用，
+     * 仓库 URL 本身不带凭据，token 不会写进 .git/config，也不会出现在进程参数里。
+     *
+     * @param gitRepo     原始仓库地址（不带凭据）
+     * @param componentId 服务关联的组件 ID，可为 null（则按仓库类型取最新启用的组件）
+     * @return 存储行；非 http(s) 地址、地址已自带用户信息或没有可用凭据时返回 null
+     */
+    public String buildCredentialStoreLine(String gitRepo, Long componentId) {
+        if (gitRepo == null || gitRepo.isEmpty()) {
+            return null;
+        }
+        if (!gitRepo.startsWith("http://") && !gitRepo.startsWith("https://")) {
+            return null;
+        }
+        String scheme;
+        String hostPort;
+        try {
+            URI uri = URI.create(gitRepo.trim());
+            if (uri.getRawUserInfo() != null || uri.getHost() == null) {
+                return null;
+            }
+            scheme = uri.getScheme();
+            hostPort = uri.getPort() > 0 ? uri.getHost() + ":" + uri.getPort() : uri.getHost();
+        } catch (IllegalArgumentException e) {
+            log.debug("无法解析 Git 仓库地址: {}", e.getMessage());
+            return null;
+        }
+
+        boolean isGitHub = gitRepo.contains("github.com");
+        Component gitComponent = resolveComponent(gitRepo, componentId, isGitHub);
+        if (gitComponent == null) {
+            return null;
+        }
+        ResolvedAuth auth = componentAuthResolver.resolve(gitComponent);
+        if (!auth.hasAuth()) {
+            log.debug("组件未配置可用凭据: componentId={}", gitComponent.getId());
+            return null;
+        }
+        String token = resolveGitToken(auth);
+        if (token == null || token.isEmpty()) {
+            return null;
+        }
+        return formatStoreLine(scheme, hostPort, isGitHub ? "x-access-token" : "oauth2", token);
+    }
+
+    /**
+     * 按 credential-store 文件格式拼接一行，user / token 做 URL 编码（git 读取时会解码）。
+     */
+    static String formatStoreLine(String scheme, String hostPort, String user, String token) {
+        return scheme + "://" + urlEncode(user) + ":" + urlEncode(token) + "@" + hostPort;
+    }
+
+    private static String urlEncode(String value) {
+        try {
+            // URLEncoder 把空格编码成 "+"，而 git 的 URL 解码不把 "+" 当空格，统一改成 %20
+            return URLEncoder.encode(value, "UTF-8").replace("+", "%20");
+        } catch (UnsupportedEncodingException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private Component resolveComponent(String gitRepo, Long componentId, boolean isGitHub) {

@@ -42,13 +42,18 @@ docker compose up -d --build
 | `MYSQL_PASSWORD` | 应用库用户 `opsflow` 密码 | `opsflow` |
 | `JAVA_OPTS` | JVM 参数 | `-Xms256m -Xmx512m` |
 | `OPSFLOW_WEBHOOK_SECRET` | Git Webhook 密钥，空则关闭 | 空 |
+| `OPSFLOW_SECRET_KEY` | 凭据加密主密钥（Base64 的 32 字节，`openssl rand -base64 32` 生成）；空则首次启动自动生成 `./data/secret.key` | 空 |
 | `OPSFLOW_DOCKER_IMAGE` | 镜像名/标签 | `opsflow:1.0.0` |
+
+> ⚠️ **凭据加密主密钥**：钥匙串、组件认证信息、节点 SSH 密码/私钥都以 AES-256-GCM 加密存库。
+> 主密钥（`OPSFLOW_SECRET_KEY` 或 `./data/secret.key`）丢失或被更换后，已保存的凭据无法解密，只能重新录入。
+> 请把它和数据库一起备份；不要提交到 Git。从旧版本升级时，首次启动会自动把历史明文凭据加密回写。
 
 应用数据库连接统一走 **`DB_URL` / `DB_USERNAME` / `DB_PASSWORD`**（与传统部署一致）。全栈 Compose 会自动注入指向容器 `mysql` 的地址。
 
 持久化目录：
 
-- `./data` — 品牌 Logo、流水线日志等
+- `./data` — 品牌 Logo、流水线日志、凭据加密主密钥 `secret.key`（未配置 `OPSFLOW_SECRET_KEY` 时）等
 - `./logs` — 应用日志
 - Docker volume `opsflow-mysql` — 数据库文件
 

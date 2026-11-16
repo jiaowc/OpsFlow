@@ -1,6 +1,7 @@
 package com.opsflow.web.interceptor;
 
 import com.opsflow.service.PermissionService;
+import com.opsflow.web.controller.AuthController;
 import com.opsflow.web.security.RequiresPermission;
 import com.opsflow.web.security.SessionPermissionResolver;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,6 +67,11 @@ public class AuthInterceptor implements HandlerInterceptor {
             if (session == null || session.getAttribute("authenticated") == null
                     || session.getAttribute("userId") == null) {
                 writeJson(response, HttpServletResponse.SC_UNAUTHORIZED, "未登录，请先登录");
+                return false;
+            }
+            if (Boolean.TRUE.equals(session.getAttribute(AuthController.MUST_CHANGE_PASSWORD_KEY))
+                    && !path.startsWith("/api/auth/")) {
+                writeJson(response, HttpServletResponse.SC_FORBIDDEN, "请先修改初始密码");
                 return false;
             }
             if (!checkPermission(handler, session, response)) {

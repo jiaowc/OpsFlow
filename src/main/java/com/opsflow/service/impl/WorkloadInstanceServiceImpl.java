@@ -214,9 +214,8 @@ public class WorkloadInstanceServiceImpl implements WorkloadInstanceService {
         if (kubeSetup.isEmpty()) {
             throw new BusinessException("环境所属集群未关联有效的 Kubeconfig");
         }
-        // 路径只含 [a-zA-Z0-9_-]，可直接放进单引号
-        String kubeFile = k8sCredentialService.remoteKubeconfigPath(sessionKey);
-        String command = "umask 077\ntrap 'rm -f " + kubeFile + "' EXIT\n" + kubeSetup + script;
+        // kubeSetup 已自带 umask 077 与 trap 清理
+        String command = kubeSetup + script;
         NodeCommandHelper.CommandResult result = nodeCommandHelper.runOnNode(t.nodeId, command, COMMAND_TIMEOUT_MS);
         String output = result.getOutput() != null ? result.getOutput().trim() : "";
         if (!result.isSuccess()) {

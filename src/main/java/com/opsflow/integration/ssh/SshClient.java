@@ -1,10 +1,13 @@
 package com.opsflow.integration.ssh;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
+import com.opsflow.dao.mapper.BuildNodeMapper;
 import com.opsflow.dao.model.BuildNode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
@@ -38,6 +41,9 @@ public class SshClient {
      */
     public static final int TIMEOUT_EXIT_CODE = 124;
 
+    @Autowired(required = false)
+    private BuildNodeMapper buildNodeMapper;
+
     public SshCommandResult execute(BuildNode node, String command) {
         return execute(node, command, DEFAULT_COMMAND_TIMEOUT_MS, null);
     }
@@ -53,6 +59,7 @@ public class SshClient {
                                     Consumer<String> lineListener) {
         Session session = null;
         ChannelExec channel = null;
+        TofuHostKeyRepository hostKeys = null;
         try {
             String validationError = validateNodeCredentials(node);
             if (validationError != null) {
@@ -82,13 +89,18 @@ public class SshClient {
                 session.setPassword(node.getPassword());
             }
 
+            // 主机指纹首次信任（TOFU）：首次连接记录公钥，之后不一致即拒绝，防止中间人截获节点密码
+            hostKeys = new TofuHostKeyRepository(node.getHostKey());
+            session.setHostKeyRepository(hostKeys);
+
             Properties config = new Properties();
-            config.put("StrictHostKeyChecking", "no");
+            config.put("StrictHostKeyChecking", "yes");
             // 新版 JSch 默认不再启用 SHA1 的 ssh-rsa；放在末位兜底，兼容 OpenSSH 7.2 以前的老节点
             config.put("server_host_key", JSch.getConfig("server_host_key") + ",ssh-rsa");
             config.put("PubkeyAcceptedAlgorithms", JSch.getConfig("PubkeyAcceptedAlgorithms") + ",ssh-rsa");
             session.setConfig(config);
             session.connect(CONNECT_TIMEOUT_MS);
+            rememberHostKey(node, hostKeys);
 
             channel = (ChannelExec) session.openChannel("exec");
             channel.setCommand("export LANG=C.UTF-8 2>/dev/null; " + command);
@@ -143,6 +155,13 @@ public class SshClient {
             }
             return SshCommandResult.ok(combined);
         } catch (Exception e) {
+            if (hostKeys != null && hostKeys.isMismatch()) {
+                log.error("SSH 主机指纹不匹配，已拒绝连接: node={} {}:{} 记录={} 实际={}", node.getName(), node.getHost(),
+                        node.getPort(), hostKeys.trustedFingerprint(), hostKeys.presentedFingerprint());
+                return SshCommandResult.fail("SSH 主机指纹已变化，已拒绝连接（可能存在中间人攻击）。记录的指纹: "
+                        + hostKeys.trustedFingerprint() + "，当前指纹: " + hostKeys.presentedFingerprint()
+                        + "。如确认节点已重装或更换，请在「节点管理」中重置指纹");
+            }
             log.warn("SSH 命令执行失败: {}@{} - {}", node.getUsername(), node.getHost(), e.getMessage());
             return SshCommandResult.fail("SSH 执行失败: " + e.getMessage());
         } finally {
@@ -152,6 +171,32 @@ public class SshClient {
             if (session != null && session.isConnected()) {
                 session.disconnect();
             }
+        }
+    }
+
+    /**
+     * 首次连接成功（已通过认证）后持久化主机公钥；仅在库中尚未记录时写入，避免并发连接互相覆盖
+     */
+    private void rememberHostKey(BuildNode node, TofuHostKeyRepository hostKeys) {
+        String newKey = hostKeys.newlyTrustedHostKey();
+        if (newKey == null || node.getId() == null || buildNodeMapper == null) {
+            return;
+        }
+        String fingerprint = hostKeys.presentedFingerprint();
+        try {
+            UpdateWrapper<BuildNode> wrapper = new UpdateWrapper<>();
+            wrapper.eq("id", node.getId())
+                    .and(w -> w.isNull("host_key").or().eq("host_key", ""))
+                    .set("host_key", newKey)
+                    .set("host_key_fingerprint", fingerprint);
+            if (buildNodeMapper.update(null, wrapper) > 0) {
+                log.info("已记录节点 SSH 主机指纹: node={} {}:{} {}", node.getName(), node.getHost(), node.getPort(), fingerprint);
+            }
+            node.setHostKey(newKey);
+            node.setHostKeyFingerprint(fingerprint);
+        } catch (Exception e) {
+            // 记录失败不影响本次执行，下次连接会再次尝试
+            log.warn("保存节点 SSH 主机指纹失败: node={} - {}", node.getName(), e.getMessage());
         }
     }
 
