@@ -195,7 +195,7 @@ async function initServiceProjectField(service) {
     const projects = typeof loadProjectOptions === 'function' ? await loadProjectOptions() : [];
     const selected = service?.projectId != null
         ? String(service.projectId)
-        : (typeof getCurrentProjectId === 'function' ? getCurrentProjectId() : '');
+        : getServiceProjectFilterId();
     const writable = projects.filter(p => p.myRole && p.myRole !== 'VIEWER');
     if (service?.projectId != null && !writable.some(p => String(p.id) === selected)) {
         writable.unshift({ id: service.projectId, name: service.projectName || ('项目#' + service.projectId) });
@@ -302,12 +302,25 @@ function collectServiceFormData(form, includeStatus) {
     return data;
 }
 
+function getServiceProjectFilterId() {
+    return ((document.getElementById('serviceProjectFilter') || {}).value || '').trim();
+}
+
+function onServiceProjectFilterChange() {
+    loadServices();
+}
+window.onServiceProjectFilterChange = onServiceProjectFilterChange;
+
 async function loadServices() {
     const serviceList = document.getElementById('serviceList');
     if (!serviceList) return;
 
     try {
-        const projectId = typeof getCurrentProjectId === 'function' ? getCurrentProjectId() : '';
+        const filterSelect = document.getElementById('serviceProjectFilter');
+        if (filterSelect && filterSelect.options.length <= 1 && typeof refreshServiceProjectFilter === 'function') {
+            await refreshServiceProjectFilter();
+        }
+        const projectId = getServiceProjectFilterId();
         const response = await fetch('/api/service/list' + (projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''));
         if (response.ok) {
             cachedServiceList = (await response.json()) || [];

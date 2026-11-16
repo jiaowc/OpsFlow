@@ -288,6 +288,7 @@ function applyTaskFilters() {
     const progressFilter = (document.getElementById('taskProgressFilter') || {}).value || '';
     const clusterFilter = (document.getElementById('taskClusterFilter') || {}).value || '';
     const mineOnly = !!(document.getElementById('taskMineOnlyFilter') || {}).checked;
+    const keyword = ((document.getElementById('taskSearchInput') || {}).value || '').trim().toLowerCase();
 
     const filtered = tasks.filter(task => {
         const progress = resolveTaskProgress(task);
@@ -297,6 +298,22 @@ function applyTaskFilters() {
         if (mineOnly) {
             const actionable = (task.approvalRecords || []).some(r => r.actionable);
             if (!actionable) return false;
+        }
+        if (keyword) {
+            const modules = (task.modules || task.moduleNames || [])
+                .map(m => (typeof m === 'string' ? m : (m.serviceName || m.name || '')))
+                .join(' ');
+            const haystack = [
+                task.taskNumber,
+                task.taskName,
+                task.name,
+                task.clusterName,
+                task.envName,
+                task.creatorName,
+                task.createUserName,
+                modules
+            ].map(v => String(v == null ? '' : v).toLowerCase()).join(' ');
+            if (haystack.indexOf(keyword) < 0) return false;
         }
         return true;
     }).sort((a, b) => {

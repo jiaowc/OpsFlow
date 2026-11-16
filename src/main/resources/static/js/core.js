@@ -226,13 +226,14 @@ async function loadUserInfo() {
 }
 
 // ============================================
-// 全局项目切换：服务 / 流水线 / 上线任务按所选项目过滤，空值表示「我的全部项目」
+// 项目列表缓存（服务管理页筛选用；不再放顶栏全局切换）
 // ============================================
 const PROJECT_STORAGE_KEY = 'opsflow.projectId';
 let cachedProjectOptions = null;
 
+/** 兼容旧逻辑：顶栏项目筛选已移除，列表默认不过滤项目 */
 function getCurrentProjectId() {
-    return localStorage.getItem(PROJECT_STORAGE_KEY) || '';
+    return '';
 }
 window.getCurrentProjectId = getCurrentProjectId;
 
@@ -251,36 +252,23 @@ async function loadProjectOptions(force) {
 }
 window.loadProjectOptions = loadProjectOptions;
 
-async function refreshProjectSwitcher() {
-    const select = document.getElementById('projectSwitcher');
+async function refreshServiceProjectFilter() {
+    const select = document.getElementById('serviceProjectFilter');
     const projects = await loadProjectOptions(true);
-    let current = getCurrentProjectId();
-    if (current && !projects.some(p => String(p.id) === current)) {
-        localStorage.removeItem(PROJECT_STORAGE_KEY);
-        current = '';
-    }
+    // 清理历史顶栏筛选残留，避免影响其它模块
+    localStorage.removeItem(PROJECT_STORAGE_KEY);
     if (!select) return;
+    const prev = select.value || '';
     const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const allLabel = typeof t === 'function' ? t('header.allProjects') : '全部项目';
+    const keep = prev && projects.some(p => String(p.id) === prev) ? prev : '';
     select.innerHTML = `<option value="">${esc(allLabel)}</option>` + projects.map(p =>
-        `<option value="${p.id}"${String(p.id) === current ? ' selected' : ''}>${esc(p.name)}</option>`
+        `<option value="${p.id}"${String(p.id) === keep ? ' selected' : ''}>${esc(p.name)}</option>`
     ).join('');
 }
-window.refreshProjectSwitcher = refreshProjectSwitcher;
-
-function onProjectSwitch(projectId) {
-    if (projectId) {
-        localStorage.setItem(PROJECT_STORAGE_KEY, projectId);
-    } else {
-        localStorage.removeItem(PROJECT_STORAGE_KEY);
-    }
-    const active = document.querySelector('.content-section.active');
-    const sectionId = active ? active.id.replace(/-section$/, '') : '';
-    if (sectionId) {
-        showSection(sectionId, null, { updateHistory: false });
-    }
-}
-window.onProjectSwitch = onProjectSwitch;
+window.refreshServiceProjectFilter = refreshServiceProjectFilter;
+// 兼容项目管理保存后刷新
+window.refreshProjectSwitcher = refreshServiceProjectFilter;
 
 // 退出登录
 async function logout() {
