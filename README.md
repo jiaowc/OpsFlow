@@ -4,6 +4,8 @@
 
 OpsFlow 是一个基于 Spring Boot 的 DevOps 构建发布平台，支持非生产环境的一键构建发布功能。
 
+📖 **使用文档**：[docs/USAGE.md](docs/USAGE.md)（初始化配置顺序、流水线 Job、上线审批、权限、Webhook、常见问题）
+
 ## 功能特性
 
 - ✅ 非生产环境一键构建发布（dev/test/demo）
