@@ -2,6 +2,7 @@ package com.opsflow.web.config;
 
 import com.opsflow.web.audit.AuditLogInterceptor;
 import com.opsflow.web.interceptor.AuthInterceptor;
+import com.opsflow.web.interceptor.CsrfOriginInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.CacheControl;
@@ -20,11 +21,18 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Autowired
     private AuditLogInterceptor auditLogInterceptor;
+
+    @Autowired
+    private CsrfOriginInterceptor csrfOriginInterceptor;
     
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         // 审计必须在认证之前，被拒绝的请求也要留痕
         registry.addInterceptor(auditLogInterceptor).addPathPatterns("/api/**");
+        // 写接口的来源校验（CSRF）；Webhook / 飞书回调由各自的签名校验负责
+        registry.addInterceptor(csrfOriginInterceptor)
+                .addPathPatterns("/api/**")
+                .excludePathPatterns("/api/feishu/callback", "/api/webhook/git");
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/**")
                 .excludePathPatterns(

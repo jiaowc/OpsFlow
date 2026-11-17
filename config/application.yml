@@ -29,6 +29,12 @@ mybatis-plus:
 
 server:
   port: 8080
+  servlet:
+    session:
+      cookie:
+        # 跨站请求不带登录 Cookie（顶层导航的 GET 除外），配合写接口的来源校验防 CSRF
+        same-site: lax
+        http-only: true
 
 # 飞书 / LDAP 等集成配置在「系统设置」页面维护（system_config 表），不在配置文件中。
 opsflow:
@@ -46,6 +52,11 @@ opsflow:
     cd-resume-interval-ms: 60000
   # Git 推送 Webhook（/api/webhook/git）校验密钥；为空则关闭 Webhook。
   # 请通过环境变量 OPSFLOW_WEBHOOK_SECRET 或 config/application-local.yml 设置，不要提交到仓库。
+  security:
+    # 写接口校验 Origin/Referer 与当前站点一致；反向代理改写了 Host 且未传 X-Forwarded-Host 时，
+    # 在 allowed-origins 里填对外访问地址（逗号分隔，如 https://ops.example.com）
+    csrf-origin-check: ${OPSFLOW_CSRF_ORIGIN_CHECK:true}
+    allowed-origins: ${OPSFLOW_ALLOWED_ORIGINS:}
   webhook:
     secret: ${OPSFLOW_WEBHOOK_SECRET:}
   # 保留策略：每天定时清理；天数 ≤ 0 表示不清理该项。有 system:config 权限的用户可调用 POST /api/system/retention?dryRun=true 预览
