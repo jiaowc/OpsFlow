@@ -27,5 +27,5 @@ OpsFlow/
 
 - **config/**：生产环境外置配置
 - **scripts/deploy/**：启停脚本
-- **scripts/database/**：`schema.sql`、`migrations/`、`seeds/`
+- **scripts/database/**：`migrate.sh`（手动迁移）、`sample/`（演示数据）、`legacy/`（旧迁移归档）；表结构与默认数据在 `src/main/resources/db/migration/`
 - **logs/**、**data/**：运行时数据（不入库）

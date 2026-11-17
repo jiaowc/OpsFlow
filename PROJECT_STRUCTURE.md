@@ -16,6 +16,7 @@ OpsFlow/
 │       │   └── web/                  # Controller、拦截器、配置
 │       └── resources/
 │           ├── mapper/               # MyBatis XML
+│           ├── db/migration/         # Flyway 版本文件（表结构 + 默认数据）
 │           └── static/               # 前端静态资源
 ├── config/                           # 全部应用配置（只放这里）
 │   ├── application.yml               # 公共配置
@@ -24,10 +25,10 @@ OpsFlow/
 ├── scripts/
 │   ├── deploy/                       # start / stop / restart
 │   └── database/
-│       ├── schema.sql
-│       ├── migrations/
-│       ├── seeds/
-│       └── run_migrations.sh
+│       ├── migrate.sh                # 手动执行/查看数据库迁移
+│       ├── export_sample_data.sh     # 导出本地演示数据
+│       ├── sample/                   # 可选的演示数据
+│       └── legacy/                   # 引入 Flyway 之前的迁移脚本（仅旧库追平用）
 ├── docs/
 ├── logs/
 ├── data/
@@ -66,6 +67,5 @@ SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar
 
 - 采用 **Spring Boot 单模块标准目录**（`src/main/java` + `src/main/resources`），应用配置不放 resources，统一在 `config/`
 - 包内仍按职责分层：`api` / `dao` / `service` / `web` / `integration`
-- 数据库脚本按 `schema` / `migrations` / `seeds` 分类存放
-- 新环境一键初始化：`scripts/database/init.sql`（由 `export_init.sh` 从当前库导出）
-- Docker Compose：`docker-compose.yml`（MySQL 自动导入 init.sql + 应用）
+- 数据库表结构与默认数据由 Flyway 管理（`src/main/resources/db/migration`，V1 结构、V2 默认数据，之后每个变更一个新版本），应用启动时自动执行
+- Docker Compose：`docker-compose.yml`（MySQL 提供空库 + 应用启动时自动建表）

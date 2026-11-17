@@ -28,7 +28,7 @@ cp .env.example .env
 ./scripts/deploy/compose-up.sh
 ```
 
-浏览器打开 `http://<服务器>:8080`，用 **admin / 123456** 登录（首次登录后请立即在「用户管理」修改密码）。
+浏览器打开 `http://<服务器>:8080`，用 **admin / admin** 登录（首次登录后请立即在「用户管理」修改密码）。
 
 想在本机完整体验构建→推镜像→部署，可依次拉起仓库自带的本地调试环境（都在 `scripts/local/` 下，各自带 `configure-opsflow.sh` 自动把资源注册到 OpsFlow）：
 
@@ -419,7 +419,7 @@ docker compose ps                         # 查看状态
 docker compose logs -f opsflow            # 应用日志
 ./scripts/deploy/compose-down.sh          # 停止（保留数据）
 ./scripts/deploy/compose-down.sh --volumes  # 停止并清空数据库（慎用）
-bash scripts/database/run_migrations.sh   # 升级后补跑数据库迁移
+bash scripts/database/migrate.sh --info   # 查看数据库迁移版本（迁移在应用启动时自动执行）
 ```
 
 ### 11.2 相关文档

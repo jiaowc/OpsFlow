@@ -31,7 +31,11 @@ config/
 
 取值优先级：环境变量 > `config/application-local.yml` > 配置文件中的默认值。
 
-数据库脚本（`scripts/database/run_migrations.sh` 等）与应用使用同一套规则解析连接，见 `scripts/database/db_env.sh`。
+数据库脚本（`scripts/database/migrate.sh` 等）与应用使用同一套规则解析连接，见 `scripts/database/db_env.sh`。
+
+| 变量 | 说明 |
+| --- | --- |
+| `OPSFLOW_DB_MIGRATE` | 启动时是否自动执行数据库迁移，默认 `true`。设为 `false` 时启动不改库，有未执行的迁移就拒绝启动，需先执行 `scripts/database/migrate.sh` |
 
 ## 快速开始
 
@@ -63,7 +67,7 @@ IDE 中运行 `OpsFlowApplication` 时，工作目录也要设为项目根目录
 
 - 多实例或 K8s 部署请显式设置 `OPSFLOW_SECRET_KEY`（放 Secret），所有实例必须一致；
 - 主密钥丢失或更换后，已保存的凭据无法解密（页面上显示为未配置），只能重新录入，请与数据库一起备份；
-- 从旧版本升级：先执行 `bash scripts/database/run_migrations.sh`（新增 `build_node.host_key` 等列），再启动应用，启动时会自动把历史明文凭据加密回写。
+- 从引入 Flyway 之前的很早版本升级：若启动时提示「数据库结构落后于迁移基线」，先执行一次 `bash scripts/database/legacy/run_migrations.sh`（补上 `build_node.host_key` 等列），再启动应用；启动时会自动把历史明文凭据加密回写。
 
 ## 覆盖其它配置项
 

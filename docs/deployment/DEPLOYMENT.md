@@ -11,7 +11,7 @@
 ```bash
 cp .env.example .env
 ./scripts/deploy/compose-up.sh
-# 浏览器 http://localhost:8080 ，账号 admin / 123456
+# 浏览器 http://localhost:8080 ，初始账号 admin / admin（首次登录会被要求改密）
 ```
 
 完整说明（外部库、备份、升级、排障）：[DOCKER.md](./DOCKER.md)。
@@ -30,13 +30,20 @@ cp .env.example .env
 
 ### 2. 数据库准备
 
+只需建一个空库，表结构和默认数据（角色权限、初始管理员、步骤定义、默认模版、通用流水线）由应用启动时自动建立：
+
 ```bash
-# 建库、导入表结构与种子数据（角色权限、内置 admin 账号）、执行全部迁移；
-# 需先完成第 3 步的配置文件，脚本从中读取数据库连接
-bash scripts/database/init_db.sh --profile=prod
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS opsflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 ```
 
-种子数据中默认账号多为 `admin` / `123456`（以 `init.sql` 为准），首次登录后请在「用户管理」中修改密码。
+生产环境如果不希望应用启动时改库，设置 `OPSFLOW_DB_MIGRATE=false`，并在每次升级启动前手动执行（需先完成第 3 步的配置文件，脚本从中读取数据库连接）：
+
+```bash
+bash scripts/database/migrate.sh --info --profile=prod   # 查看待执行的版本
+bash scripts/database/migrate.sh --profile=prod          # 执行
+```
+
+初始账号为 `admin` / `admin`，首次登录会被要求修改密码。
 
 ### 3. 配置文件准备
 

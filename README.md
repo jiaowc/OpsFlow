@@ -51,7 +51,7 @@ OpsFlow/
 ```bash
 cp .env.example .env
 ./scripts/deploy/compose-up.sh
-# 打开 http://localhost:8080 ，默认账号 admin / 123456
+# 打开 http://localhost:8080 ，初始账号 admin / admin（首次登录会被要求改密）
 ```
 
 说明见 [docs/deployment/DOCKER.md](docs/deployment/DOCKER.md)。
@@ -66,25 +66,27 @@ cp .env.example .env
 
 ### 2. 数据库初始化
 
-新环境推荐直接导入「结构 + 当前配置数据」（不含构建/上线历史）：
+只需要建一个空库，表结构和默认数据（角色权限、初始管理员、步骤定义、默认模版、通用流水线）由应用**启动时自动建立**（Flyway）：
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS opsflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-mysql -u root -p opsflow < scripts/database/init.sql
-bash scripts/database/run_migrations.sh   # init.sql 是导出快照，需补跑之后新增的迁移
 ```
 
-从本机库重新导出初始化脚本：
+之后每次升级，新增的表结构和默认数据变更也在启动时自动执行，只执行一次。不希望启动时改库的环境（如生产）：
 
 ```bash
-bash scripts/database/export_init.sh
+export OPSFLOW_DB_MIGRATE=false            # 启动时只检查，有未执行的迁移就拒绝启动
+bash scripts/database/migrate.sh --info    # 查看待执行的版本
+bash scripts/database/migrate.sh           # 手动执行
 ```
 
-只要空库（表结构 + 角色权限 + 内置 admin 账号，不含业务配置）时：
+本地联调想要一套现成的集群 / 环境 / 节点 / 服务示例（可选）：
 
 ```bash
-bash scripts/database/init_db.sh   # 建库、导入 schema.sql 与种子数据、执行全部迁移
+mysql -u root -p opsflow < scripts/database/sample/sample-data.sql
 ```
+
+详见 [scripts/database/README.md](scripts/database/README.md)。
 
 ### 3. 配置文件
 
@@ -136,7 +138,7 @@ SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar
 cp .env.example .env
 ./scripts/deploy/compose-up.sh
 # 或：docker compose up -d --build
-# 浏览器打开 http://localhost:8080 ，账号 admin / 123456
+# 浏览器打开 http://localhost:8080 ，初始账号 admin / admin（首次登录会被要求改密）
 ```
 
 仅清空数据库并重新初始化：

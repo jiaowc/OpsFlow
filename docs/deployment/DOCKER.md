@@ -23,7 +23,7 @@ docker compose up -d --build
 ```
 
 浏览器打开：`http://localhost:8080`  
-默认账号：**admin / 123456**（来自 `scripts/database/init.sql`，请尽快修改）
+初始账号：**admin / admin**（首次登录会被要求修改密码）
 
 | 操作 | 命令 |
 |------|------|
@@ -59,11 +59,11 @@ docker compose up -d --build
 
 ## 使用外部 MySQL
 
-1. 自行建库并导入结构/种子数据：
+1. 自行建一个空库（表结构和默认数据由应用启动时自动建立）：
 
 ```bash
-# 示例：对外部库执行初始化（按你们环境改连接）
-mysql -h... -u... -p opsflow < scripts/database/init.sql
+# 示例（按你们环境改连接）
+mysql -h... -u... -p -e "CREATE DATABASE IF NOT EXISTS opsflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 ```
 
 2. 在 `.env` 中设置：
@@ -102,7 +102,7 @@ tar czf opsflow-data-$(date +%Y%m%d).tar.gz data/
 
 1. 备份数据库与 `./data`
 2. `git pull`（或替换发布包）
-3. 若有 SQL 迁移：对库执行 `scripts/database/migrations/` 中尚未应用的脚本
+3. 数据库迁移不需要手动处理：新版本带的迁移在应用启动时自动执行（关闭了自动迁移的环境先跑 `scripts/database/migrate.sh`）
 4. 重新构建并滚动启动：
 
 ```bash
@@ -110,7 +110,7 @@ tar czf opsflow-data-$(date +%Y%m%d).tar.gz data/
 # 或：docker compose up -d --build
 ```
 
-`init.sql` **只在 MySQL 数据卷首次创建时**执行；升级不要依赖 `down -v`。
+表结构和默认数据由应用启动时按版本自动建立和升级，与 MySQL 数据卷是否新建无关；升级不要依赖 `down -v`（那会清空全部数据）。
 
 ## 常见问题
 
