@@ -55,10 +55,10 @@ async function loadInboxMessages() {
         list.innerHTML = messages.map(m => {
             const unread = m.readFlag === 0 || m.readFlag === '0';
             const time = m.createTime ? new Date(m.createTime).toLocaleString('zh-CN') : '';
-            const content = (m.content || '').replace(/\n/g, '<br>');
+            const content = escapeHtml(m.content || '').replace(/\n/g, '<br>');
             return `
-                <div class="inbox-item ${unread ? 'unread' : ''}" data-id="${m.id}" onclick="openInboxMessage(${m.id}, '${(m.linkPath || '/tasks').replace(/'/g, '')}')">
-                    <div class="inbox-item-title">${escapeInboxHtml(m.title || '通知')}</div>
+                <div class="inbox-item ${unread ? 'unread' : ''}" data-id="${m.id}" onclick="openInboxMessage(${m.id}, ${escapeHtml(JSON.stringify(m.linkPath || '/tasks'))})">
+                    <div class="inbox-item-title">${escapeHtml(m.title || '通知')}</div>
                     <div class="inbox-item-content">${content}</div>
                     <div class="inbox-item-time">${time}</div>
                 </div>
@@ -99,14 +99,6 @@ async function markAllInboxRead() {
     }
 }
 window.markAllInboxRead = markAllInboxRead;
-
-function escapeInboxHtml(text) {
-    return String(text || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
 
 document.addEventListener('click', function () {
     const panel = document.getElementById('inboxDropdown');

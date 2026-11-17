@@ -671,7 +671,7 @@ function renderPipelineViewsAdminList(views) {
     }
     list.innerHTML = views.map(view => {
         const roles = (view.roleNames && view.roleNames.length)
-            ? view.roleNames.join('、')
+            ? view.roleNames.map(escapeHtml).join('、')
             : '<span style="color:#9ca3af;">仅管理员可见</span>';
         return `
         <tr>
@@ -715,7 +715,7 @@ function renderPipelineViewRoleCheckboxes(roles, selectedIds) {
     const render = typeof window.renderCheckboxList === 'function'
         ? window.renderCheckboxList
         : null;
-    const escapeFn = typeof window.escapeUserHtml === 'function' ? window.escapeUserHtml : escapeHtml;
+    const escapeFn = typeof window.escapeHtml === 'function' ? window.escapeHtml : escapeHtml;
     if (render) {
         return render(roles, 'roleIds', selectedIds || [], r => escapeFn(r.name || r.code || String(r.id)));
     }
@@ -1641,16 +1641,6 @@ function getStageBg(status) {
         case 'RUNNING': return '#dbeafe';
         default: return '#f9fafb';
     }
-}
-
-function escapeHtml(text) {
-    if (text == null) return '';
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
 }
 
 async function showCreatePipelineTaskModal() {

@@ -166,6 +166,21 @@ async function handleApiError(response) {
 }
 
 // 格式化日期
+/**
+ * HTML 转义：所有拼进 innerHTML / 模板字符串的后端数据都必须经过它。
+ * 同时转义单引号，放进属性值或内联事件的字符串参数里也安全。
+ * 全站只保留这一个实现，模块里不要再各写一份。
+ */
+function escapeHtml(text) {
+    if (text == null) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function formatDate(dateString) {
     if (!dateString) return '-';
     const date = new Date(dateString);
@@ -222,6 +237,7 @@ window.apiPost = apiPost;
 window.apiPut = apiPut;
 window.apiDelete = apiDelete;
 window.handleApiError = handleApiError;
+window.escapeHtml = escapeHtml;
 window.formatDate = formatDate;
 window.formatStatus = formatStatus;
 window.debounce = debounce;

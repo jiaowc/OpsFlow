@@ -108,15 +108,6 @@ function formatDeployModeText(mode, parallelism) {
     return '串行';
 }
 
-function escapeTaskHtml(text) {
-    if (text == null) return '';
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
 function resolveTaskProgress(task) {
     const approval = (task.approvalStatus || '').toLowerCase();
     const deploy = (task.taskStatus || task.status || '').toLowerCase();
@@ -173,18 +164,18 @@ function resolveApproverLabel(record) {
 function renderApprovalChainHtml(task) {
     const records = [...(task.approvalRecords || [])].sort((a, b) => (a.currentStep || 0) - (b.currentStep || 0));
     if (!records.length) {
-        return `<span class="task-chain-empty">${escapeTaskHtml(task.approvalFlowName || '-')}</span>`;
+        return `<span class="task-chain-empty">${escapeHtml(task.approvalFlowName || '-')}</span>`;
     }
     return records.map(r => {
         const status = (r.status || '').toLowerCase();
-        const label = escapeTaskHtml(resolveApproverLabel(r));
+        const label = escapeHtml(resolveApproverLabel(r));
         // 按审批状态附加 CSS 类：已完成 / 当前待审 / 已拒绝 / 等待
         let cls = 'task-chain-node';
         if (status === 'approved') cls += ' is-done';
         else if (status === 'pending') cls += ' is-current';
         else if (status === 'rejected') cls += ' is-rejected';
         else cls += ' is-waiting';
-        return `<span class="${cls}" title="${escapeTaskHtml(status)}">${label}</span>`;
+        return `<span class="${cls}" title="${escapeHtml(status)}">${label}</span>`;
     }).join('<span class="task-chain-arrow">→</span>');
 }
 
@@ -208,8 +199,8 @@ function renderModulesCellHtml(task) {
     }
 
     const renderOne = (m, idx) => {
-        const name = escapeTaskHtml(resolveModuleServiceName(m));
-        const image = escapeTaskHtml(m.imageFullName || (typeof m === 'string' ? m : ''));
+        const name = escapeHtml(resolveModuleServiceName(m));
+        const image = escapeHtml(m.imageFullName || (typeof m === 'string' ? m : ''));
         const prefix = details.length > 1 ? `${idx + 1}. ` : '';
         const unverified = m.imageFullName && !m.verifiedEnv
             ? ' <span style="color:#d97706;" title="该镜像未在测试环境部署过">⚠</span>'
@@ -226,7 +217,7 @@ function renderModulesCellHtml(task) {
     return `
         <div class="task-modules">
             <button type="button" class="task-modules-toggle" onclick="toggleTaskModules('${summaryId}', this)">
-                ${escapeTaskHtml(firstName)} 等 ${details.length} 个 ▾
+                ${escapeHtml(firstName)} 等 ${details.length} 个 ▾
             </button>
             <div id="${summaryId}" class="task-modules-panel" hidden>
                 ${details.map(renderOne).join('')}
@@ -250,7 +241,7 @@ function toggleTaskModules(panelId, btn) {
 window.toggleTaskModules = toggleTaskModules;
 
 function renderClusterCell(task) {
-    const cluster = escapeTaskHtml(task.clusterName || '-');
+    const cluster = escapeHtml(task.clusterName || '-');
     return `<div class="task-env-main" title="${cluster}">${cluster}</div>`;
 }
 
@@ -258,12 +249,12 @@ function renderEnvCell(task) {
     const env = task.k8sNamespace
         || (task.deployEnvNames && task.deployEnvNames.length ? task.deployEnvNames.join(', ') : '')
         || '-';
-    const text = escapeTaskHtml(env);
+    const text = escapeHtml(env);
     return `<div class="task-env-sub" title="${text}">${text}</div>`;
 }
 
 function renderProgressBadge(progress) {
-    return `<span class="task-progress-badge tone-${progress.tone}">${escapeTaskHtml(progress.label)}</span>`;
+    return `<span class="task-progress-badge tone-${progress.tone}">${escapeHtml(progress.label)}</span>`;
 }
 
 function populateTaskClusterFilter(tasks) {
@@ -277,7 +268,7 @@ function populateTaskClusterFilter(tasks) {
     });
     names.sort();
     select.innerHTML = '<option value="">全部</option>' +
-        names.map(n => `<option value="${escapeTaskHtml(n)}">${escapeTaskHtml(n)}</option>`).join('');
+        names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
     if (current && names.indexOf(current) >= 0) {
         select.value = current;
     }
@@ -441,16 +432,16 @@ function paintTaskTable(tasks) {
                 deleteBtn = `<button class="btn-danger btn-sm" onclick="deleteTask(${task.id})">删除</button>`;
             }
         }
-        const taskName = escapeTaskHtml(task.taskName || '-');
-        const taskNumber = escapeTaskHtml(task.taskNumber || task.jobNumber || '-');
-        const creatorName = escapeTaskHtml(task.creatorName || '-');
+        const taskName = escapeHtml(task.taskName || '-');
+        const taskNumber = escapeHtml(task.taskNumber || task.jobNumber || '-');
+        const creatorName = escapeHtml(task.creatorName || '-');
 
         return `
             <tr>
                 <td>
                     <div class="task-number-cell" title="${taskNumber}">${taskNumber}</div>
                 </td>
-                <td><div class="task-name-cell" title="${taskName}">${taskName}</div>${task.projectName ? `<div class="task-project-tag">${escapeTaskHtml(task.projectName)}</div>` : ''}</td>
+                <td><div class="task-name-cell" title="${taskName}">${taskName}</div>${task.projectName ? `<div class="task-project-tag">${escapeHtml(task.projectName)}</div>` : ''}</td>
                 <td>${renderClusterCell(task)}</td>
                 <td>${renderEnvCell(task)}</td>
                 <td>${renderModulesCellHtml(task)}</td>
@@ -576,7 +567,7 @@ async function showCreateTaskModal() {
                 <label>所属项目 *</label>
                 <select name="projectId" id="taskProjectSelect" onchange="onTaskCreateProjectChange(this.value)" required>
                     <option value="">请选择项目</option>
-                    ${projects.map(p => `<option value="${p.id}"${String(p.id) === defaultProjectId ? ' selected' : ''}>${escapeTaskHtml(p.name)}</option>`).join('')}
+                    ${projects.map(p => `<option value="${p.id}"${String(p.id) === defaultProjectId ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
                 </select>
                 <small style="color:#6b7280;">上线模块只能选择该项目下的服务</small>
             </div>
@@ -598,7 +589,7 @@ async function showCreateTaskModal() {
                     <option value="">请选择集群</option>
                     ${clusters.map(c => {
                         const server = c.server ? ` (${c.server})` : '';
-                        return `<option value="${c.id}">${c.name}${server}</option>`;
+                        return `<option value="${c.id}">${escapeHtml(c.name)}${server}</option>`;
                     }).join('')}
                 </select>
             </div>
@@ -625,14 +616,14 @@ async function showCreateTaskModal() {
                 <label>审批流 *</label>
                 <select name="approvalFlowId" required>
                     <option value="">请选择审批流</option>
-                    ${approvals.map(a => `<option value="${a.id}">${a.name}</option>`).join('')}
+                    ${approvals.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('')}
                 </select>
             </div>
             <div class="form-item">
                 <label>CD 流水线模版 *</label>
                 <select name="pipelineTemplateId" required>
                     <option value="">请选择 CD 模版</option>
-                    ${cdPipelines.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                    ${cdPipelines.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}
                 </select>
                 <small style="color:#6b7280;">仅显示类型为 CD 的模版；审批全部通过后自动按此模版部署所选镜像</small>
             </div>
@@ -919,7 +910,7 @@ async function onDeployModuleProjectChange(projectSelect) {
         versionSelect.innerHTML = '<option value="">请选择版本</option>' +
             ordered.map(v => {
                 const label = verified[v] ? `${v}  ✓ 已在 ${verified[v]} 验证` : `${v}  （未在测试环境部署过）`;
-                return `<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(label)}</option>`;
+                return `<option value="${escapeHtml(v)}">${escapeHtml(label)}</option>`;
             }).join('');
         versionSelect.disabled = false;
     } catch (error) {
@@ -941,7 +932,7 @@ function buildDeployModuleRowHtml(services) {
             </div>
             <select name="serviceCode" class="module-service" style="flex:1;min-width:120px;" onchange="onDeployModuleServiceChange(this)">
                 <option value="">请选择服务</option>
-                ${services.map(s => `<option value="${s.value}">${s.text}</option>`).join('')}
+                ${services.map(s => `<option value="${escapeHtml(s.value)}">${escapeHtml(s.text)}</option>`).join('')}
             </select>
             <span>/</span>
             <select name="harborProject" class="module-project" style="flex:1;min-width:120px;" disabled onchange="onDeployModuleProjectChange(this)">
@@ -1224,17 +1215,17 @@ async function editTask(id) {
             const parsed = parseDeployImageParts(m.image || '');
             if (!mine) {
                 return `
-                <div class="deploy-module-item others-module" data-readonly="1" data-image="${escapeTaskHtml(m.image || '')}"
-                     data-owner="${escapeTaskHtml(owner)}"
+                <div class="deploy-module-item others-module" data-readonly="1" data-image="${escapeHtml(m.image || '')}"
+                     data-owner="${escapeHtml(owner)}"
                      style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap;background:#f9fafb;padding:8px;border-radius:6px;">
                     <span class="module-order" style="min-width:20px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;">${idx + 1}</span>
-                    <code style="flex:1;font-size:12px;word-break:break-all;">${escapeTaskHtml(m.image || '-')}</code>
-                    <span style="font-size:12px;color:#6b7280;">归属: ${escapeTaskHtml(owner)}</span>
+                    <code style="flex:1;font-size:12px;word-break:break-all;">${escapeHtml(m.image || '-')}</code>
+                    <span style="font-size:12px;color:#6b7280;">归属: ${escapeHtml(owner)}</span>
                     <span style="font-size:11px;color:#9ca3af;">只读</span>
                 </div>`;
             }
             return `
-                <div class="deploy-module-item" data-owner="${escapeTaskHtml(owner)}"
+                <div class="deploy-module-item" data-owner="${escapeHtml(owner)}"
                      style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap;">
                     <span class="module-order" style="min-width:20px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;">${idx + 1}</span>
                     <div class="module-order-actions" style="display:flex;flex-direction:row;gap:4px;align-items:center;white-space:nowrap;">
@@ -1243,15 +1234,15 @@ async function editTask(id) {
                     </div>
                     <select name="serviceCode" class="module-service" style="flex:1;min-width:120px;" onchange="onDeployModuleServiceChange(this)">
                         <option value="">请选择服务</option>
-                        ${services.map(s => `<option value="${s.value}" ${s.value === parsed.service ? 'selected' : ''}>${s.text}</option>`).join('')}
+                        ${services.map(s => `<option value="${escapeHtml(s.value)}" ${s.value === parsed.service ? 'selected' : ''}>${escapeHtml(s.text)}</option>`).join('')}
                     </select>
                     <span>/</span>
                     <select name="harborProject" class="module-project" style="flex:1;min-width:120px;" onchange="onDeployModuleProjectChange(this)">
-                        <option value="${escapeTaskHtml(parsed.project || '')}">${escapeTaskHtml(parsed.project || '加载中...')}</option>
+                        <option value="${escapeHtml(parsed.project || '')}">${escapeHtml(parsed.project || '加载中...')}</option>
                     </select>
                     <span>:</span>
                     <select name="version" class="module-version" style="flex:1;min-width:120px;">
-                        <option value="${escapeTaskHtml(parsed.version || '')}">${escapeTaskHtml(parsed.version || '加载中...')}</option>
+                        <option value="${escapeHtml(parsed.version || '')}">${escapeHtml(parsed.version || '加载中...')}</option>
                     </select>
                     <span style="font-size:12px;color:#6b7280;">我的</span>
                     <button type="button" class="btn-danger" onclick="removeDeployModule(this)" style="padding:6px 12px;">删除</button>
@@ -1263,7 +1254,7 @@ async function editTask(id) {
         <form id="editTaskForm">
             <div class="form-item">
                 <label>任务名称 *</label>
-                <input type="text" name="taskName" value="${escapeTaskHtml(task.taskName || '')}" ${isCreator ? 'required' : 'readonly'}>
+                <input type="text" name="taskName" value="${escapeHtml(task.taskName || '')}" ${isCreator ? 'required' : 'readonly'}>
             </div>
             <div class="form-item">
                 <label>上线模块 *</label>
@@ -1274,7 +1265,7 @@ async function editTask(id) {
             ${isCreator ? `
             <div class="form-item">
                 <label>描述</label>
-                <textarea name="description" rows="2">${escapeTaskHtml(task.description || '')}</textarea>
+                <textarea name="description" rows="2">${escapeHtml(task.description || '')}</textarea>
             </div>` : ''}
         </form>`;
 
@@ -1454,15 +1445,15 @@ async function viewTask(id) {
                 <ul style="margin: 8px 0; padding-left: 20px;">
                     ${task.deployModuleDetails.map((m, idx) => `
                         <li style="font-size: 13px; margin: 6px 0;">
-                            <div style="font-family: monospace;">${idx + 1}. ${escapeTaskHtml(m.imageFullName || '-')}
+                            <div style="font-family: monospace;">${idx + 1}. ${escapeHtml(m.imageFullName || '-')}
                                 ${m.verifiedEnv
-                                    ? `<span style="font-family:inherit;color:#059669;font-size:12px;margin-left:6px;">✓ 已在 ${escapeTaskHtml(m.verifiedEnv)} 验证</span>`
+                                    ? `<span style="font-family:inherit;color:#059669;font-size:12px;margin-left:6px;">✓ 已在 ${escapeHtml(m.verifiedEnv)} 验证</span>`
                                     : `<span style="font-family:inherit;color:#d97706;font-size:12px;margin-left:6px;">⚠ 未在测试环境部署过</span>`}
                             </div>
                             <div style="color:#6b7280;font-size:12px;margin-top:2px;">
-                                服务: ${escapeTaskHtml(m.serviceName || m.serviceCode || '-')}
+                                服务: ${escapeHtml(m.serviceName || m.serviceCode || '-')}
                                 · 端口: ${m.servicePort != null ? m.servicePort : '-'}
-                                · 归属: ${escapeTaskHtml(m.ownerName || '-')}
+                                · 归属: ${escapeHtml(m.ownerName || '-')}
                             </div>
                         </li>
                     `).join('')}
@@ -1470,12 +1461,12 @@ async function viewTask(id) {
                 : (task.deployModules && task.deployModules.length > 0 ?
                 `<p><strong>上线模块（按部署顺序）:</strong></p>
                 <ul style="margin: 8px 0; padding-left: 20px;">
-                    ${task.deployModules.map((module, idx) => `<li style="font-family: monospace; font-size: 13px; margin: 4px 0;">${idx + 1}. ${escapeTaskHtml(module)}</li>`).join('')}
+                    ${task.deployModules.map((module, idx) => `<li style="font-family: monospace; font-size: 13px; margin: 4px 0;">${idx + 1}. ${escapeHtml(module)}</li>`).join('')}
                 </ul>` :
                 '<p><strong>上线模块:</strong> 无</p>');
             
-            const clusterHtml = `<p><strong>上线集群:</strong> ${escapeTaskHtml(task.clusterName || '-')}</p>
-                <p><strong>Namespace:</strong> ${escapeTaskHtml(task.k8sNamespace || '-')}</p>`;
+            const clusterHtml = `<p><strong>上线集群:</strong> ${escapeHtml(task.clusterName || '-')}</p>
+                <p><strong>Namespace:</strong> ${escapeHtml(task.k8sNamespace || '-')}</p>`;
 
             const approvalStatus = (typeof renderApprovalStatusText === 'function')
                 ? renderApprovalStatusText(task.approvalStatus)
@@ -1484,24 +1475,24 @@ async function viewTask(id) {
                 ? renderApprovalRecordsHtml(task.approvalRecords || [])
                 : '';
             const lockText = (task.locked === 1 || task.locked === true)
-                ? `已锁定（${escapeTaskHtml(task.lockedBy || '-')}${task.lockedAt ? ' · ' + new Date(task.lockedAt).toLocaleString('zh-CN') : ''}）`
+                ? `已锁定（${escapeHtml(task.lockedBy || '-')}${task.lockedAt ? ' · ' + new Date(task.lockedAt).toLocaleString('zh-CN') : ''}）`
                 : '未锁定';
             
             const content = `
                 <div style="max-height:70vh;overflow-y:auto;">
-                    <p><strong>任务编号:</strong> ${escapeTaskHtml(task.taskNumber)}</p>
-                    <p><strong>任务名称:</strong> ${escapeTaskHtml(task.taskName || '-')}</p>
+                    <p><strong>任务编号:</strong> ${escapeHtml(task.taskNumber)}</p>
+                    <p><strong>任务名称:</strong> ${escapeHtml(task.taskName || '-')}</p>
                     <p><strong>锁定状态:</strong> ${lockText}</p>
                     ${modulesHtml}
                     ${clusterHtml}
-                    <p><strong>审批流:</strong> ${escapeTaskHtml(task.approvalFlowName || '-')}</p>
-                    <p><strong>CD 流水线:</strong> ${escapeTaskHtml(task.pipelineTemplateName || '-')}</p>
+                    <p><strong>审批流:</strong> ${escapeHtml(task.approvalFlowName || '-')}</p>
+                    <p><strong>CD 流水线:</strong> ${escapeHtml(task.pipelineTemplateName || '-')}</p>
                     <p><strong>部署策略:</strong> ${formatDeployModeText(task.deployMode, task.deployParallelism)}</p>
                     <p><strong>通知方式:</strong> ${formatNotifyChannelsText(task.notifyChannels)}</p>
-                    <p><strong>任务状态:</strong> ${escapeTaskHtml(task.taskStatus)}</p>
+                    <p><strong>任务状态:</strong> ${escapeHtml(task.taskStatus)}</p>
                     <p><strong>审批状态:</strong> ${approvalStatus}</p>
-                    <p><strong>描述:</strong> ${escapeTaskHtml(task.description || '-')}</p>
-                    <p><strong>创建人:</strong> ${escapeTaskHtml(task.creatorName || '-')}</p>
+                    <p><strong>描述:</strong> ${escapeHtml(task.description || '-')}</p>
+                    <p><strong>创建人:</strong> ${escapeHtml(task.creatorName || '-')}</p>
                     <p><strong>创建时间:</strong> ${task.createTime ? new Date(task.createTime).toLocaleString('zh-CN') : '-'}</p>
                     ${task.buildJobIds && task.buildJobIds.length ? `
                     <p><strong>CD 执行任务:</strong> ${task.buildJobIds.map(jid => `#${jid}`).join(', ')}</p>` : ''}

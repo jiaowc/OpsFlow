@@ -1,15 +1,7 @@
 // License 导入与状态展示（订阅 / 功能码）
 
-function escLicenseHtml(text) {
-    return String(text == null ? '' : text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
 function featureFlagLabel(code, enabled) {
-    return `${escLicenseHtml(code)}：${enabled ? '已开通' : '未开通'}`;
+    return `${escapeHtml(code)}：${enabled ? '已开通' : '未开通'}`;
 }
 
 function renderLicenseStatusCard(status) {
@@ -33,7 +25,7 @@ function renderLicenseStatusCard(status) {
         badge = '<span style="color:#6b7280;font-weight:600;">未导入（Community）</span>';
     }
     const featureText = features.length
-        ? features.map(f => `<code>${escLicenseHtml(f)}</code>`).join('、')
+        ? features.map(f => `<code>${escapeHtml(f)}</code>`).join('、')
         : '-';
     const daysText = s.daysRemaining == null
         ? (s.expiresAt ? '-' : '永久/未设置')
@@ -43,12 +35,12 @@ function renderLicenseStatusCard(status) {
             <div>
                 <div style="margin-bottom:6px;">状态：${badge}</div>
                 <div style="color:#374151;font-size:13px;line-height:1.7;">
-                    <div>客户：${escLicenseHtml(s.customer || '-')}</div>
-                    <div>计划：${escLicenseHtml(s.plan || '-')}</div>
-                    <div>License ID：${escLicenseHtml(s.licenseId || '-')}</div>
-                    <div>签发时间：${escLicenseHtml(s.issuedAt || '-')}</div>
-                    <div>到期时间：${escLicenseHtml(s.expiresAt || '未设置')}</div>
-                    <div>订阅余量：${escLicenseHtml(daysText)}</div>
+                    <div>客户：${escapeHtml(s.customer || '-')}</div>
+                    <div>计划：${escapeHtml(s.plan || '-')}</div>
+                    <div>License ID：${escapeHtml(s.licenseId || '-')}</div>
+                    <div>签发时间：${escapeHtml(s.issuedAt || '-')}</div>
+                    <div>到期时间：${escapeHtml(s.expiresAt || '未设置')}</div>
+                    <div>订阅余量：${escapeHtml(daysText)}</div>
                     <div>功能码：${featureText}</div>
                     <div>${featureFlagLabel('deploy_approval', s.deployApprovalEnabled)}</div>
                     <div>${featureFlagLabel('audit', s.auditEnabled)}</div>
@@ -57,7 +49,7 @@ function renderLicenseStatusCard(status) {
                     <div>${featureFlagLabel('branding', s.brandingEnabled)}</div>
                 </div>
             </div>
-            <div style="color:#6b7280;font-size:12px;max-width:320px;">${escLicenseHtml(s.message || '')}</div>
+            <div style="color:#6b7280;font-size:12px;max-width:320px;">${escapeHtml(s.message || '')}</div>
         </div>
     `;
 }

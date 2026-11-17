@@ -10,11 +10,6 @@ const PROJECT_ROLE_LABELS = {
 
 let projectUserOptionsCache = null;
 
-function escProjectHtml(text) {
-    if (text == null) return '';
-    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function renderProjectRoleOptions(selected) {
     return Object.keys(PROJECT_ROLE_LABELS).map(role =>
         `<option value="${role}"${role === selected ? ' selected' : ''}>${PROJECT_ROLE_LABELS[role]}</option>`
@@ -65,10 +60,10 @@ async function loadProjects() {
         const isAdmin = p.myRole === 'ADMIN';
         return `
             <tr>
-                <td><strong>${escProjectHtml(p.name)}</strong></td>
-                <td style="color:#6b7280;">${escProjectHtml(p.description || '-')}</td>
-                <td>${escProjectHtml(p.ownerName || '-')}</td>
-                <td><span class="project-role-badge project-role-${escProjectHtml((p.myRole || '').toLowerCase())}">${escProjectHtml(PROJECT_ROLE_LABELS[p.myRole] || '-')}</span></td>
+                <td><strong>${escapeHtml(p.name)}</strong></td>
+                <td style="color:#6b7280;">${escapeHtml(p.description || '-')}</td>
+                <td>${escapeHtml(p.ownerName || '-')}</td>
+                <td><span class="project-role-badge project-role-${escapeHtml((p.myRole || '').toLowerCase())}">${escapeHtml(PROJECT_ROLE_LABELS[p.myRole] || '-')}</span></td>
                 <td>${p.memberCount || 0}</td>
                 <td>${p.serviceCount || 0}</td>
                 <td>
@@ -98,17 +93,17 @@ async function showProjectFormModal(projectId) {
         <form id="projectForm">
             <div class="form-item">
                 <label>项目名称 *</label>
-                <input type="text" name="name" maxlength="100" value="${escProjectHtml(project.name || '')}" required>
+                <input type="text" name="name" maxlength="100" value="${escapeHtml(project.name || '')}" required>
             </div>
             <div class="form-item">
                 <label>描述</label>
-                <textarea name="description" rows="3">${escProjectHtml(project.description || '')}</textarea>
+                <textarea name="description" rows="3">${escapeHtml(project.description || '')}</textarea>
             </div>
             <div class="form-item">
                 <label>负责人</label>
                 <select name="ownerUserId">
                     <option value="">不设置</option>
-                    ${users.map(u => `<option value="${u.id}"${String(u.id) === ownerId ? ' selected' : ''}>${escProjectHtml(u.name)}</option>`).join('')}
+                    ${users.map(u => `<option value="${u.id}"${String(u.id) === ownerId ? ' selected' : ''}>${escapeHtml(u.name)}</option>`).join('')}
                 </select>
                 <small style="color:#6b7280;">负责人会自动成为项目管理员</small>
             </div>
@@ -157,7 +152,7 @@ async function showProjectMembersModal(projectId) {
     const projects = await loadProjectOptions();
     const project = projects.find(p => p.id === projectId) || {};
     const isAdmin = project.myRole === 'ADMIN';
-    showModal(`项目成员 - ${escProjectHtml(project.name || '')}`, `
+    showModal(`项目成员 - ${escapeHtml(project.name || '')}`, `
         <div id="projectMemberPanel" data-project-id="${projectId}" data-admin="${isAdmin ? '1' : ''}">加载中...</div>
         <div style="color:#6b7280;font-size:12px;margin-top:12px;line-height:1.7;">
             项目管理员：管理成员与项目信息，并拥有开发权限；开发：构建、回滚、编辑流水线与服务、创建上线任务；只读：仅查看。
@@ -175,7 +170,7 @@ async function renderProjectMembers(projectId) {
     try {
         members = await projectRequest(`/api/project/${projectId}/members`) || [];
     } catch (e) {
-        panel.innerHTML = `<div style="color:#dc2626;">${escProjectHtml(e.message)}</div>`;
+        panel.innerHTML = `<div style="color:#dc2626;">${escapeHtml(e.message)}</div>`;
         return;
     }
     let addRow = '';
@@ -193,9 +188,9 @@ async function renderProjectMembers(projectId) {
                 <input type="text" placeholder="搜索用户，勾选后可一次添加多人" oninput="filterProjectMemberCandidates(this)">
                 <div id="projectMemberCandidates" class="checkbox-list" style="max-height:180px;overflow:auto;">
                     ${candidates.map(u => `
-                        <label class="checkbox-list-item" data-search="${escProjectHtml((u.name || '').toLowerCase())}">
+                        <label class="checkbox-list-item" data-search="${escapeHtml((u.name || '').toLowerCase())}">
                             <input type="checkbox" name="projectMemberUser" value="${u.id}">
-                            <span>${escProjectHtml(u.name)}</span>
+                            <span>${escapeHtml(u.name)}</span>
                         </label>`).join('')}
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
@@ -206,10 +201,10 @@ async function renderProjectMembers(projectId) {
     }
     const rows = members.length ? members.map(m => `
         <tr>
-            <td>${escProjectHtml(m.name)}</td>
+            <td>${escapeHtml(m.name)}</td>
             <td>${isAdmin
                 ? `<select onchange="saveProjectMemberRole(${projectId}, ${m.userId}, this.value)">${renderProjectRoleOptions(m.role)}</select>`
-                : escProjectHtml(PROJECT_ROLE_LABELS[m.role] || m.role)}</td>
+                : escapeHtml(PROJECT_ROLE_LABELS[m.role] || m.role)}</td>
             <td>${isAdmin ? `<button type="button" class="btn-danger btn-sm" onclick="removeProjectMember(${projectId}, ${m.userId})">移除</button>` : ''}</td>
         </tr>`).join('')
         : '<tr><td colspan="3" style="text-align:center;color:var(--text-4);padding:20px;">暂无成员</td></tr>';

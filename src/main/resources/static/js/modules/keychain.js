@@ -23,11 +23,6 @@ const COMPONENT_CREDENTIAL_TYPES = {
     other: CREDENTIAL_TYPE_OPTIONS.map(o => o.value)
 };
 
-function escKeychainHtml(text) {
-    if (text == null) return '';
-    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function getCredentialTypeLabel(type) {
     const item = CREDENTIAL_TYPE_OPTIONS.find(o => o.value === type);
     return item ? item.label : (type || '-');
@@ -48,7 +43,7 @@ function buildCredentialConfigFields(credentialType, configData) {
             return `
                 <div class="form-item">
                     <label>用户名 *</label>
-                    <input type="text" name="username" value="${escKeychainHtml(configData.username || '')}" required>
+                    <input type="text" name="username" value="${escapeHtml(configData.username || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>密码 *</label>
@@ -72,7 +67,7 @@ function buildCredentialConfigFields(credentialType, configData) {
             return `
                 <div class="form-item">
                     <label>Client ID *</label>
-                    <input type="text" name="clientId" value="${escKeychainHtml(configData.clientId || '')}" required>
+                    <input type="text" name="clientId" value="${escapeHtml(configData.clientId || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>Client Secret *</label>
@@ -82,26 +77,26 @@ function buildCredentialConfigFields(credentialType, configData) {
             return `
                 <div class="form-item">
                     <label>Kubeconfig 文件路径</label>
-                    <input type="text" name="configFile" value="${escKeychainHtml(configData.configFile || '')}" placeholder="/path/to/kubeconfig">
+                    <input type="text" name="configFile" value="${escapeHtml(configData.configFile || '')}" placeholder="/path/to/kubeconfig">
                 </div>
                 <div class="form-item">
                     <label>Kubeconfig 内容</label>
-                    <textarea name="configContent" rows="8" placeholder="或直接粘贴 kubeconfig YAML 内容">${configData.configContent === '******' ? '' : escKeychainHtml(configData.configContent || '')}</textarea>
+                    <textarea name="configContent" rows="8" placeholder="或直接粘贴 kubeconfig YAML 内容">${configData.configContent === '******' ? '' : escapeHtml(configData.configContent || '')}</textarea>
                     <small style="color:#6b7280;">文件路径与内容二选一，内容优先</small>
                 </div>`;
         case 'ssh_key':
             return `
                 <div class="form-item">
                     <label>SSH 用户名 *</label>
-                    <input type="text" name="username" value="${escKeychainHtml(configData.username || '')}" required>
+                    <input type="text" name="username" value="${escapeHtml(configData.username || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>私钥 *</label>
-                    <textarea name="privateKey" rows="6" placeholder="${configData.privateKey === '******' ? '留空则不修改' : '-----BEGIN OPENSSH PRIVATE KEY-----'}" ${configData.privateKey === '******' ? '' : 'required'}>${configData.privateKey === '******' ? '' : escKeychainHtml(configData.privateKey || '')}</textarea>
+                    <textarea name="privateKey" rows="6" placeholder="${configData.privateKey === '******' ? '留空则不修改' : '-----BEGIN OPENSSH PRIVATE KEY-----'}" ${configData.privateKey === '******' ? '' : 'required'}>${configData.privateKey === '******' ? '' : escapeHtml(configData.privateKey || '')}</textarea>
                 </div>
                 <div class="form-item">
                     <label>公钥（可选）</label>
-                    <textarea name="publicKey" rows="3" placeholder="ssh-rsa AAAA...">${escKeychainHtml(configData.publicKey || '')}</textarea>
+                    <textarea name="publicKey" rows="3" placeholder="ssh-rsa AAAA...">${escapeHtml(configData.publicKey || '')}</textarea>
                 </div>
                 <div class="form-item">
                     <label>私钥口令（可选）</label>
@@ -186,9 +181,9 @@ function renderCredentialList(credentials) {
     }
     list.innerHTML = credentials.map(item => `
         <tr>
-            <td>${escKeychainHtml(item.name)}</td>
-            <td>${escKeychainHtml(getCredentialTypeLabel(item.credentialType))}</td>
-            <td>${escKeychainHtml(item.description || '-')}</td>
+            <td>${escapeHtml(item.name)}</td>
+            <td>${escapeHtml(getCredentialTypeLabel(item.credentialType))}</td>
+            <td>${escapeHtml(item.description || '-')}</td>
             <td>${item.status === 1 ? '<span class="status-tag is-on">启用</span>' : '<span class="status-tag is-off">禁用</span>'}</td>
             <td>
                 <div class="table-actions">
@@ -265,18 +260,18 @@ async function editCredential(id) {
             <form id="editCredentialForm">
                 <div class="form-item">
                     <label>钥匙名称 *</label>
-                    <input type="text" name="name" value="${escKeychainHtml(credential.name || '')}" required>
+                    <input type="text" name="name" value="${escapeHtml(credential.name || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>凭证类型</label>
-                    <input type="text" value="${escKeychainHtml(getCredentialTypeLabel(credential.credentialType))}" disabled>
+                    <input type="text" value="${escapeHtml(getCredentialTypeLabel(credential.credentialType))}" disabled>
                 </div>
                 <div id="credentialConfigFields">
                     ${buildCredentialConfigFields(credential.credentialType, credential.configData || {})}
                 </div>
                 <div class="form-item">
                     <label>描述</label>
-                    <textarea name="description" rows="2">${escKeychainHtml(credential.description || '')}</textarea>
+                    <textarea name="description" rows="2">${escapeHtml(credential.description || '')}</textarea>
                 </div>
                 <div class="form-item">
                     <label>状态</label>
@@ -357,7 +352,7 @@ function renderComponentCredentialOptions(componentType, selectedId) {
     const options = ['<option value="">手动填写认证信息</option>'];
     list.forEach(c => {
         const sel = String(c.id) === String(selectedId) ? ' selected' : '';
-        options.push(`<option value="${c.id}"${sel}>${escKeychainHtml(c.name)} (${getCredentialTypeLabel(c.credentialType)})</option>`);
+        options.push(`<option value="${c.id}"${sel}>${escapeHtml(c.name)} (${getCredentialTypeLabel(c.credentialType)})</option>`);
     });
     return options.join('');
 }

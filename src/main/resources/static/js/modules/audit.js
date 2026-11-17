@@ -6,15 +6,6 @@ const AUDIT_PAGE_SIZE = 20;
 let auditCurrentPage = 1;
 let auditModulesLoaded = false;
 
-function escapeAuditHtml(value) {
-    return String(value == null ? '' : value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
 function toAuditTimeParam(value) {
     // datetime-local: 2026-11-01T10:30 → 2026-11-01 10:30:00
     return value ? value.replace('T', ' ') + ':00' : '';
@@ -68,7 +59,7 @@ async function loadAuditLogs(page) {
         const resp = await fetch('/api/audit/list?' + params.toString());
         if (!resp.ok) {
             const msg = typeof handleApiError === 'function' ? await handleApiError(resp) : ('HTTP ' + resp.status);
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:#dc2626;">加载失败：${escapeAuditHtml(msg)}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:#dc2626;">加载失败：${escapeHtml(msg)}</td></tr>`;
             return;
         }
         const data = await resp.json();
@@ -92,19 +83,19 @@ function renderAuditList(records) {
             ? '<span style="color:#059669;">成功</span>'
             : '<span style="color:#dc2626;">失败</span>';
         const detail = [
-            `<code>${escapeAuditHtml(r.httpMethod)} ${escapeAuditHtml(r.path)}</code>`,
-            r.requestSummary ? `<div title="${escapeAuditHtml(r.requestSummary)}">${escapeAuditHtml(r.requestSummary.length > 160 ? r.requestSummary.slice(0, 160) + '…' : r.requestSummary)}</div>` : '',
-            !ok && r.errorMessage ? `<div class="audit-error">${escapeAuditHtml(r.errorMessage)}</div>` : ''
+            `<code>${escapeHtml(r.httpMethod)} ${escapeHtml(r.path)}</code>`,
+            r.requestSummary ? `<div title="${escapeHtml(r.requestSummary)}">${escapeHtml(r.requestSummary.length > 160 ? r.requestSummary.slice(0, 160) + '…' : r.requestSummary)}</div>` : '',
+            !ok && r.errorMessage ? `<div class="audit-error">${escapeHtml(r.errorMessage)}</div>` : ''
         ].join('');
         return `<tr>
-            <td>${escapeAuditHtml(formatDate(r.createTime))}</td>
-            <td>${escapeAuditHtml(r.username || '-')}</td>
-            <td>${escapeAuditHtml(r.module || '-')}</td>
-            <td>${escapeAuditHtml(r.action || '-')}</td>
-            <td>${escapeAuditHtml(r.targetId || '-')}</td>
+            <td>${escapeHtml(formatDate(r.createTime))}</td>
+            <td>${escapeHtml(r.username || '-')}</td>
+            <td>${escapeHtml(r.module || '-')}</td>
+            <td>${escapeHtml(r.action || '-')}</td>
+            <td>${escapeHtml(r.targetId || '-')}</td>
             <td>${result}</td>
             <td class="audit-detail">${detail}</td>
-            <td>${escapeAuditHtml(r.clientIp || '-')}</td>
+            <td>${escapeHtml(r.clientIp || '-')}</td>
             <td>${r.durationMs != null ? r.durationMs + ' ms' : '-'}</td>
         </tr>`;
     }).join('');

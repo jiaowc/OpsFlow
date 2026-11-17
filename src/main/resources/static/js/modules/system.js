@@ -467,10 +467,10 @@ function renderComponentList(components) {
         
         return `
             <tr>
-                <td>${component.name}</td>
-                <td>${componentTypeText}</td>
-                <td>${component.url || '-'}</td>
-                <td>${authDisplay}</td>
+                <td>${escapeHtml(component.name)}</td>
+                <td>${escapeHtml(componentTypeText)}</td>
+                <td>${escapeHtml(component.url || '-')}</td>
+                <td>${escapeHtml(authDisplay)}</td>
                 <td data-component-id="${component.id}">
                     <span style="color: #6b7280; font-size: 14px;">检测中...</span>
                 </td>
@@ -659,7 +659,7 @@ function showEditComponentModal(component) {
         <form id="editComponentForm">
             <div class="form-item">
                 <label>组件名称 *</label>
-                <input type="text" name="name" value="${component.name || ''}" required>
+                <input type="text" name="name" value="${escapeHtml(component.name || '')}" required>
             </div>
             <div class="form-item">
                 <label>组件类型 *</label>
@@ -675,12 +675,12 @@ function showEditComponentModal(component) {
             </div>
             <div class="form-item">
                 <label>访问地址 *</label>
-                <input type="text" name="url" value="${component.url || ''}" required>
+                <input type="text" name="url" value="${escapeHtml(component.url || '')}" required>
             </div>
             ${typeof window.buildComponentCredentialField === 'function' ? window.buildComponentCredentialField(component) : ''}
             <div class="form-item">
                 <label>描述</label>
-                <textarea name="description" rows="3">${component.description || ''}</textarea>
+                <textarea name="description" rows="3">${escapeHtml(component.description || '')}</textarea>
             </div>
         </form>
     `;
@@ -1166,11 +1166,6 @@ async function loadPipelines() {
 }
 window.loadPipelines = loadPipelines;
 
-function escPipelineHtml(text) {
-    if (text == null) return '';
-    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function pipelineTypeLabel(type) {
     if (type === 'ci') return 'CI';
     if (type === 'cd') return 'CD';
@@ -1230,7 +1225,7 @@ function formatPipelineStepsInline(stepNames, phase) {
         return '<span class="pipeline-flow-empty">暂无步骤</span>';
     }
     return stepNames.map(stepName =>
-        `<span class="${tagClass}">${escPipelineHtml(stepName)}</span>`
+        `<span class="${tagClass}">${escapeHtml(stepName)}</span>`
     ).join('<span class="pipeline-step-arrow">→</span>');
 }
 
@@ -1241,7 +1236,7 @@ function formatPipelineFlowHtml(buildNodeName, deployNodeName, ciSteps, cdSteps)
                 <div class="pipeline-flow-track pipeline-flow-ci">
                     <div class="pipeline-flow-track-header">
                         <span class="pipeline-flow-badge pipeline-flow-badge-ci">CI</span>
-                        <span class="pipeline-flow-node" title="CI 候选构建节点（运行时按负载择一）">${escPipelineHtml(buildNodeName || '-')}</span>
+                        <span class="pipeline-flow-node" title="CI 候选构建节点（运行时按负载择一）">${escapeHtml(buildNodeName || '-')}</span>
                     </div>
                     <div class="pipeline-flow-track-steps">${formatPipelineStepsInline(ciSteps, 'ci')}</div>
                 </div>
@@ -1249,7 +1244,7 @@ function formatPipelineFlowHtml(buildNodeName, deployNodeName, ciSteps, cdSteps)
                 <div class="pipeline-flow-track pipeline-flow-cd">
                     <div class="pipeline-flow-track-header">
                         <span class="pipeline-flow-badge pipeline-flow-badge-cd">CD</span>
-                        <span class="pipeline-flow-node" title="CD 部署节点">${escPipelineHtml(deployNodeName || '-')}</span>
+                        <span class="pipeline-flow-node" title="CD 部署节点">${escapeHtml(deployNodeName || '-')}</span>
                     </div>
                     <div class="pipeline-flow-track-steps">${formatPipelineStepsInline(cdSteps, 'cd')}</div>
                 </div>
@@ -1276,7 +1271,7 @@ function renderPipelineList(pipelines) {
         
         return `
             <tr>
-                <td>${escPipelineHtml(pipeline.name || '-')}</td>
+                <td>${escapeHtml(pipeline.name || '-')}</td>
                 <td>${pipelineTypeBadgeHtml(pipeline.pipelineType)}</td>
                 <td class="pipeline-flow-cell">${formatPipelineFlowHtml(pipeline.buildNodeName, pipeline.deployNodeName, ciSteps, cdSteps)}</td>
                 <td>${statusText}</td>
@@ -1467,7 +1462,7 @@ async function showEditPipelineModal(pipeline) {
         <form id="editPipelineForm" style="max-height: 80vh; overflow-y: auto;">
             <div class="form-item">
                 <label>模版名称 *</label>
-                <input type="text" name="name" value="${escPipelineHtml(pipeline.name || '')}" required>
+                <input type="text" name="name" value="${escapeHtml(pipeline.name || '')}" required>
             </div>
             <div class="form-item">
                 <label>流水线类型 *</label>

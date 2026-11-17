@@ -49,15 +49,15 @@ function renderNodeList(nodes) {
         const workDir = normalizeNodeWorkDir(node.workDir);
         return `
             <tr>
-                <td>${node.name}</td>
-                <td>${nodeTypeText}</td>
-                <td>${node.label || '-'}</td>
-                <td title="${escapeNodeHtml(node.hostKeyFingerprint ? '主机指纹: ' + node.hostKeyFingerprint : '尚未记录主机指纹（首次连接时自动记录）')}">${sshAddress}${node.hostKeyFingerprint ? ' <span style="color:#059669;font-size:12px;">🔒</span>' : ''}</td>
-                <td style="font-size:12px;max-width:180px;word-break:break-all;" title="${escapeNodeHtml(workDir)}">${escapeNodeHtml(workDir)}</td>
+                <td>${escapeHtml(node.name)}</td>
+                <td>${escapeHtml(nodeTypeText)}</td>
+                <td>${escapeHtml(node.label || '-')}</td>
+                <td title="${escapeHtml(node.hostKeyFingerprint ? '主机指纹: ' + node.hostKeyFingerprint : '尚未记录主机指纹（首次连接时自动记录）')}">${escapeHtml(sshAddress)}${node.hostKeyFingerprint ? ' <span style="color:#059669;font-size:12px;">🔒</span>' : ''}</td>
+                <td style="font-size:12px;max-width:180px;word-break:break-all;" title="${escapeHtml(workDir)}">${escapeHtml(workDir)}</td>
                 <td>${authTypeText}</td>
                 <td>${node.status === '在线' ? '<span style="color: #059669;">在线</span>' : '<span style="color: #dc2626;">离线</span>'}</td>
                 <td>
-                    ${(hasPermission('node:manage') && (node.nodeType === 'build' || node.nodeType === 'deploy')) ? `<button class="btn-secondary" onclick="checkNodeEnvironment(${node.id}, '${(node.name || '').replace(/'/g, "\\'")}', '${node.nodeType}')" style="margin-right:6px;">环境检测</button>` : ''}
+                    ${(hasPermission('node:manage') && (node.nodeType === 'build' || node.nodeType === 'deploy')) ? `<button class="btn-secondary" onclick="checkNodeEnvironment(${node.id}, ${escapeHtml(JSON.stringify(node.name || ''))}, ${escapeHtml(JSON.stringify(node.nodeType || ''))})" style="margin-right:6px;">环境检测</button>` : ''}
                     ${hasPermission('node:manage') && node.hostKeyFingerprint ? `<button class="btn-secondary" onclick="resetNodeHostKey(${node.id})" style="margin-right:6px;" title="节点重装系统或更换主机后使用">重置指纹</button>` : ''}
                     ${hasPermission('node:manage') ? `<button class="btn-edit" onclick="editNode(${node.id})">修改</button>
                     <button class="btn-danger" onclick="deleteNode(${node.id})">删除</button>` : ''}
@@ -235,7 +235,7 @@ async function editNode(id) {
             <form id="editNodeForm">
                 <div class="form-item">
                     <label>节点名称 *</label>
-                    <input type="text" name="name" value="${node.name || ''}" required>
+                    <input type="text" name="name" value="${escapeHtml(node.name || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>节点类型 *</label>
@@ -247,19 +247,19 @@ async function editNode(id) {
                 </div>
                 <div class="form-item">
                     <label>标签</label>
-                    <input type="text" name="label" value="${node.label || ''}">
+                    <input type="text" name="label" value="${escapeHtml(node.label || '')}">
                 </div>
                 <div class="form-item">
                     <label>描述</label>
-                    <textarea name="description" rows="2">${node.description || ''}</textarea>
+                    <textarea name="description" rows="2">${escapeHtml(node.description || '')}</textarea>
                 </div>
                 <div class="form-item">
                     <label>SSH主机地址 *</label>
-                    <input type="text" name="host" value="${node.host || ''}" placeholder="例如: 192.168.1.100 或 node.example.com" required>
+                    <input type="text" name="host" value="${escapeHtml(node.host || '')}" placeholder="例如: 192.168.1.100 或 node.example.com" required>
                 </div>
                 <div class="form-item">
                     <label>远程工作目录</label>
-                    <input type="text" name="workDir" value="${normalizeNodeWorkDir(node.workDir)}" placeholder="${DEFAULT_NODE_WORK_DIR}">
+                    <input type="text" name="workDir" value="${escapeHtml(normalizeNodeWorkDir(node.workDir))}" placeholder="${DEFAULT_NODE_WORK_DIR}">
                     <small style="color:var(--text-3);display:block;margin-top:4px;">SSH 登录用户家目录下的工作根目录，默认 ~/opsflow；实际任务目录为：根目录/服务/环境/分支</small>
                 </div>
                 <div class="form-item">
@@ -276,7 +276,7 @@ async function editNode(id) {
                 </div>
                 <div class="form-item">
                     <label>SSH用户名 *</label>
-                    <input type="text" name="username" value="${node.username || ''}" required>
+                    <input type="text" name="username" value="${escapeHtml(node.username || '')}" required>
                 </div>
                 <div id="editNodePasswordFields" class="form-item" style="display: ${node.authType === 'password' ? 'block' : 'none'};">
                     <label>SSH密码</label>
@@ -376,15 +376,6 @@ function toggleEditNodeAuthFields() {
     }
 }
 
-function escapeNodeHtml(text) {
-    if (text == null) return '';
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
 // 重置 SSH 主机指纹（节点重装系统 / 更换主机后使用）
 async function resetNodeHostKey(id) {
     if (!confirm('仅在确认节点已重装系统或更换主机时重置。\n重置后下次连接将重新记录指纹，若此时存在中间人将无法识别。确定重置？')) return;
@@ -412,7 +403,7 @@ async function checkNodeEnvironment(id, nodeName, nodeType) {
 
     const loadingContent = `
         <div id="nodeEnvCheckResult" style="padding: 24px; text-align: center; color: var(--text-3);">
-            正在检测节点 <strong>${escapeNodeHtml(nodeName || '')}</strong> 的${envLabel}环境，请稍候...
+            正在检测节点 <strong>${escapeHtml(nodeName || '')}</strong> 的${envLabel}环境，请稍候...
         </div>
     `;
     showModal(modalTitle, loadingContent, null, 'medium');
@@ -428,7 +419,7 @@ async function checkNodeEnvironment(id, nodeName, nodeType) {
                 const errJson = JSON.parse(errText);
                 errText = errJson.message || errJson.error || errText;
             } catch (e) { /* ignore */ }
-            box.innerHTML = `<div style="color:#dc2626;padding:12px;">检测失败: ${escapeNodeHtml(errText)}</div>`;
+            box.innerHTML = `<div style="color:#dc2626;padding:12px;">检测失败: ${escapeHtml(errText)}</div>`;
             return;
         }
 
@@ -447,7 +438,7 @@ async function checkNodeEnvironment(id, nodeName, nodeType) {
     } catch (error) {
         const box = document.getElementById('nodeEnvCheckResult');
         if (box) {
-            box.innerHTML = `<div style="color:#dc2626;padding:12px;">检测失败: ${escapeNodeHtml(error.message)}</div>`;
+            box.innerHTML = `<div style="color:#dc2626;padding:12px;">检测失败: ${escapeHtml(error.message)}</div>`;
         }
     }
 }
@@ -467,11 +458,11 @@ function renderNodeEnvCheckResult(result) {
         const requiredText = item.required ? '必检' : '可选';
         return `
             <tr>
-                <td>${escapeNodeHtml(item.name || item.key || '-')}</td>
+                <td>${escapeHtml(item.name || item.key || '-')}</td>
                 <td>${requiredText}</td>
                 <td>${statusHtml}</td>
-                <td style="font-size:12px;color:#374151;">${escapeNodeHtml(item.version || '-')}</td>
-                <td style="font-size:12px;color:#6b7280;">${escapeNodeHtml(item.message || '-')}</td>
+                <td style="font-size:12px;color:#374151;">${escapeHtml(item.version || '-')}</td>
+                <td style="font-size:12px;color:#6b7280;">${escapeHtml(item.message || '-')}</td>
             </tr>
         `;
     }).join('');
@@ -482,12 +473,12 @@ function renderNodeEnvCheckResult(result) {
         : '必检项：SSH 连接、JDK、Maven、Git；Docker 为可选项（镜像构建需要）。节点状态按 SSH 能否连通更新为在线/离线。';
 
     const statusLine = nodeStatus
-        ? `<div style="margin-top:8px;font-size:13px;">节点状态已更新为：<strong style="color:${statusOnline ? '#059669' : '#dc2626'};">${escapeNodeHtml(nodeStatus)}</strong></div>`
+        ? `<div style="margin-top:8px;font-size:13px;">节点状态已更新为：<strong style="color:${statusOnline ? '#059669' : '#dc2626'};">${escapeHtml(nodeStatus)}</strong></div>`
         : '';
 
     return `
         <div style="margin-bottom: 16px; padding: 12px; border-radius: 6px; background: ${passed ? '#ecfdf5' : '#fef2f2'}; color: ${summaryColor};">
-            <strong>${escapeNodeHtml(result.summary || (passed ? '检测通过' : '检测未通过'))}</strong>
+            <strong>${escapeHtml(result.summary || (passed ? '检测通过' : '检测未通过'))}</strong>
             ${statusLine}
         </div>
         <div class="table-container">

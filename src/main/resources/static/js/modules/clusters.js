@@ -22,7 +22,7 @@ async function loadClusters() {
         renderClusterList(buildClusterRows(Array.isArray(clusters) ? clusters : [], Array.isArray(envs) ? envs : []));
     } catch (error) {
         console.error('Load clusters error:', error);
-        clusterList.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:#dc2626;">加载失败: ${escapeClusterHtml(error.message)}</td></tr>`;
+        clusterList.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:#dc2626;">加载失败: ${escapeHtml(error.message)}</td></tr>`;
     }
 }
 window.loadClusters = loadClusters;
@@ -55,18 +55,18 @@ function renderClusterList(clusters) {
 
     clusterList.innerHTML = clusters.map(cluster => `
         <tr data-cluster-id="${cluster.id}">
-            <td style="font-weight:600;color:#111827;">${escapeClusterHtml(cluster.clusterName)}</td>
-            <td>${cluster.server ? escapeClusterHtml(cluster.server) : '<span style="color:#9ca3af;">-</span>'}</td>
+            <td style="font-weight:600;color:#111827;">${escapeHtml(cluster.clusterName)}</td>
+            <td>${cluster.server ? escapeHtml(cluster.server) : '<span style="color:#9ca3af;">-</span>'}</td>
             <td>${cluster.credentialName
-                ? escapeClusterHtml(cluster.credentialName)
+                ? escapeHtml(cluster.credentialName)
                 : '<span style="color:#dc2626;">未关联</span>'}</td>
-            <td>${cluster.envNames.length ? cluster.envNames.map(name => `<span class="cluster-env-tag">${escapeClusterHtml(name)}</span>`).join(' ') : '<span style="color:#9ca3af;">-</span>'}</td>
+            <td>${cluster.envNames.length ? cluster.envNames.map(name => `<span class="cluster-env-tag">${escapeHtml(name)}</span>`).join(' ') : '<span style="color:#9ca3af;">-</span>'}</td>
             <td>${cluster.envCount}</td>
             <td>${renderClusterStatus(cluster.status)}</td>
-            <td>${escapeClusterHtml(cluster.remark)}</td>
+            <td>${escapeHtml(cluster.remark)}</td>
             <td>
                 <div class="table-actions">
-                    ${hasPermission('cluster:manage') ? `<button class="${getClusterTestButtonClass(cluster.id)} cluster-test-btn" data-cluster-id="${cluster.id}" data-cluster-name="${escapeClusterHtml(cluster.clusterName)}" title="${clusterTestPassCache[String(cluster.id)] ? '最近检测通过' : '点击检测集群连通性'}">检测</button>
+                    ${hasPermission('cluster:manage') ? `<button class="${getClusterTestButtonClass(cluster.id)} cluster-test-btn" data-cluster-id="${cluster.id}" data-cluster-name="${escapeHtml(cluster.clusterName)}" title="${clusterTestPassCache[String(cluster.id)] ? '最近检测通过' : '点击检测集群连通性'}">检测</button>
                     <button class="btn-edit cluster-edit-btn" data-cluster-id="${cluster.id}">修改</button>
                     <button class="btn-danger cluster-delete-btn" data-cluster-id="${cluster.id}">删除</button>` : ''}
                 </div>
@@ -80,15 +80,6 @@ function renderClusterStatus(status) {
         return '<span class="cluster-status cluster-status-active">使用中</span>';
     }
     return '<span class="cluster-status cluster-status-idle">空闲</span>';
-}
-
-function escapeClusterHtml(value) {
-    return String(value == null ? '' : value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
 }
 
 async function loadKubeconfigCredentialOptions(selectedId) {
@@ -109,7 +100,7 @@ async function loadKubeconfigCredentialOptions(selectedId) {
     }
     kubeOnes.forEach(c => {
         const selected = selectedId != null && String(selectedId) === String(c.id) ? ' selected' : '';
-        html += `<option value="${c.id}"${selected}>${escapeClusterHtml(c.name)}</option>`;
+        html += `<option value="${c.id}"${selected}>${escapeHtml(c.name)}</option>`;
     });
     return html;
 }
@@ -196,11 +187,11 @@ async function editCluster(id) {
             <form id="editClusterForm">
                 <div class="form-item">
                     <label>集群名称 *</label>
-                    <input type="text" name="name" value="${escapeClusterHtml(cluster.name || '')}" required>
+                    <input type="text" name="name" value="${escapeHtml(cluster.name || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>集群地址</label>
-                    <input type="text" name="server" value="${escapeClusterHtml(cluster.server || '')}">
+                    <input type="text" name="server" value="${escapeHtml(cluster.server || '')}">
                 </div>
                 <div class="form-item">
                     <label>关联 Kubeconfig 钥匙串</label>
@@ -216,7 +207,7 @@ async function editCluster(id) {
                 </div>
                 <div class="form-item">
                     <label>说明</label>
-                    <textarea name="description" rows="3">${escapeClusterHtml(cluster.description || '')}</textarea>
+                    <textarea name="description" rows="3">${escapeHtml(cluster.description || '')}</textarea>
                 </div>
             </form>
         `;
@@ -300,7 +291,7 @@ async function buildProxyNodeOptions() {
         const host = n.host ? ` (${n.host})` : '';
         const typeLabel = n.nodeType === 'deploy' ? '部署' : (n.nodeType === 'build' ? '构建' : (n.nodeType || ''));
         const typeText = typeLabel ? ` [${typeLabel}]` : '';
-        html += `<option value="${n.id}">${escapeClusterHtml(n.name || ('node-' + n.id))}${escapeClusterHtml(host)}${escapeClusterHtml(typeText)}</option>`;
+        html += `<option value="${n.id}">${escapeHtml(n.name || ('node-' + n.id))}${escapeHtml(host)}${escapeHtml(typeText)}</option>`;
     });
     return html;
 }
@@ -317,7 +308,7 @@ async function showTestClusterModal(clusterId, clusterName) {
     const content = `
         <div>
             <p style="margin:0 0 12px;color:#4b5563;font-size:13px;">
-                检测集群 <strong>${escapeClusterHtml(clusterName || '')}</strong> 的连通性。将使用该集群关联的 Kubeconfig，通过所选代理节点执行 kubectl。
+                检测集群 <strong>${escapeHtml(clusterName || '')}</strong> 的连通性。将使用该集群关联的 Kubeconfig，通过所选代理节点执行 kubectl。
             </p>
             <div class="form-item">
                 <label>检测代理节点</label>
@@ -366,7 +357,7 @@ async function showTestClusterModal(clusterId, clusterName) {
                         const errJson = JSON.parse(errText);
                         errText = errJson.message || errJson.error || errText;
                     } catch (e) { /* ignore */ }
-                    box.innerHTML = `<div style="color:#dc2626;padding:8px;">检测失败: ${escapeClusterHtml(errText)}</div>`;
+                    box.innerHTML = `<div style="color:#dc2626;padding:8px;">检测失败: ${escapeHtml(errText)}</div>`;
                     pendingPassed = false;
                     return;
                 }
@@ -374,7 +365,7 @@ async function showTestClusterModal(clusterId, clusterName) {
                 box.innerHTML = renderClusterCheckResult(result);
                 pendingPassed = result.passed === true;
             } catch (error) {
-                box.innerHTML = `<div style="color:#dc2626;padding:8px;">检测失败: ${escapeClusterHtml(error.message)}</div>`;
+                box.innerHTML = `<div style="color:#dc2626;padding:8px;">检测失败: ${escapeHtml(error.message)}</div>`;
                 pendingPassed = false;
             } finally {
                 startBtn.disabled = false;
@@ -417,19 +408,19 @@ function renderClusterCheckResult(result) {
             : '<span style="color:#dc2626;font-weight:500;">未通过</span>';
         return `
             <tr>
-                <td>${escapeClusterHtml(item.name || item.key || '-')}</td>
+                <td>${escapeHtml(item.name || item.key || '-')}</td>
                 <td>${item.required ? '必检' : '可选'}</td>
                 <td>${statusHtml}</td>
-                <td style="font-size:12px;color:#374151;white-space:pre-wrap;max-width:280px;">${escapeClusterHtml(item.detail || '-')}</td>
-                <td style="font-size:12px;color:#6b7280;">${escapeClusterHtml(item.message || '-')}</td>
+                <td style="font-size:12px;color:#374151;white-space:pre-wrap;max-width:280px;">${escapeHtml(item.detail || '-')}</td>
+                <td style="font-size:12px;color:#6b7280;">${escapeHtml(item.message || '-')}</td>
             </tr>
         `;
     }).join('');
 
     return `
         <div style="margin-bottom:12px;padding:10px 12px;border-radius:6px;background:${passed ? '#ecfdf5' : '#fef2f2'};color:${summaryColor};">
-            <strong>${escapeClusterHtml(result.summary || (passed ? '检测通过' : '检测未通过'))}</strong>
-            <div style="margin-top:4px;font-size:12px;opacity:0.85;">代理节点：${escapeClusterHtml(result.proxyNodeName || '本机')}</div>
+            <strong>${escapeHtml(result.summary || (passed ? '检测通过' : '检测未通过'))}</strong>
+            <div style="margin-top:4px;font-size:12px;opacity:0.85;">代理节点：${escapeHtml(result.proxyNodeName || '本机')}</div>
         </div>
         <div class="table-container">
             <table class="data-table">
@@ -462,7 +453,7 @@ async function loadClustersForSelect(selectedId) {
         enabled.forEach(c => {
             const selected = selectedId != null && String(selectedId) === String(c.id) ? ' selected' : '';
             const server = c.server ? ` (${c.server})` : '';
-            html += `<option value="${c.id}"${selected}>${escapeClusterHtml(c.name)}${escapeClusterHtml(server)}</option>`;
+            html += `<option value="${c.id}"${selected}>${escapeHtml(c.name)}${escapeHtml(server)}</option>`;
         });
         select.innerHTML = html;
     } catch (e) {

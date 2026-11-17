@@ -98,21 +98,16 @@ async function loadStepTemplates(type, force) {
 }
 
 function renderTemplateSelectOptions(templates, selectedId, emptyLabel) {
-    let html = `<option value="">${escStepHtml(emptyLabel || '请选择模版')}</option>`;
+    let html = `<option value="">${escapeHtml(emptyLabel || '请选择模版')}</option>`;
     if (!templates.length) {
         html += '<option value="" disabled>暂无模版，请先在「模版管理」中创建</option>';
         return html;
     }
     templates.forEach(t => {
         const selected = selectedId != null && String(selectedId) === String(t.id) ? ' selected' : '';
-        html += `<option value="${t.id}"${selected}>${escStepHtml(t.name)}</option>`;
+        html += `<option value="${t.id}"${selected}>${escapeHtml(t.name)}</option>`;
     });
     return html;
-}
-
-function escStepHtml(text) {
-    if (text == null) return '';
-    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function inferPhase(stepType) {
@@ -165,11 +160,11 @@ function renderStepDefList(defs) {
         const timeoutText = def.timeoutSeconds != null ? def.timeoutSeconds : 60;
         return `
             <tr>
-                <td>${escStepHtml(def.name)}</td>
+                <td>${escapeHtml(def.name)}</td>
                 <td>${getStepTypeLabel(def.stepType)}</td>
                 <td>${phaseText}</td>
                 <td>${timeoutText}</td>
-                <td>${escStepHtml(def.description || '-')}</td>
+                <td>${escapeHtml(def.description || '-')}</td>
                 <td>${statusText}</td>
                 <td>
                     <button class="btn-edit" onclick="editStepDef(${def.id})">修改</button>
@@ -221,7 +216,7 @@ async function buildStepContentFieldsHtml(stepType, contentConfig) {
         if (field.type === 'hint') {
             parts.push(`
                 <div style="margin:8px 0 12px;padding:10px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#4b5563;line-height:1.5;">
-                    ${escStepHtml(field.text || '')}
+                    ${escapeHtml(field.text || '')}
                 </div>
             `);
             continue;
@@ -232,8 +227,8 @@ async function buildStepContentFieldsHtml(stepType, contentConfig) {
             parts.push(`
                 <div class="form-item">
                     <label>${field.label}</label>
-                    <select name="content_${field.key}" data-content-key="${escStepHtml(field.contentKey || '')}"
-                            data-template-type="${escStepHtml(field.templateType || '')}"
+                    <select name="content_${field.key}" data-content-key="${escapeHtml(field.contentKey || '')}"
+                            data-template-type="${escapeHtml(field.templateType || '')}"
                             onchange="onStepTemplateSelectChange(this)"${required}>
                         ${renderTemplateSelectOptions(templates, value, emptyLabel)}
                     </select>
@@ -243,7 +238,7 @@ async function buildStepContentFieldsHtml(stepType, contentConfig) {
             continue;
         }
         if (field.type === 'hidden') {
-            parts.push(`<input type="hidden" name="content_${field.key}" value="${escStepHtml(value)}">`);
+            parts.push(`<input type="hidden" name="content_${field.key}" value="${escapeHtml(value)}">`);
             continue;
         }
         if (field.type === 'textarea') {
@@ -251,8 +246,8 @@ async function buildStepContentFieldsHtml(stepType, contentConfig) {
             parts.push(`
                 <div class="form-item">
                     <label>${field.label}</label>
-                    <textarea name="${textareaName}" rows="${field.rows || 3}" placeholder="${escStepHtml(field.placeholder || '')}"${required}>${escStepHtml(value)}</textarea>
-                    ${field.hint ? `<small style="color:var(--text-3);">${escStepHtml(field.hint)}</small>` : ''}
+                    <textarea name="${textareaName}" rows="${field.rows || 3}" placeholder="${escapeHtml(field.placeholder || '')}"${required}>${escapeHtml(value)}</textarea>
+                    ${field.hint ? `<small style="color:var(--text-3);">${escapeHtml(field.hint)}</small>` : ''}
                     ${appendTemplateVarCheckHtml(textareaName, field.key)}
                 </div>
             `);
@@ -261,10 +256,10 @@ async function buildStepContentFieldsHtml(stepType, contentConfig) {
         parts.push(`
             <div class="form-item">
                 <label>${field.label}</label>
-                <input type="text" name="content_${field.key}" value="${escStepHtml(value)}"
-                       placeholder="${escStepHtml(field.placeholder || '')}"
+                <input type="text" name="content_${field.key}" value="${escapeHtml(value)}"
+                       placeholder="${escapeHtml(field.placeholder || '')}"
                        style="width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;"${required}>
-                ${field.hint ? `<small style="color:var(--text-3);">${escStepHtml(field.hint)}</small>` : ''}
+                ${field.hint ? `<small style="color:var(--text-3);">${escapeHtml(field.hint)}</small>` : ''}
             </div>
         `);
     }
@@ -497,7 +492,7 @@ async function editStepDef(id) {
             `<option value="${k}" ${def.stepType === k ? 'selected' : ''}>${v}</option>`).join('');
         const content = `
             <form id="editStepDefForm" class="tpl-form">
-                <div class="form-item"><label>步骤名称 *</label><input type="text" name="name" value="${escStepHtml(def.name || '')}" required></div>
+                <div class="form-item"><label>步骤名称 *</label><input type="text" name="name" value="${escapeHtml(def.name || '')}" required></div>
                 <div class="form-item">
                     <label>步骤类型 *</label>
                     <select name="stepType" required onchange="onStepDefTypeChange(this)">
@@ -511,7 +506,7 @@ async function editStepDef(id) {
                         <option value="cd" ${def.phase === 'cd' ? 'selected' : ''}>CD（部署）</option>
                     </select>
                 </div>
-                <div class="form-item"><label>描述</label><textarea name="description" rows="2">${escStepHtml(def.description || '')}</textarea></div>
+                <div class="form-item"><label>描述</label><textarea name="description" rows="2">${escapeHtml(def.description || '')}</textarea></div>
                 <div class="form-item">
                 <label>超时时间（秒） *</label>
                 <input type="number" name="timeoutSeconds" value="${def.timeoutSeconds != null ? def.timeoutSeconds : 60}" min="1" required>
@@ -587,7 +582,7 @@ function renderStepDefSelectOptions(phase, selectedId) {
     }
     defs.forEach(d => {
         const selected = selectedId != null && String(selectedId) === String(d.id) ? ' selected' : '';
-        html += `<option value="${d.id}"${selected}>${escStepHtml(d.name)} (${getStepTypeLabel(d.stepType)})</option>`;
+        html += `<option value="${d.id}"${selected}>${escapeHtml(d.name)} (${getStepTypeLabel(d.stepType)})</option>`;
     });
     return html;
 }
@@ -635,7 +630,7 @@ async function buildPipelineStepOverrideHtml(stepId, stepType, overrides, timeou
     const parts = [];
 
     parts.push(`
-        <div class="pipeline-step-override" data-step-id="${escStepHtml(stepId)}"
+        <div class="pipeline-step-override" data-step-id="${escapeHtml(stepId)}"
              style="margin-top:10px;padding:10px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <strong style="font-size:12px;color:#334155;">差异配置（可选）</strong>
@@ -643,7 +638,7 @@ async function buildPipelineStepOverrideHtml(stepId, stepType, overrides, timeou
             </div>
             <div class="form-item" style="margin:0 0 8px;">
                 <label style="font-size:12px;">执行超时（秒）</label>
-                <input type="number" name="override_timeout_${escStepHtml(stepId)}" min="1"
+                <input type="number" name="override_timeout_${escapeHtml(stepId)}" min="1"
                        value="${timeoutOverride != null && timeoutOverride >= 1 ? timeoutOverride : ''}"
                        placeholder="默认 ${defaultTimeout != null ? defaultTimeout : 60}"
                        style="width:100%;box-sizing:border-box;font-size:13px;">
@@ -665,12 +660,12 @@ async function buildPipelineStepOverrideHtml(stepId, stepType, overrides, timeou
             const templates = await loadStepTemplates(field.templateType);
             parts.push(`
                 <div class="form-item" style="margin:0 0 8px;">
-                    <label style="font-size:12px;">${escStepHtml(label)}</label>
-                    <select name="override_${escStepHtml(key)}_${escStepHtml(stepId)}"
-                            data-override-key="${escStepHtml(key)}"
-                            data-content-key="${escStepHtml(field.contentKey || '')}"
-                            data-template-type="${escStepHtml(field.templateType || '')}"
-                            onchange="onPipelineOverrideTemplateChange(this, '${escStepHtml(stepId)}')"
+                    <label style="font-size:12px;">${escapeHtml(label)}</label>
+                    <select name="override_${escapeHtml(key)}_${escapeHtml(stepId)}"
+                            data-override-key="${escapeHtml(key)}"
+                            data-content-key="${escapeHtml(field.contentKey || '')}"
+                            data-template-type="${escapeHtml(field.templateType || '')}"
+                            onchange="onPipelineOverrideTemplateChange(this, '${escapeHtml(stepId)}')"
                             style="width:100%;font-size:13px;">
                         ${renderTemplateSelectOptions(templates, value, '不覆盖（用步骤默认）')}
                     </select>
@@ -686,11 +681,11 @@ async function buildPipelineStepOverrideHtml(stepId, stepType, overrides, timeou
             const textareaName = `override_${key}_${stepId}`;
             parts.push(`
                 <div class="form-item" style="margin:0 0 8px;">
-                    <label style="font-size:12px;">${escStepHtml(label)}</label>
-                    <textarea name="${escStepHtml(textareaName)}"
-                              data-override-key="${escStepHtml(key)}"
-                              rows="${field.rows || 4}" placeholder="${escStepHtml(ph)}"
-                              style="width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;">${escStepHtml(value)}</textarea>
+                    <label style="font-size:12px;">${escapeHtml(label)}</label>
+                    <textarea name="${escapeHtml(textareaName)}"
+                              data-override-key="${escapeHtml(key)}"
+                              rows="${field.rows || 4}" placeholder="${escapeHtml(ph)}"
+                              style="width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;">${escapeHtml(value)}</textarea>
                     ${appendTemplateVarCheckHtml(textareaName, key)}
                 </div>
             `);
@@ -699,11 +694,11 @@ async function buildPipelineStepOverrideHtml(stepId, stepType, overrides, timeou
 
         parts.push(`
             <div class="form-item" style="margin:0 0 8px;">
-                <label style="font-size:12px;">${escStepHtml(label)}</label>
-                <input type="text" name="override_${escStepHtml(key)}_${escStepHtml(stepId)}"
-                       data-override-key="${escStepHtml(key)}"
-                       value="${escStepHtml(value)}"
-                       placeholder="${escStepHtml(hintDefault || field.placeholder || '留空不覆盖')}"
+                <label style="font-size:12px;">${escapeHtml(label)}</label>
+                <input type="text" name="override_${escapeHtml(key)}_${escapeHtml(stepId)}"
+                       data-override-key="${escapeHtml(key)}"
+                       value="${escapeHtml(value)}"
+                       placeholder="${escapeHtml(hintDefault || field.placeholder || '留空不覆盖')}"
                        style="width:100%;box-sizing:border-box;font-size:13px;">
             </div>
         `);

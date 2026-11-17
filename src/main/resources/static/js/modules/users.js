@@ -87,17 +87,17 @@ function renderUserList(users) {
     
     userList.innerHTML = users.map(user => {
         const roles = user.roles && user.roles.length > 0 
-            ? user.roles.map(r => r.name).join(', ') 
+            ? user.roles.map(r => escapeHtml(r.name)).join(', ') 
             : '-';
         const statusText = user.status === 1 ? '<span class="status-tag is-on">启用</span>' : '<span class="status-tag is-off">禁用</span>';
         
         return `
             <tr>
-                <td>${user.username || '-'}</td>
-                <td>${user.realName || '-'}</td>
+                <td>${escapeHtml(user.username || '-')}</td>
+                <td>${escapeHtml(user.realName || '-')}</td>
                 <td>${formatUserSource(user.source)}</td>
-                <td>${user.email || '-'}</td>
-                <td>${user.phone || '-'}</td>
+                <td>${escapeHtml(user.email || '-')}</td>
+                <td>${escapeHtml(user.phone || '-')}</td>
                 <td>${roles}</td>
                 <td>${statusText}</td>
                 <td>
@@ -110,16 +110,6 @@ function renderUserList(users) {
 }
 
 // 复选列表：避免 native multi-select 需 Ctrl/Cmd 才能多选的问题
-function escapeUserHtml(text) {
-    if (text == null) return '';
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
 function renderCheckboxList(items, inputName, selectedIds, labelHtmlFn) {
     const selected = new Set((selectedIds || []).map(id => Number(id)));
     if (!items || items.length === 0) {
@@ -191,7 +181,7 @@ async function showAddUserModal() {
             </div>
             <div class="form-item">
                 <label>角色</label>
-                ${renderCheckboxList(roles, 'roleIds', [], r => escapeUserHtml(r.name || r.code || String(r.id)))}
+                ${renderCheckboxList(roles, 'roleIds', [], r => escapeHtml(r.name || r.code || String(r.id)))}
             </div>
             <div class="form-item">
                 <label style="display: flex; align-items: center; gap: 8px;">
@@ -264,7 +254,7 @@ async function editUser(id) {
             <form id="editUserForm">
                 <div class="form-item">
                     <label>用户名 *</label>
-                    <input type="text" name="username" value="${user.username || ''}" required>
+                    <input type="text" name="username" value="${escapeHtml(user.username || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>密码（留空则不修改）</label>
@@ -272,15 +262,15 @@ async function editUser(id) {
                 </div>
                 <div class="form-item">
                     <label>真实姓名</label>
-                    <input type="text" name="realName" value="${user.realName || ''}">
+                    <input type="text" name="realName" value="${escapeHtml(user.realName || '')}">
                 </div>
                 <div class="form-item">
                     <label>邮箱</label>
-                    <input type="email" name="email" value="${user.email || ''}">
+                    <input type="email" name="email" value="${escapeHtml(user.email || '')}">
                 </div>
                 <div class="form-item">
                     <label>手机号</label>
-                    <input type="text" name="phone" value="${user.phone || ''}">
+                    <input type="text" name="phone" value="${escapeHtml(user.phone || '')}">
                 </div>
                 <div class="form-item">
                     <label>飞书用户 ID</label>
@@ -293,7 +283,7 @@ async function editUser(id) {
                 </div>
                 <div class="form-item">
                     <label>角色</label>
-                    ${renderCheckboxList(roles, 'roleIds', user.roleIds || [], r => escapeUserHtml(r.name || r.code || String(r.id)))}
+                    ${renderCheckboxList(roles, 'roleIds', user.roleIds || [], r => escapeHtml(r.name || r.code || String(r.id)))}
                 </div>
                 <div class="form-item">
                     <label style="display: flex; align-items: center; gap: 8px;">
@@ -399,9 +389,9 @@ function renderRoleList(roles) {
         
         return `
             <tr>
-                <td>${role.name || '-'}</td>
-                <td>${role.code || '-'}</td>
-                <td>${role.description || '-'}</td>
+                <td>${escapeHtml(role.name || '-')}</td>
+                <td>${escapeHtml(role.code || '-')}</td>
+                <td>${escapeHtml(role.description || '-')}</td>
                 <td>${permissionCount}</td>
                 <td>${statusText}</td>
                 <td>
@@ -443,7 +433,7 @@ async function showAddRoleModal() {
             <div class="form-item">
                 <label>权限</label>
                 ${renderCheckboxList(permissions, 'permissionIds', [], p =>
-                    `${escapeUserHtml(p.name || '')} <span class="perm-code">(${escapeUserHtml(p.code || '')})</span>`)}
+                    `${escapeHtml(p.name || '')} <span class="perm-code">(${escapeHtml(p.code || '')})</span>`)}
             </div>
             <div class="form-item">
                 <label style="display: flex; align-items: center; gap: 8px;">
@@ -512,20 +502,20 @@ async function editRole(id) {
             <form id="editRoleForm">
                 <div class="form-item">
                     <label>角色名称 *</label>
-                    <input type="text" name="name" value="${role.name || ''}" required>
+                    <input type="text" name="name" value="${escapeHtml(role.name || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>角色代码 *</label>
-                    <input type="text" name="code" value="${role.code || ''}" required>
+                    <input type="text" name="code" value="${escapeHtml(role.code || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>描述</label>
-                    <textarea name="description" rows="2">${role.description || ''}</textarea>
+                    <textarea name="description" rows="2">${escapeHtml(role.description || '')}</textarea>
                 </div>
                 <div class="form-item">
                     <label>权限</label>
                     ${renderCheckboxList(permissions, 'permissionIds', role.permissionIds || [], p =>
-                        `${escapeUserHtml(p.name || '')} <span class="perm-code">(${escapeUserHtml(p.code || '')})</span>`)}
+                        `${escapeHtml(p.name || '')} <span class="perm-code">(${escapeHtml(p.code || '')})</span>`)}
                 </div>
                 <div class="form-item">
                     <label style="display: flex; align-items: center; gap: 8px;">
@@ -622,9 +612,9 @@ function renderPermissionList(permissions) {
         const statusText = permission.status === 1 ? '<span class="status-tag is-on">启用</span>' : '<span class="status-tag is-off">禁用</span>';
         return `
             <tr>
-                <td>${permission.name || '-'}</td>
-                <td>${permission.code || '-'}</td>
-                <td>${permission.description || '-'}</td>
+                <td>${escapeHtml(permission.name || '-')}</td>
+                <td>${escapeHtml(permission.code || '-')}</td>
+                <td>${escapeHtml(permission.description || '-')}</td>
                 <td>${statusText}</td>
                 <td>
                     <button class="btn-edit" onclick="editPermission(${permission.id})">修改</button>
@@ -662,7 +652,7 @@ async function showAddPermissionModal() {
                 <label>父权限</label>
                 <select name="parentId">
                     <option value="0">无（顶级权限）</option>
-                    ${permissions.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                    ${permissions.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}
                 </select>
             </div>
             <div class="form-item">
@@ -740,22 +730,22 @@ async function editPermission(id) {
             <form id="editPermissionForm">
                 <div class="form-item">
                     <label>权限名称 *</label>
-                    <input type="text" name="name" value="${permission.name || ''}" required>
+                    <input type="text" name="name" value="${escapeHtml(permission.name || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>权限代码 *</label>
-                    <input type="text" name="code" value="${permission.code || ''}" required>
+                    <input type="text" name="code" value="${escapeHtml(permission.code || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>父权限</label>
                     <select name="parentId">
                         <option value="0">无（顶级权限）</option>
-                        ${permissions.filter(p => p.id !== permission.id).map(p => `<option value="${p.id}" ${parentId === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                        ${permissions.filter(p => p.id !== permission.id).map(p => `<option value="${p.id}" ${parentId === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
                     </select>
                 </div>
                 <div class="form-item">
                     <label>描述</label>
-                    <textarea name="description" rows="2">${permission.description || ''}</textarea>
+                    <textarea name="description" rows="2">${escapeHtml(permission.description || '')}</textarea>
                 </div>
                 <div class="form-item">
                     <label style="display: flex; align-items: center; gap: 8px;">
@@ -826,6 +816,5 @@ async function deletePermission(id) {
 
 window.renderCheckboxList = renderCheckboxList;
 window.collectCheckedIds = collectCheckedIds;
-window.escapeUserHtml = escapeUserHtml;
 
 

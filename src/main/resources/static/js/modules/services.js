@@ -11,11 +11,6 @@ const SERVICE_TYPE_OPTIONS = [
 let serviceGitComponents = [];
 let cachedServiceList = [];
 
-function escServiceHtml(text) {
-    if (text == null) return '';
-    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function getServiceTypeLabel(type) {
     const item = SERVICE_TYPE_OPTIONS.find(o => o.value === type);
     return item ? item.label : (type || '-');
@@ -53,8 +48,8 @@ function renderServiceComponentOptions(selectedId) {
     serviceGitComponents.forEach(component => {
         const sel = String(component.id) === String(selectedId) ? ' selected' : '';
         options.push(
-            `<option value="${component.id}" data-url="${escServiceHtml(component.url || '')}"${sel}>`
-            + `${escServiceHtml(component.name)} (${getComponentTypeLabel(component.type)})`
+            `<option value="${component.id}" data-url="${escapeHtml(component.url || '')}"${sel}>`
+            + `${escapeHtml(component.name)} (${getComponentTypeLabel(component.type)})`
             + `</option>`
         );
     });
@@ -140,7 +135,7 @@ function buildServiceFormFields(service) {
         </div>
         <div class="form-item">
             <label>服务名称 *</label>
-            <input type="text" name="name" value="${escServiceHtml(service.name || '')}" required>
+            <input type="text" name="name" value="${escapeHtml(service.name || '')}" required>
         </div>
         <div class="form-item">
             <label>服务类型 *</label>
@@ -151,7 +146,7 @@ function buildServiceFormFields(service) {
         <div class="form-item">
             <label>对外提供服务端口 *</label>
             <input type="number" name="servicePort" id="servicePortInput"
-                   value="${service.servicePort != null ? escServiceHtml(service.servicePort) : ''}"
+                   value="${service.servicePort != null ? escapeHtml(service.servicePort) : ''}"
                    min="1" max="65535" placeholder="例如：8080" required>
             <small style="color:#6b7280;">服务对外暴露的 HTTP/TCP 端口</small>
         </div>
@@ -165,7 +160,7 @@ function buildServiceFormFields(service) {
         <div class="form-item">
             <label>仓库路径 *</label>
             <input type="text" name="gitRepoPath" id="serviceRepoPathInput"
-                   value="${escServiceHtml(repoPathValue)}"
+                   value="${escapeHtml(repoPathValue)}"
                    placeholder="例如：group/project 或 https://github.com/org/repo.git"
                    required>
             <small style="color:#6b7280;">可填相对路径（与组件地址拼接），或完整地址（域名需与组件一致）</small>
@@ -173,7 +168,7 @@ function buildServiceFormFields(service) {
         <div class="form-item">
             <label>负责人</label>
             <select name="ownerUserId" id="serviceOwnerSelect"
-                    data-original="${service.ownerUserId != null ? escServiceHtml(service.ownerUserId) : ''}">
+                    data-original="${service.ownerUserId != null ? escapeHtml(service.ownerUserId) : ''}">
                 <option value="">加载中...</option>
             </select>
             <small style="color:#6b7280;">仅用于展示和联系，从项目成员中选择</small>
@@ -201,7 +196,7 @@ async function initServiceProjectField(service) {
         writable.unshift({ id: service.projectId, name: service.projectName || ('项目#' + service.projectId) });
     }
     projectSelect.innerHTML = '<option value="">请选择项目</option>' + writable.map(p =>
-        `<option value="${p.id}"${String(p.id) === selected ? ' selected' : ''}>${escServiceHtml(p.name)}</option>`
+        `<option value="${p.id}"${String(p.id) === selected ? ' selected' : ''}>${escapeHtml(p.name)}</option>`
     ).join('');
     projectSelect.addEventListener('change', () => loadServiceOwnerOptions(projectSelect.value, service));
     await loadServiceOwnerOptions(projectSelect.value, service);
@@ -225,7 +220,7 @@ async function loadServiceOwnerOptions(projectId, service) {
         members = null;
     }
     if (!Array.isArray(members)) {
-        ownerSelect.innerHTML = `<option value="${escServiceHtml(originalId)}">${escServiceHtml(service?.ownerName || '成员加载失败')}</option>`;
+        ownerSelect.innerHTML = `<option value="${escapeHtml(originalId)}">${escapeHtml(service?.ownerName || '成员加载失败')}</option>`;
         ownerSelect.dataset.loaded = '';
         return;
     }
@@ -234,7 +229,7 @@ async function loadServiceOwnerOptions(projectId, service) {
         options.unshift({ id: currentId, name: (service.ownerName || '用户#' + currentId) + '（非项目成员）' });
     }
     ownerSelect.innerHTML = '<option value="">不设置</option>' + options.map(o =>
-        `<option value="${o.id}"${o.id === currentId ? ' selected' : ''}>${escServiceHtml(o.name)}</option>`
+        `<option value="${o.id}"${o.id === currentId ? ' selected' : ''}>${escapeHtml(o.name)}</option>`
     ).join('');
     ownerSelect.dataset.loaded = '1';
 }
@@ -334,7 +329,7 @@ async function loadServices() {
             // 保留默认提示
         }
         cachedServiceList = [];
-        serviceList.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 40px; color: #dc2626;">${escServiceHtml(message)}</td></tr>`;
+        serviceList.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 40px; color: #dc2626;">${escapeHtml(message)}</td></tr>`;
     } catch (error) {
         console.error('Load services error:', error);
         cachedServiceList = [];
@@ -385,13 +380,13 @@ function paintServiceTable(services, fromFilter) {
 
     serviceList.innerHTML = services.map(service => `
         <tr data-service-id="${service.id}">
-            <td>${escServiceHtml(service.projectName || '-')}</td>
-            <td>${escServiceHtml(service.name || '-')}</td>
-            <td>${escServiceHtml(getServiceTypeLabel(service.serviceType))}</td>
-            <td>${escServiceHtml(service.componentName || '-')}</td>
-            <td>${service.servicePort != null ? escServiceHtml(service.servicePort) : '-'}</td>
-            <td>${escServiceHtml(service.gitRepo || '-')}</td>
-            <td>${escServiceHtml(service.ownerName || '-')}</td>
+            <td>${escapeHtml(service.projectName || '-')}</td>
+            <td>${escapeHtml(service.name || '-')}</td>
+            <td>${escapeHtml(getServiceTypeLabel(service.serviceType))}</td>
+            <td>${escapeHtml(service.componentName || '-')}</td>
+            <td>${service.servicePort != null ? escapeHtml(service.servicePort) : '-'}</td>
+            <td>${escapeHtml(service.gitRepo || '-')}</td>
+            <td>${escapeHtml(service.ownerName || '-')}</td>
             <td>${service.status === 1 ? '<span class="status-tag is-on">启用</span>' : '<span class="status-tag is-off">禁用</span>'}</td>
             <td>
                 ${hasPermission('service:manage') ? `<div class="table-actions">

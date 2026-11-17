@@ -22,18 +22,10 @@ async function loadApprovalFlows() {
         renderApprovalList(Array.isArray(approvals) ? approvals : []);
     } catch (error) {
         console.error('Load approvals error:', error);
-        approvalList.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:#dc2626;">加载失败: ${escApprovalHtml(error.message)}</td></tr>`;
+        approvalList.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:#dc2626;">加载失败: ${escapeHtml(error.message)}</td></tr>`;
     }
 }
 window.loadApprovalFlows = loadApprovalFlows;
-
-function escApprovalHtml(value) {
-    return String(value == null ? '' : value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
 
 function renderApprovalList(approvals) {
     const approvalList = document.getElementById('approvalList');
@@ -46,12 +38,12 @@ function renderApprovalList(approvals) {
 
     approvalList.innerHTML = approvals.map(approval => {
         const steps = approval.steps || [];
-        const stepNames = steps.map((s, i) => escApprovalHtml((s.approverName || s.approver || ('步骤' + (s.step || i + 1)))
+        const stepNames = steps.map((s, i) => escapeHtml((s.approverName || s.approver || ('步骤' + (s.step || i + 1)))
             + ((s.approvers || []).length > 1 ? '（任一）' : ''))).join(' → ');
         return `
             <tr>
-                <td>${escApprovalHtml(approval.name)}</td>
-                <td>${escApprovalHtml(approval.description || '-')}</td>
+                <td>${escapeHtml(approval.name)}</td>
+                <td>${escapeHtml(approval.description || '-')}</td>
                 <td title="${stepNames}">${steps.length}${stepNames ? '（' + stepNames + '）' : ''}</td>
                 <td>${approval.status === 1 || approval.status == null
                     ? '<span class="status-tag is-on">启用</span>'
@@ -94,11 +86,11 @@ function buildApprovalApproverListHtml(users, selected) {
         return '<div class="checkbox-list-empty">暂无可选用户</div>';
     }
     return items.map(u => `
-        <label class="checkbox-list-item" data-search="${escApprovalHtml(u.label.toLowerCase())}">
-            <input type="checkbox" class="approval-step-approver" value="${escApprovalHtml(u.username)}"
-                data-real-name="${escApprovalHtml(u.realName)}" onchange="onApprovalApproverChange(this)"
+        <label class="checkbox-list-item" data-search="${escapeHtml(u.label.toLowerCase())}">
+            <input type="checkbox" class="approval-step-approver" value="${escapeHtml(u.username)}"
+                data-real-name="${escapeHtml(u.realName)}" onchange="onApprovalApproverChange(this)"
                 ${selectedSet.has(u.username.toLowerCase()) ? 'checked' : ''}>
-            <span>${escApprovalHtml(u.label)}</span>
+            <span>${escapeHtml(u.label)}</span>
         </label>`).join('');
 }
 
@@ -117,7 +109,7 @@ function buildApprovalStepRowHtml(step, approverListHtml) {
             </div>
             <div style="flex:1;">
                 <label style="font-size:12px;color:#6b7280;">显示名</label>
-                <input type="text" class="approval-step-approver-name" value="${escApprovalHtml(step.approverName || '')}" placeholder="可选">
+                <input type="text" class="approval-step-approver-name" value="${escapeHtml(step.approverName || '')}" placeholder="可选">
             </div>
             <div style="padding-top:22px;">
                 <label style="font-size:12px;white-space:nowrap;">
@@ -280,11 +272,11 @@ async function editApproval(id) {
             <form id="editApprovalForm" style="max-height:75vh;overflow-y:auto;">
                 <div class="form-item">
                     <label>流程名称 *</label>
-                    <input type="text" name="name" value="${escApprovalHtml(flow.name || '')}" required>
+                    <input type="text" name="name" value="${escapeHtml(flow.name || '')}" required>
                 </div>
                 <div class="form-item">
                     <label>描述</label>
-                    <textarea name="description" rows="2">${escApprovalHtml(flow.description || '')}</textarea>
+                    <textarea name="description" rows="2">${escapeHtml(flow.description || '')}</textarea>
                 </div>
                 <div class="form-item">
                     <label>状态</label>
@@ -386,9 +378,9 @@ function renderApprovalRecordsHtml(records) {
         return `
             <tr>
                 <td>第 ${r.currentStep} 步</td>
-                <td>${escApprovalHtml(r.approverName || r.approver || '任意用户')}</td>
+                <td>${escapeHtml(r.approverName || r.approver || '任意用户')}</td>
                 <td>${renderApprovalStatusText(r.status)}</td>
-                <td>${escApprovalHtml(r.comment || '-')}</td>
+                <td>${escapeHtml(r.comment || '-')}</td>
                 <td>${r.approveTime ? new Date(r.approveTime).toLocaleString('zh-CN') : '-'}</td>
                 <td>${actions}</td>
             </tr>
