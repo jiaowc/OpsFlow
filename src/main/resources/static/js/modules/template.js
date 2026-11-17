@@ -19,13 +19,19 @@ const TEMPLATE_K8S_SERVICE_TYPE_OPTIONS = [
     { value: 'LoadBalancer', label: 'LoadBalancer' }
 ];
 
-const DEFAULT_DOCKERFILE_CONTENT = `FROM openjdk:8-jre-slim
+// 新建模版时的起点：优先复制同类型的已有模版（见 showAddPipelineTemplateModal），
+// 这里的骨架只在该类型下一份模版都没有时兜底，不要在这里维护完整的默认内容。
+const TEMPLATE_SKELETONS = {
+    dockerfile: {
+        baseImage: '',
+        content: `FROM <基础镜像>
 WORKDIR /app
-COPY target/*.jar app.jar
+COPY <构建产物> ./
 EXPOSE \${servicePort}
-ENTRYPOINT ["java", "-jar", "app.jar"]`;
-
-const DEFAULT_DEPLOYMENT_CONTENT = `apiVersion: apps/v1
+CMD ["<启动命令>"]`
+    },
+    deployment: {
+        content: `apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: \${serviceName}
@@ -40,103 +46,35 @@ spec:
       labels:
         app: \${serviceName}
     spec:
-      restartPolicy: Always
-      # 全局共享：Harbor 拉镜像凭证（各服务通用）
-      imagePullSecrets:
-      - name: harbor-registry-secret
       containers:
       - name: \${serviceName}
         image: \${image}
         ports:
-        - containerPort: \${servicePort}
-        # ---------- 配置注入（同一模版覆盖：只用公用 / 公用+私有）----------
-        # 公用 ConfigMap/Secret：多项目共用；optional=true 表示集群未创建时不阻断部署
-        # 若要求必须存在，把对应项的 optional 改为 false
-        envFrom:
-        - configMapRef:
-            name: shared-config
-            optional: true
-        - secretRef:
-            name: shared-secret
-            optional: true
-        # 服务私有：有 \${serviceName}-config / \${serviceName}-secret 则自动挂载；没有则忽略
-        - configMapRef:
-            name: \${serviceName}-config
-            optional: true
-        - secretRef:
-            name: \${serviceName}-secret
-            optional: true
-        startupProbe:
-          tcpSocket:
-            port: \${servicePort}
-          initialDelaySeconds: 30
-          periodSeconds: 5
-          timeoutSeconds: 2
-          failureThreshold: 40
-        livenessProbe:
-          tcpSocket:
-            port: \${servicePort}
-          initialDelaySeconds: 30
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 40
-        # readinessProbe:
-        #   httpGet:
-        #     path: /api/health
-        #     port: \${servicePort}
-        #     scheme: HTTP
-        #   initialDelaySeconds: 20
-        #   periodSeconds: 10
-        #   timeoutSeconds: 2
-        #   failureThreshold: 5
-        #   successThreshold: 1
-        resources:
-          requests:
-            cpu: "100m"
-          limits:
-            cpu: "4"
-        volumeMounts:
-        - name: host-localtime
-          mountPath: /etc/localtime
-          readOnly: true
-        - name: host-timezone
-          mountPath: /etc/timezone
-          readOnly: true
-        - name: host-data-logs
-          mountPath: /data/logs
-      volumes:
-      - name: host-localtime
-        hostPath:
-          path: /etc/localtime
-          type: File
-      - name: host-timezone
-        hostPath:
-          path: /etc/timezone
-          type: FileOrCreate
-      - name: host-data-logs
-        hostPath:
-          path: /data/logs
-          type: DirectoryOrCreate`;
-
-const DEFAULT_SERVICE_CONTENT = `apiVersion: v1
+        - containerPort: \${servicePort}`
+    },
+    service: {
+        serviceType: 'ClusterIP',
+        content: `apiVersion: v1
 kind: Service
 metadata:
   name: \${serviceName}-svc
   namespace: \${namespace}
-  labels:
-    app: \${serviceName}-svc
-    monitor: "true"
 spec:
-  # 可选值: ClusterIP / NodePort / LoadBalancer（由模版「服务类型」下拉注入）
   type: \${serviceType}
   selector:
     app: \${serviceName}
   ports:
   - name: http
-    # 暴露端口和容器端口一致
     port: \${servicePort}
-    # Pod 容器端口
-    targetPort: \${servicePort}`;
+    targetPort: \${servicePort}`
+    }
+};
+
+/** 新建时默认以哪份模版为起点：名字以「通用后端」开头的优先，否则取第一份 */
+function pickDefaultTemplateSource(templates) {
+    if (!templates || !templates.length) return null;
+    return templates.find(t => String(t.name || '').startsWith('通用后端')) || templates[0];
+}
 
 async function fetchTemplates(type) {
     const response = await fetch(`/api/pipeline-template/list?type=${encodeURIComponent(type)}`);
@@ -470,9 +408,20 @@ window.buildTemplateVarCheckHtml = buildTemplateVarCheckHtml;
 window.wireTemplateVarChecks = wireTemplateVarChecks;
 window.passTemplateVarChecks = passTemplateVarChecks;
 
-function buildTemplateFormHtml(type, data) {
+function buildTemplateFormHtml(type, data, sources) {
     data = data || {};
-    const commonFields = `
+    // sources 只在新建时传入：可作为起点的同类型模版
+    const sourceField = sources ? `
+        <div class="form-item">
+            <label>基于</label>
+            <select name="templateSource">
+                ${sources.map(t => `<option value="${t.id}" ${data.sourceId === t.id ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}
+                <option value="" ${data.sourceId == null ? 'selected' : ''}>空白模版</option>
+            </select>
+            <small style="color:var(--text-3);">以所选模版的内容为起点，切换会覆盖下面已填写的内容；模版名称和描述不受影响</small>
+        </div>
+    ` : '';
+    const commonFields = sourceField + `
         <div class="form-item">
             <label>模版名称 *</label>
             <input type="text" name="name" value="${escapeHtml(data.name || '')}" placeholder="例如: Java 标准构建" required>
@@ -494,11 +443,11 @@ function buildTemplateFormHtml(type, data) {
         return commonFields + `
             <div class="form-item">
                 <label>基础镜像 *</label>
-                <input type="text" name="baseImage" value="${escapeHtml(data.baseImage || 'openjdk:8-jre-slim')}" placeholder="openjdk:8-jre-slim" required>
+                <input type="text" name="baseImage" value="${escapeHtml(data.baseImage || '')}" placeholder="例如: eclipse-temurin:8-jre" required>
             </div>
             <div class="form-item">
                 <label>Dockerfile 内容 *</label>
-                <textarea name="content" rows="14" required placeholder="FROM ...">${escapeHtml(data.content || DEFAULT_DOCKERFILE_CONTENT)}</textarea>
+                <textarea name="content" rows="14" required placeholder="FROM ...">${escapeHtml(data.content || '')}</textarea>
                 <small style="color:var(--text-3);">支持变量：\${servicePort}（取自服务管理「对外端口」）、\${serviceName} 等</small>
                 ${buildTemplateVarCheckHtml({ type: 'dockerfile', textareaName: 'content' })}
             </div>
@@ -509,7 +458,7 @@ function buildTemplateFormHtml(type, data) {
         return commonFields + `
             <div class="form-item">
                 <label>Deployment YAML *</label>
-                <textarea name="content" rows="16" required placeholder="apiVersion: apps/v1...">${escapeHtml(data.content || DEFAULT_DEPLOYMENT_CONTENT)}</textarea>
+                <textarea name="content" rows="16" required placeholder="apiVersion: apps/v1...">${escapeHtml(data.content || '')}</textarea>
                 <small style="color:var(--text-3);">支持变量：\${deployment}、\${namespace}、\${serviceName}、\${image}、\${servicePort} 等。在步骤管理中由「渲染模版」步骤关联引用。</small>
                 ${buildTemplateVarCheckHtml({ type: 'deployment', textareaName: 'content' })}
             </div>
@@ -531,7 +480,7 @@ function buildTemplateFormHtml(type, data) {
         </div>
         <div class="form-item">
             <label>Service YAML *</label>
-            <textarea name="content" rows="14" required placeholder="apiVersion: v1...">${escapeHtml(data.content || DEFAULT_SERVICE_CONTENT)}</textarea>
+            <textarea name="content" rows="14" required placeholder="apiVersion: v1...">${escapeHtml(data.content || '')}</textarea>
             <small style="color:var(--text-3);">支持变量：\${serviceName}、\${namespace}、\${servicePort}、\${serviceType} 等。在步骤管理中由「渲染模版」步骤关联引用。</small>
             ${buildTemplateVarCheckHtml({ type: 'service', textareaName: 'content' })}
         </div>
@@ -592,9 +541,21 @@ async function showAddPipelineTemplateModal(type) {
         return;
     }
     const label = TEMPLATE_TYPE_LABELS[type] || type;
+    let sources = [];
+    try {
+        sources = await fetchTemplates(type);
+    } catch (e) {
+        // 取不到已有模版时照常打开，只是没有可复制的起点
+        console.warn('加载已有模版失败，使用空白骨架', e);
+    }
+    const skeleton = TEMPLATE_SKELETONS[type] || {};
+    const defaultSource = pickDefaultTemplateSource(sources);
+    const seed = defaultSource
+        ? { sourceId: defaultSource.id, content: defaultSource.content, baseImage: defaultSource.baseImage, serviceType: defaultSource.serviceType }
+        : Object.assign({ sourceId: null }, skeleton);
     const content = `
         <form id="createPipelineTemplateForm" class="tpl-form">
-            ${buildTemplateFormHtml(type)}
+            ${buildTemplateFormHtml(type, seed, sources)}
         </form>
     `;
     window.showModal(`添加 ${label} 模版`, content, async () => {
@@ -620,9 +581,30 @@ async function showAddPipelineTemplateModal(type) {
             notify('创建失败: ' + e.message);
         }
     });
-    wireTemplateVarChecks(document.getElementById('createPipelineTemplateForm'));
+    const form = document.getElementById('createPipelineTemplateForm');
+    wireTemplateVarChecks(form);
+    wireTemplateSourceSelect(form, sources, skeleton);
 }
 window.showAddPipelineTemplateModal = showAddPipelineTemplateModal;
+
+/** 切换「基于」时把所选模版（或空白骨架）的内容填进表单 */
+function wireTemplateSourceSelect(form, sources, skeleton) {
+    const select = form && form.querySelector('[name="templateSource"]');
+    if (!select) return;
+    select.addEventListener('change', () => {
+        const source = sources.find(t => String(t.id) === select.value) || skeleton;
+        const fill = (name, value) => {
+            const field = form.querySelector(`[name="${name}"]`);
+            if (!field) return;
+            field.value = value == null ? '' : value;
+            // 触发变量检查等依赖 input 事件的逻辑
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        fill('content', source.content);
+        fill('baseImage', source.baseImage);
+        fill('serviceType', source.serviceType);
+    });
+}
 
 async function editPipelineTemplate(type, id) {
     try {
