@@ -6,7 +6,8 @@
 #   # 或：docker compose up -d --build
 #
 # 访问：http://localhost:${OPSFLOW_PORT:-8080}
-# 默认账号：admin / 123456（首次登录后请修改）
+# 初始账号：admin / admin（首次登录会被要求修改密码）
+# 数据库表结构和默认数据由应用启动时自动建立（Flyway），MySQL 容器只提供一个空库
 #
 # 停止：./scripts/deploy/compose-down.sh
 # 清空库重建：docker compose down -v && docker compose up -d --build
@@ -32,7 +33,6 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - opsflow-mysql:/var/lib/mysql
-      - ./scripts/database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-opsflow}"]
       interval: 5s

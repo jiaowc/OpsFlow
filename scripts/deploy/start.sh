@@ -70,10 +70,8 @@ fi
 
 mkdir -p "$(dirname "${LOG_FILE}")"
 
-if [ "${OPSFLOW_RUN_MIGRATIONS:-0}" = "1" ] && [ -f "${PROJECT_DIR}/scripts/database/run_migrations.sh" ]; then
-    print_info "执行数据库迁移 (OPSFLOW_RUN_MIGRATIONS=1)..."
-    bash "${PROJECT_DIR}/scripts/database/run_migrations.sh" || print_warning "数据库迁移失败，请手动检查"
-fi
+# 数据库迁移由应用启动时自动执行（Flyway）。关闭自动迁移（OPSFLOW_DB_MIGRATE=false）的环境，
+# 请在启动前手动执行 scripts/database/migrate.sh
 
 if [ -f "${LOG_FILE}" ]; then
     mv "${LOG_FILE}" "${LOG_FILE}.$(date +%Y%m%d_%H%M%S).bak" 2>/dev/null || true

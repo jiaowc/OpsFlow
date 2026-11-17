@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
+# 【已归档】引入 Flyway 之前的增量迁移，只用于把很早的旧库追平到 Flyway 基线，之后不再新增脚本。
+# 什么时候需要：应用启动或 migrate.sh 报「这个数据库的结构落后于迁移基线」时，执行一次本脚本，然后重新启动。
+# 新的表结构/默认数据变更请加到 src/main/resources/db/migration/（V3 起）。
+#
 # 增量数据库迁移（可重复执行，已存在的变更会跳过）
 # 使用场景：拉取新代码后有数据库变更时手动执行，不必每次重启都跑
 #
-#   bash scripts/database/run_migrations.sh              # 默认环境（application.yml）
-#   bash scripts/database/run_migrations.sh --profile=dev  # dev 环境（application-dev.yml）
+#   bash scripts/database/legacy/run_migrations.sh              # 默认环境（application.yml）
+#   bash scripts/database/legacy/run_migrations.sh --profile=dev  # dev 环境（application-dev.yml）
 #   连接解析规则见 scripts/database/db_env.sh
-#   OPSFLOW_PROFILE=dev bash scripts/database/run_migrations.sh
+#   OPSFLOW_PROFILE=dev bash scripts/database/legacy/run_migrations.sh
 #
 # 也可直接覆盖（优先级最高）：
-#   DB_HOST=172.16.50.183 DB_USER=root DB_PASS='xxx' DB_NAME=opsflow bash scripts/database/run_migrations.sh
+#   DB_HOST=172.16.50.183 DB_USER=root DB_PASS='xxx' DB_NAME=opsflow bash scripts/database/legacy/run_migrations.sh
 
 set -e
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-MIGRATIONS_DIR="${PROJECT_DIR}/scripts/database/migrations"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+MIGRATIONS_DIR="${PROJECT_DIR}/scripts/database/legacy/migrations"
 PROFILE="${OPSFLOW_PROFILE:-}"
 
 for arg in "$@"; do
