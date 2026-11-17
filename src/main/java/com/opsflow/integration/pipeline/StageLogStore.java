@@ -171,7 +171,8 @@ public class StageLogStore {
                 while (dataEnd - back > dataStart && back < 3 && (buf[dataEnd - 1 - back] & 0xC0) == 0x80) {
                     back++;
                 }
-                if (back > 0 && dataEnd - back > dataStart) {
+                // back 为 0 时最后一个字节本身可能就是多字节字符的首字节，同样要退回去
+                if (dataEnd - back > dataStart) {
                     int lead = buf[dataEnd - 1 - back] & 0xFF;
                     int need;
                     if (lead >= 0xF0) {
