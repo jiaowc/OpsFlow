@@ -248,27 +248,67 @@ class PipelineTemplateVariableCheckerTest {
     }
 
     /**
-     * 页面上「添加模版」预填的默认内容必须能通过检查。
+     * 页面上「添加模版」预填的内容必须能通过检查。
+     * 预填内容现在来自两处：库里的默认模版（Flyway 基线 V2），以及一份模版都没有时 template.js 里的兜底骨架。
      */
     @Test
-    void builtInDefaultTemplatesPass() throws Exception {
-        String js = readResource("/static/js/modules/template.js");
-        Map<String, String> defaults = new HashMap<>();
-        defaults.put("dockerfile", "DEFAULT_DOCKERFILE_CONTENT");
-        defaults.put("deployment", "DEFAULT_DEPLOYMENT_CONTENT");
-        defaults.put("service", "DEFAULT_SERVICE_CONTENT");
+    void defaultTemplatesShippedInBaselinePass() throws Exception {
+        String sql = readResource("/db/migration/V2__default_data.sql");
+        // 列顺序：id, name, type, description, content, ...
+        Matcher rows = Pattern.compile("(?m)^INSERT INTO `pipeline_template` \\([^)]*\\) VALUES \\((\\d+),"
+                + "'((?:[^'\\\\]|\\\\.)*)','(\\w+)','((?:[^'\\\\]|\\\\.)*)','((?:[^'\\\\]|\\\\.)*)'").matcher(sql);
+        int count = 0;
+        while (rows.find()) {
+            count++;
+            String name = rows.group(2);
+            String type = rows.group(3);
+            String content = unescapeMysqlString(rows.group(5));
 
-        for (Map.Entry<String, String> entry : defaults.entrySet()) {
-            Matcher matcher = Pattern.compile("const " + entry.getValue() + " = `([^`]*)`").matcher(js);
-            assertTrue(matcher.find(), "template.js 中未找到 " + entry.getValue());
+            TemplateVariableCheckDTO result = PipelineTemplateVariableChecker.check(type, content);
+
+            assertTrue(result.getIssues().isEmpty(), "默认模版「" + name + "」存在变量问题: " + result.getIssues());
+            assertFalse(result.getUsed().isEmpty(), "默认模版「" + name + "」应至少用到一个平台变量");
+        }
+        assertEquals(6, count, "基线里应有前后端各一套 Dockerfile / Deployment / Service 共 6 份默认模版");
+    }
+
+    @Test
+    void fallbackSkeletonsInTemplateJsPass() throws Exception {
+        String js = readResource("/static/js/modules/template.js");
+        int start = js.indexOf("const TEMPLATE_SKELETONS = {");
+        assertTrue(start >= 0, "template.js 中未找到 TEMPLATE_SKELETONS");
+        String block = js.substring(start, js.indexOf("\n};", start));
+        for (String type : Arrays.asList("dockerfile", "deployment", "service")) {
+            Matcher matcher = Pattern.compile("(?s)\\b" + type + ": \\{.*?content: `([^`]*)`").matcher(block);
+            assertTrue(matcher.find(), "TEMPLATE_SKELETONS 中未找到 " + type + " 的骨架");
             String content = matcher.group(1).replace("\\$", "$");
 
-            TemplateVariableCheckDTO result = PipelineTemplateVariableChecker.check(entry.getKey(), content);
+            TemplateVariableCheckDTO result = PipelineTemplateVariableChecker.check(type, content);
 
-            List<TemplateVariableCheckDTO.Issue> issues = result.getIssues();
-            assertTrue(issues.isEmpty(), entry.getValue() + " 存在变量问题: " + issues);
-            assertFalse(result.getUsed().isEmpty(), entry.getValue() + " 应至少用到一个平台变量");
+            assertTrue(result.getIssues().isEmpty(), type + " 骨架存在变量问题: " + result.getIssues());
+            assertFalse(result.getUsed().isEmpty(), type + " 骨架应至少用到一个平台变量");
         }
+    }
+
+    /** 还原 mysqldump 写出的字符串字面量里的转义 */
+    private static String unescapeMysqlString(String literal) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < literal.length(); i++) {
+            char c = literal.charAt(i);
+            if (c != '\\' || i + 1 >= literal.length()) {
+                out.append(c);
+                continue;
+            }
+            char next = literal.charAt(++i);
+            switch (next) {
+                case 'n': out.append('\n'); break;
+                case 'r': out.append('\r'); break;
+                case 't': out.append('\t'); break;
+                case '0': out.append('\0'); break;
+                default: out.append(next);
+            }
+        }
+        return out.toString();
     }
 
     private static String readResource(String path) throws Exception {
