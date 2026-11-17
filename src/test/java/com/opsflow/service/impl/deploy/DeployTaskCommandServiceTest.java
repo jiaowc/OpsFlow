@@ -265,6 +265,21 @@ class DeployTaskCommandServiceTest {
         verify(deployTaskMapper, never()).insert(any());
     }
 
+    @Test
+    void createRejectsMalformedModuleAddressBeforeTouchingHarborOrDatabase() {
+        doThrow(new BusinessException("上线模块格式无效: order:1.0")).when(imageResolver).assertValidModules(anyList());
+        assertEquals("上线模块格式无效: order:1.0", createError(validRequest()));
+        verify(imageResolver, never()).normalizeDeployModules(anyList());
+        verify(deployImageVerifyService, never()).assertImagesExist(anyList());
+        verify(deployTaskMapper, never()).insert(any());
+    }
+
+    @Test
+    void createValidatesTheAddressesAsSubmitted() {
+        service.create(validRequest(), CREATOR);
+        verify(imageResolver).assertValidModules(Collections.singletonList(IMAGE));
+    }
+
     // ---------- 创建：成功路径 ----------
 
     @Test
@@ -397,6 +412,45 @@ class DeployTaskCommandServiceTest {
         List<DeployModuleItemDTO> stored = DeployModuleJson.parseItems(task.getDeployModules());
         assertEquals("harbor.example.com/prod/order:1.3.0", stored.get(0).getImage(), "入库的是规范化后的完整地址");
         assertEquals("bob", stored.get(0).getOwnerName());
+    }
+
+    @Test
+    void updateValidatesOnlyTheOperatorsOwnModules() {
+        existingTask();
+        DeployModuleItemDTO mine = new DeployModuleItemDTO();
+        mine.setImage("prod/order:1.3.0");
+        mine.setOwnerName("bob");
+        mine.setOwnerId(8L);
+        DeployModuleItemDTO legacyOfSomeoneElse = new DeployModuleItemDTO();
+        legacyOfSomeoneElse.setImage("legacy-without-tag");
+        legacyOfSomeoneElse.setOwnerName("alice");
+        legacyOfSomeoneElse.setOwnerId(7L);
+        when(deployTaskEditService.mergeModulesByOwnership(any(), any(), any(), any(), any()))
+                .thenReturn(Arrays.asList(legacyOfSomeoneElse, mine));
+        when(imageResolver.normalizeDeployModules(anyList())).thenAnswer(inv -> inv.getArgument(0));
+        DeployTaskDTO r = new DeployTaskDTO();
+        r.setDeployModules(Collections.singletonList("prod/order:1.3.0"));
+
+        service.update(5L, r, OTHER);
+
+        verify(imageResolver).assertValidModules(Collections.singletonList("prod/order:1.3.0"));
+    }
+
+    @Test
+    void updateRejectsMalformedModuleAddressWithoutSaving() {
+        existingTask();
+        DeployModuleItemDTO mine = new DeployModuleItemDTO();
+        mine.setImage("order");
+        mine.setOwnerName("bob");
+        when(deployTaskEditService.mergeModulesByOwnership(any(), any(), any(), any(), any()))
+                .thenReturn(Collections.singletonList(mine));
+        doThrow(new BusinessException("上线模块格式无效: order")).when(imageResolver).assertValidModules(anyList());
+        DeployTaskDTO r = new DeployTaskDTO();
+        r.setDeployModules(Collections.singletonList("order"));
+
+        assertEquals("上线模块格式无效: order", assertThrows(BusinessException.class,
+                () -> service.update(5L, r, OTHER)).getMessage());
+        verify(deployTaskMapper, never()).updateById(any());
     }
 
     // ---------- 删除 ----------

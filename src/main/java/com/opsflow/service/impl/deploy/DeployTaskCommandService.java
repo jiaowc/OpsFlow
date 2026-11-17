@@ -112,6 +112,7 @@ public class DeployTaskCommandService {
      *   <li>审批流 ID 非空且存在、未禁用</li>
      *   <li>CD 流水线模版 ID 非空且存在、启用、类型为 CD（与 CD 服务侧二次校验形成双保险）</li>
      *   <li>通知渠道至少一种（站内信 / 飞书）</li>
+     *   <li>上线模块地址格式为 {@code [registry/]project/service:version}（与 CD 建 Job 的检查一致）</li>
      * </ol>
      * </p>
      * <p>
@@ -211,6 +212,8 @@ public class DeployTaskCommandService {
             throw new BusinessException("请至少选择一种通知方式（站内信 / 飞书）");
         }
 
+        // 与 CD 建 Job 时相同的格式检查，提前到创建时报错
+        deployModuleImageResolver.assertValidModules(request.getDeployModules());
         List<String> normalizedModules = deployModuleImageResolver.normalizeDeployModules(request.getDeployModules());
         deployImageVerifyService.assertImagesExist(normalizedModules);
         Long userId = operator.getUserId();
@@ -314,6 +317,11 @@ public class DeployTaskCommandService {
         if (request.getDeployModuleItems() != null || request.getDeployModules() != null) {
             List<DeployModuleItemDTO> merged = deployTaskEditService.mergeModulesByOwnership(
                     task, request.getDeployModuleItems(), request.getDeployModules(), username, userId);
+            // 只检查当前操作人自己的模块：别人以前录入的历史数据不应该挡住这次保存
+            deployModuleImageResolver.assertValidModules(merged.stream()
+                    .filter(item -> isOwnedBy(item, username, userId))
+                    .map(DeployModuleItemDTO::getImage)
+                    .collect(Collectors.toList()));
             List<String> normalized = deployModuleImageResolver.normalizeDeployModules(DeployModuleJson.toImageList(merged));
             deployImageVerifyService.assertImagesExist(normalized);
             for (int i = 0; i < merged.size(); i++) {
@@ -360,6 +368,14 @@ public class DeployTaskCommandService {
         }
         approvalRecordMapper.delete(new QueryWrapper<ApprovalRecord>().eq("task_id", id));
         return deployTaskMapper.deleteById(id) > 0;
+    }
+
+    /** 模块是否归当前操作人：按用户 ID 判断，没有 ID 时按用户名 */
+    private static boolean isOwnedBy(DeployModuleItemDTO item, String username, Long userId) {
+        if (item.getOwnerId() != null && userId != null) {
+            return item.getOwnerId().equals(userId);
+        }
+        return username != null && username.equals(item.getOwnerName());
     }
 
     /**

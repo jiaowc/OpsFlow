@@ -103,6 +103,28 @@ public class DeployModuleImageResolver {
     }
 
     /**
+     * 录入时按 CD 建 Job 的严格规则（{@link #parseModule}）预先校验模块地址。
+     * <p>
+     * 规范化（{@link #normalizeDeployModules}）本身很宽容，格式不对的地址也能存进任务；
+     * 以前要等审批通过、CD 建 Job 时才报错，任务直接变成失败。这里把同一套检查提前到创建/编辑时，
+     * 让填写的人当场看到问题。空白项不检查（规范化时会被丢弃）。
+     * </p>
+     *
+     * @param modules 用户提交的模块地址，完整或相对路径均可
+     * @throws BusinessException 任一地址不是 {@code [registry/]project/service:version} 形式
+     */
+    public void assertValidModules(List<String> modules) {
+        if (modules == null) {
+            return;
+        }
+        for (String module : modules) {
+            if (StringUtils.hasText(module)) {
+                parseModule(module);
+            }
+        }
+    }
+
+    /**
      * 按服务标识查服务：先按 code 精确匹配，找不到再按 name 兜底。
      *
      * @param code 服务标识，通常来自镜像路径最后一段

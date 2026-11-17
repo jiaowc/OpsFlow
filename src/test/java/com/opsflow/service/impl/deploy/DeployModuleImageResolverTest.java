@@ -126,4 +126,31 @@ class DeployModuleImageResolverTest {
         assertNull(resolver.findServiceByCode(null));
         verify(serviceMapper, never()).selectOne(any(Wrapper.class));
     }
+
+    // ---------- 录入时的严格校验 ----------
+
+    @Test
+    void validModuleAddressesPassStrictCheck() {
+        resolver.assertValidModules(Arrays.asList("prod/order:1.2.0", "harbor.example.com/prod/order:1.2.0", "  ", ""));
+        resolver.assertValidModules(null);
+        resolver.assertValidModules(Collections.emptyList());
+    }
+
+    @Test
+    void malformedModuleAddressIsReportedWithTheOffendingValue() {
+        for (String bad : new String[]{"order:1.0", "prod/order", "order", "prod/order:"}) {
+            com.opsflow.common.exception.BusinessException e = org.junit.jupiter.api.Assertions.assertThrows(
+                    com.opsflow.common.exception.BusinessException.class,
+                    () -> resolver.assertValidModules(Arrays.asList("prod/ok:1.0", bad)), bad);
+            assertEquals("上线模块格式无效: " + bad
+                    + "，期望 registry/project/service:version 或 project/service:version", e.getMessage());
+        }
+    }
+
+    @Test
+    void lenientNormalizationStillAcceptsWhatStrictCheckRejects() {
+        // 记录两套规则的差异：这正是要在录入时先做严格校验的原因
+        assertEquals(Collections.singletonList("harbor.example.com/order:1.0"),
+                normalize("harbor.example.com", "order:1.0"));
+    }
 }
