@@ -30,8 +30,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -102,6 +105,93 @@ public class DeployTaskViewAssembler {
      * @return 前端展示用 DTO
      */
     public DeployTaskDTO toDTO(DeployTask task, DeployTaskOperator operator) {
+        return toDTO(task, operator, new Related());
+    }
+
+    /**
+     * 批量组装（列表用）：先把所有任务引用到的项目、环境、审批流、流水线模版、集群、关联 Job 一次性查出来，
+     * 再逐个组装，避免每个任务各查一遍。结果与逐个调用 {@link #toDTO(DeployTask, DeployTaskOperator)} 相同。
+     * <p>
+     * 审批记录和「已在非生产验证的版本」仍按任务查询（各有自己的业务逻辑，不在这里展开）。
+     * </p>
+     */
+    public List<DeployTaskDTO> toDTOs(List<DeployTask> tasks, DeployTaskOperator operator) {
+        if (tasks == null || tasks.isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
+        Related related = preload(tasks);
+        return tasks.stream().map(task -> toDTO(task, operator, related)).collect(Collectors.toList());
+    }
+
+    private Related preload(List<DeployTask> tasks) {
+        Related related = new Related();
+        Set<Long> projectIds = new LinkedHashSet<>();
+        Set<Long> envIds = new LinkedHashSet<>();
+        Set<Long> flowIds = new LinkedHashSet<>();
+        Set<Long> pipelineIds = new LinkedHashSet<>();
+        Set<Long> clusterIds = new LinkedHashSet<>();
+        Set<Long> taskIds = new LinkedHashSet<>();
+        for (DeployTask task : tasks) {
+            addIfPresent(projectIds, task.getProjectId());
+            addIfPresent(flowIds, task.getApprovalFlowId());
+            addIfPresent(pipelineIds, task.getPipelineTemplateId());
+            addIfPresent(clusterIds, task.getClusterId());
+            addIfPresent(taskIds, task.getId());
+            envIds.addAll(parseEnvIdsQuietly(task.getDeployEnvs()));
+        }
+        // 查不到的 ID 也记下来（值为 null），后面不再单独去查
+        if (!projectIds.isEmpty()) {
+            projectIds.forEach(id -> related.projects.put(id, null));
+            projectMapper.selectBatchIds(projectIds).forEach(p -> related.projects.put(p.getId(), p));
+        }
+        if (!envIds.isEmpty()) {
+            envIds.forEach(id -> related.envs.put(id, null));
+            envMapper.selectBatchIds(envIds).forEach(e -> related.envs.put(e.getId(), e));
+        }
+        if (!flowIds.isEmpty()) {
+            flowIds.forEach(id -> related.flows.put(id, null));
+            approvalFlowMapper.selectBatchIds(flowIds).forEach(f -> related.flows.put(f.getId(), f));
+        }
+        if (!pipelineIds.isEmpty()) {
+            pipelineIds.forEach(id -> related.pipelines.put(id, null));
+            pipelineMapper.selectBatchIds(pipelineIds).forEach(pl -> related.pipelines.put(pl.getId(), pl));
+        }
+        if (!clusterIds.isEmpty()) {
+            clusterIds.forEach(id -> related.clusters.put(id, null));
+            clusterMapper.selectBatchIds(clusterIds).forEach(c -> related.clusters.put(c.getId(), c));
+        }
+        if (!taskIds.isEmpty()) {
+            taskIds.forEach(id -> related.jobIdsByTask.put(id, new java.util.ArrayList<>()));
+            List<BuildJob> jobs = buildJobMapper.selectList(new QueryWrapper<BuildJob>()
+                    .in("deploy_task_id", taskIds).orderByAsc("id"));
+            for (BuildJob job : jobs) {
+                List<Long> ids = related.jobIdsByTask.get(job.getDeployTaskId());
+                if (ids != null) {
+                    ids.add(job.getId());
+                }
+            }
+        }
+        return related;
+    }
+
+    private static void addIfPresent(Set<Long> ids, Long id) {
+        if (id != null) {
+            ids.add(id);
+        }
+    }
+
+    private List<Long> parseEnvIdsQuietly(String json) {
+        if (!StringUtils.hasText(json)) {
+            return java.util.Collections.emptyList();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<Long>>() {});
+        } catch (Exception e) {
+            return java.util.Collections.emptyList();
+        }
+    }
+
+    private DeployTaskDTO toDTO(DeployTask task, DeployTaskOperator operator, Related related) {
         String currentUsername = operator.getUsername();
         Long userId = operator.getUserId();
         boolean hasCreate = operator.isCanCreate();
@@ -111,7 +201,7 @@ public class DeployTaskViewAssembler {
         DeployTaskDTO dto = new DeployTaskDTO();
         BeanUtils.copyProperties(task, dto, "deployModules", "deployEnvs", "notifyChannels");
         if (task.getProjectId() != null) {
-            com.opsflow.dao.model.Project project = projectMapper.selectById(task.getProjectId());
+            com.opsflow.dao.model.Project project = related.project(task.getProjectId());
             dto.setProjectName(project != null ? project.getName() : null);
         }
 
@@ -130,7 +220,7 @@ public class DeployTaskViewAssembler {
                 }
                 dto.setDeployModuleItems(items);
                 dto.setDeployModules(images);
-                dto.setDeployModuleDetails(buildDeployModuleDetails(items));
+                dto.setDeployModuleDetails(buildDeployModuleDetails(items, related));
             }
         } catch (Exception ignored) {
         }
@@ -152,7 +242,7 @@ public class DeployTaskViewAssembler {
                 dto.setDeployEnvIds(envIds);
                 List<String> envNames = new java.util.ArrayList<>();
                 for (Long envId : envIds) {
-                    Env env = envMapper.selectById(envId);
+                    Env env = related.env(envId);
                     if (env != null) {
                         envNames.add(env.getName());
                     }
@@ -163,24 +253,23 @@ public class DeployTaskViewAssembler {
         }
 
         if (task.getApprovalFlowId() != null) {
-            ApprovalFlow flow = approvalFlowMapper.selectById(task.getApprovalFlowId());
+            ApprovalFlow flow = related.flow(task.getApprovalFlowId());
             if (flow != null) {
                 dto.setApprovalFlowName(flow.getName());
             }
         }
         if (task.getPipelineTemplateId() != null) {
-            Pipeline pipeline = pipelineMapper.selectById(task.getPipelineTemplateId());
+            Pipeline pipeline = related.pipeline(task.getPipelineTemplateId());
             if (pipeline != null) {
                 dto.setPipelineTemplateName(pipeline.getName());
             }
         }
-        List<BuildJob> linkedJobs = buildJobMapper.selectList(
-                new QueryWrapper<BuildJob>().eq("deploy_task_id", task.getId()).orderByAsc("id"));
-        if (linkedJobs != null && !linkedJobs.isEmpty()) {
-            dto.setBuildJobIds(linkedJobs.stream().map(BuildJob::getId).collect(Collectors.toList()));
+        List<Long> linkedJobIds = related.buildJobIds(task.getId());
+        if (linkedJobIds != null && !linkedJobIds.isEmpty()) {
+            dto.setBuildJobIds(linkedJobIds);
         }
         if (task.getClusterId() != null) {
-            Cluster cluster = clusterMapper.selectById(task.getClusterId());
+            Cluster cluster = related.cluster(task.getClusterId());
             if (cluster != null) {
                 dto.setClusterName(cluster.getName());
             }
@@ -211,7 +300,7 @@ public class DeployTaskViewAssembler {
      * @param modules 经 {@link DeployModuleImageResolver#normalizeDeployModules} 处理后的完整镜像列表
      * @return 与 modules 顺序一致的详情列表；modules 为 null 时返回空列表
      */
-    private List<DeployModuleDetailDTO> buildDeployModuleDetails(List<DeployModuleItemDTO> items) {
+    private List<DeployModuleDetailDTO> buildDeployModuleDetails(List<DeployModuleItemDTO> items, Related related) {
         List<DeployModuleDetailDTO> details = new java.util.ArrayList<>();
         if (items == null) {
             return details;
@@ -228,7 +317,7 @@ public class DeployTaskViewAssembler {
             String serviceCode = deployModuleImageResolver.extractServiceCode(module);
             detail.setServiceCode(serviceCode);
             if (StringUtils.hasText(serviceCode)) {
-                com.opsflow.dao.model.Service service = deployModuleImageResolver.findServiceByCode(serviceCode);
+                com.opsflow.dao.model.Service service = related.service(serviceCode);
                 if (service != null) {
                     detail.setServiceName(service.getName());
                     detail.setServiceCode(service.getCode() != null ? service.getCode() : serviceCode);
@@ -244,5 +333,73 @@ public class DeployTaskViewAssembler {
             details.add(detail);
         }
         return details;
+    }
+
+    /**
+     * 一次组装过程中用到的关联数据。已经查过的（包括查不到的）不再重复查询；
+     * 列表场景由 {@link #preload} 预先批量填充，单个任务场景按需逐个查。
+     */
+    private final class Related {
+        private final Map<Long, com.opsflow.dao.model.Project> projects = new HashMap<>();
+        private final Map<Long, Env> envs = new HashMap<>();
+        private final Map<Long, ApprovalFlow> flows = new HashMap<>();
+        private final Map<Long, Pipeline> pipelines = new HashMap<>();
+        private final Map<Long, Cluster> clusters = new HashMap<>();
+        private final Map<Long, List<Long>> jobIdsByTask = new HashMap<>();
+        private final Map<String, com.opsflow.dao.model.Service> services = new HashMap<>();
+
+        com.opsflow.dao.model.Project project(Long id) {
+            if (!projects.containsKey(id)) {
+                projects.put(id, projectMapper.selectById(id));
+            }
+            return projects.get(id);
+        }
+
+        Env env(Long id) {
+            if (!envs.containsKey(id)) {
+                envs.put(id, envMapper.selectById(id));
+            }
+            return envs.get(id);
+        }
+
+        ApprovalFlow flow(Long id) {
+            if (!flows.containsKey(id)) {
+                flows.put(id, approvalFlowMapper.selectById(id));
+            }
+            return flows.get(id);
+        }
+
+        Pipeline pipeline(Long id) {
+            if (!pipelines.containsKey(id)) {
+                pipelines.put(id, pipelineMapper.selectById(id));
+            }
+            return pipelines.get(id);
+        }
+
+        Cluster cluster(Long id) {
+            if (!clusters.containsKey(id)) {
+                clusters.put(id, clusterMapper.selectById(id));
+            }
+            return clusters.get(id);
+        }
+
+        List<Long> buildJobIds(Long taskId) {
+            if (!jobIdsByTask.containsKey(taskId)) {
+                List<BuildJob> jobs = buildJobMapper.selectList(
+                        new QueryWrapper<BuildJob>().eq("deploy_task_id", taskId).orderByAsc("id"));
+                jobIdsByTask.put(taskId, jobs == null ? new java.util.ArrayList<>()
+                        : jobs.stream().map(BuildJob::getId).collect(Collectors.toList()));
+            }
+            return jobIdsByTask.get(taskId);
+        }
+
+        /** 同一个服务标识在多个任务、多个模块里反复出现，只查一次 */
+        com.opsflow.dao.model.Service service(String code) {
+            String key = code.trim();
+            if (!services.containsKey(key)) {
+                services.put(key, deployModuleImageResolver.findServiceByCode(code));
+            }
+            return services.get(key);
+        }
     }
 }

@@ -196,4 +196,127 @@ class DeployTaskViewAssemblerTest {
         assertNull(dto.getDeployEnvIds());
         verify(approvalService).listByTask(5L, "alice");
     }
+
+    // ---------- 批量组装（列表） ----------
+
+    private static DeployTask taskInProject(long id, long projectId, long clusterId, String envs) throws Exception {
+        DeployTask task = task();
+        task.setId(id);
+        task.setProjectId(projectId);
+        task.setClusterId(clusterId);
+        task.setApprovalFlowId(3L);
+        task.setPipelineTemplateId(4L);
+        task.setDeployEnvs(envs);
+        return task;
+    }
+
+    private void givenRelatedData() {
+        Project p1 = new Project();
+        p1.setId(1L);
+        p1.setName("电商");
+        Project p2 = new Project();
+        p2.setId(2L);
+        p2.setName("支付");
+        Cluster cluster = new Cluster();
+        cluster.setId(2L);
+        cluster.setName("prod-cluster");
+        ApprovalFlow flow = new ApprovalFlow();
+        flow.setId(3L);
+        flow.setName("生产审批流");
+        Pipeline pipeline = new Pipeline();
+        pipeline.setId(4L);
+        pipeline.setName("通用 CD");
+        Env env = new Env();
+        env.setId(9L);
+        env.setName("prod");
+        BuildJob j1 = new BuildJob();
+        j1.setId(31L);
+        j1.setDeployTaskId(5L);
+        BuildJob j2 = new BuildJob();
+        j2.setId(32L);
+        j2.setDeployTaskId(6L);
+        BuildJob j3 = new BuildJob();
+        j3.setId(33L);
+        j3.setDeployTaskId(5L);
+        // 批量接口
+        when(projectMapper.selectBatchIds(any())).thenReturn(Arrays.asList(p1, p2));
+        when(clusterMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(cluster));
+        when(approvalFlowMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(flow));
+        when(pipelineMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(pipeline));
+        when(envMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(env));
+        when(buildJobMapper.selectList(any(Wrapper.class))).thenReturn(Arrays.asList(j1, j2, j3));
+        // 逐条接口（单个组装时用），返回同样的数据
+        when(projectMapper.selectById(1L)).thenReturn(p1);
+        when(projectMapper.selectById(2L)).thenReturn(p2);
+        when(clusterMapper.selectById(2L)).thenReturn(cluster);
+        when(approvalFlowMapper.selectById(3L)).thenReturn(flow);
+        when(pipelineMapper.selectById(4L)).thenReturn(pipeline);
+        when(envMapper.selectById(9L)).thenReturn(env);
+    }
+
+    @Test
+    void batchLoadsRelatedDataOnceForTheWholeList() throws Exception {
+        givenRelatedData();
+        java.util.List<DeployTask> tasks = Arrays.asList(
+                taskInProject(5L, 1L, 2L, "[9,10]"), taskInProject(6L, 2L, 2L, "[9]"), taskInProject(7L, 1L, 2L, null));
+
+        java.util.List<DeployTaskDTO> dtos = assembler.toDTOs(tasks, OPERATOR);
+
+        assertEquals(3, dtos.size());
+        assertEquals("电商", dtos.get(0).getProjectName());
+        assertEquals("支付", dtos.get(1).getProjectName());
+        assertEquals("prod-cluster", dtos.get(2).getClusterName());
+        assertEquals("生产审批流", dtos.get(1).getApprovalFlowName());
+        assertEquals("通用 CD", dtos.get(1).getPipelineTemplateName());
+        assertEquals(Collections.singletonList("prod"), dtos.get(0).getDeployEnvNames(), "环境 10 不存在，不出现在名称里");
+        assertEquals(Arrays.asList(31L, 33L), dtos.get(0).getBuildJobIds(), "关联 Job 按任务分组、保持 id 顺序");
+        assertEquals(Collections.singletonList(32L), dtos.get(1).getBuildJobIds());
+        assertNull(dtos.get(2).getBuildJobIds(), "没有关联 Job 的任务保持为 null");
+
+        // 每类关联数据只查一次，且不再逐条查询
+        verify(projectMapper, org.mockito.Mockito.times(1)).selectBatchIds(any());
+        verify(envMapper, org.mockito.Mockito.times(1)).selectBatchIds(any());
+        verify(clusterMapper, org.mockito.Mockito.times(1)).selectBatchIds(any());
+        verify(approvalFlowMapper, org.mockito.Mockito.times(1)).selectBatchIds(any());
+        verify(pipelineMapper, org.mockito.Mockito.times(1)).selectBatchIds(any());
+        verify(buildJobMapper, org.mockito.Mockito.times(1)).selectList(any(Wrapper.class));
+        verify(projectMapper, org.mockito.Mockito.never()).selectById(any());
+        verify(envMapper, org.mockito.Mockito.never()).selectById(any());
+        verify(clusterMapper, org.mockito.Mockito.never()).selectById(any());
+        verify(approvalFlowMapper, org.mockito.Mockito.never()).selectById(any());
+        verify(pipelineMapper, org.mockito.Mockito.never()).selectById(any());
+        // 三个任务用的是同一个服务，只查一次
+        verify(imageResolver, org.mockito.Mockito.times(1)).findServiceByCode("order");
+    }
+
+    @Test
+    void batchResultEqualsAssemblingOneByOne() throws Exception {
+        givenRelatedData();
+        java.util.List<DeployTask> tasks = Arrays.asList(
+                taskInProject(5L, 1L, 2L, "[9,10]"), taskInProject(6L, 2L, 2L, "[9]"));
+        java.util.List<DeployTaskDTO> batch = assembler.toDTOs(tasks, OPERATOR);
+
+        // 逐个组装时 Job 按任务查询
+        BuildJob j1 = new BuildJob();
+        j1.setId(31L);
+        BuildJob j3 = new BuildJob();
+        j3.setId(33L);
+        BuildJob j2 = new BuildJob();
+        j2.setId(32L);
+        when(buildJobMapper.selectList(any(Wrapper.class)))
+                .thenReturn(Arrays.asList(j1, j3))
+                .thenReturn(Collections.singletonList(j2));
+        for (int i = 0; i < tasks.size(); i++) {
+            DeployTaskDTO single = assembler.toDTO(tasks.get(i), OPERATOR);
+            assertEquals(single, batch.get(i), "第 " + (i + 1) + " 个任务：批量与逐个组装的结果应完全相同");
+        }
+    }
+
+    @Test
+    void emptyListDoesNotQueryAnything() {
+        assertEquals(0, assembler.toDTOs(Collections.emptyList(), OPERATOR).size());
+        assertEquals(0, assembler.toDTOs(null, OPERATOR).size());
+        verify(projectMapper, org.mockito.Mockito.never()).selectBatchIds(any());
+        verify(buildJobMapper, org.mockito.Mockito.never()).selectList(any(Wrapper.class));
+    }
 }

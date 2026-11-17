@@ -15,7 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 上线任务服务门面：对外接口 {@link DeployTaskService}，具体实现分布在
@@ -57,9 +56,7 @@ public class DeployTaskServiceImpl implements DeployTaskService {
 
     @Override
     public List<DeployTaskDTO> listTasks(String status, Long projectId, DeployTaskOperator operator) {
-        return queryService.list(status, projectId, operator).stream()
-                .map(task -> viewAssembler.toDTO(task, operator))
-                .collect(Collectors.toList());
+        return viewAssembler.toDTOs(queryService.list(status, projectId, operator), operator);
     }
 
     @Override
