@@ -310,7 +310,7 @@ async function onPipelineListGitRefChange(refSelect) {
         refSelect.setAttribute('data-current-branch', branch);
     } catch (error) {
         console.error('Update pipeline git ref error:', error);
-        alert('更新 Git 引用失败: ' + error.message);
+        notify('更新 Git 引用失败: ' + error.message);
         refSelect.value = previous;
     } finally {
         refSelect.disabled = false;
@@ -648,7 +648,7 @@ async function reorderPipelineViews(sourceId, targetId) {
         console.error('Reorder pipeline views failed', error);
         await loadPipelineViews(true);
         renderPipelineViewTabs();
-        alert('调整视图顺序失败: ' + error.message);
+        notify('调整视图顺序失败: ' + error.message);
     }
 }
 
@@ -750,12 +750,12 @@ function renderPipelineViewEnvOptions(envs, selectedId) {
 
 async function showCreatePipelineViewModal() {
     if (typeof window.showModal !== 'function') {
-        alert('模态框未加载');
+        notify('模态框未加载');
         return;
     }
     const [envs, roles] = await Promise.all([loadPipelineEnvsForView(), loadRolesForPipelineView()]);
     if (!envs.length) {
-        alert('暂无环境，请先在「环境配置」中创建环境');
+        notify('暂无环境，请先在「环境配置」中创建环境');
         return;
     }
     const content = `
@@ -788,11 +788,11 @@ async function showCreatePipelineViewModal() {
         const description = (form.querySelector('[name="description"]').value || '').trim();
         const roleIds = collectPipelineViewRoleIds(form);
         if (!name) {
-            alert('请填写视图名称');
+            notify('请填写视图名称');
             return;
         }
         if (!envId) {
-            alert('请选择关联环境');
+            notify('请选择关联环境');
             return;
         }
         try {
@@ -815,7 +815,7 @@ async function showCreatePipelineViewModal() {
                 selectPipelineView(created.id);
             }
         } catch (e) {
-            alert('创建失败: ' + e.message);
+            notify('创建失败: ' + e.message);
         }
     });
 }
@@ -823,7 +823,7 @@ window.showCreatePipelineViewModal = showCreatePipelineViewModal;
 
 async function showEditPipelineViewModal(viewId) {
     if (typeof window.showModal !== 'function') {
-        alert('模态框未加载');
+        notify('模态框未加载');
         return;
     }
     try {
@@ -865,7 +865,7 @@ async function showEditPipelineViewModal(viewId) {
             const description = (form.querySelector('[name="description"]').value || '').trim();
             const roleIds = collectPipelineViewRoleIds(form);
             if (!name || !envId) {
-                alert('请填写视图名称并选择环境');
+                notify('请填写视图名称并选择环境');
                 return;
             }
             try {
@@ -886,17 +886,17 @@ async function showEditPipelineViewModal(viewId) {
                     renderPipelineViewTabs();
                 }
             } catch (e) {
-                alert('更新失败: ' + e.message);
+                notify('更新失败: ' + e.message);
             }
         });
     } catch (e) {
-        alert('加载失败: ' + e.message);
+        notify('加载失败: ' + e.message);
     }
 }
 window.showEditPipelineViewModal = showEditPipelineViewModal;
 
 async function deletePipelineView(viewId) {
-    if (!confirm('确定删除该视图？不会删除任务，仅移除筛选入口。')) {
+    if (!await confirmDialog('确定删除该视图？不会删除任务，仅移除筛选入口。')) {
         return;
     }
     try {
@@ -916,7 +916,7 @@ async function deletePipelineView(viewId) {
             await renderPipelineListPage();
         }
     } catch (e) {
-        alert('删除失败: ' + e.message);
+        notify('删除失败: ' + e.message);
     }
 }
 window.deletePipelineView = deletePipelineView;
@@ -1452,7 +1452,7 @@ function renderStageCard(jobId, stage) {
 
 async function showPipelineStageLog(jobId, stageId, stageName) {
     if (typeof window.showModal !== 'function') {
-        alert('模态框未加载');
+        notify('模态框未加载');
         return;
     }
 
@@ -1655,7 +1655,7 @@ window.showEditPipelineTaskModal = showEditPipelineTaskModal;
 
 async function openPipelineTaskModal(jobId) {
     if (typeof window.showModal !== 'function') {
-        alert('模态框未加载，请刷新页面');
+        notify('模态框未加载，请刷新页面');
         return;
     }
 
@@ -1668,11 +1668,11 @@ async function openPipelineTaskModal(jobId) {
             }
             editingJob = await jobResp.json();
             if (editingJob.editable === false || editingJob.building) {
-                alert('任务运行中，无法编辑');
+                notify('任务运行中，无法编辑');
                 return;
             }
         } catch (error) {
-            alert('加载任务失败: ' + error.message);
+            notify('加载任务失败: ' + error.message);
             return;
         }
     }
@@ -1682,7 +1682,7 @@ async function openPipelineTaskModal(jobId) {
         : [];
 
     if (!services.length) {
-        alert('暂无可用服务，请先在「服务管理」中添加服务');
+        notify('暂无可用服务，请先在「服务管理」中添加服务');
         return;
     }
 
@@ -1699,7 +1699,7 @@ async function openPipelineTaskModal(jobId) {
     const enabledPipelines = (pipelines || []).filter(p =>
         (p.status === 1 || p.status == null) && p.pipelineType !== 'cd');
     if (!enabledPipelines.length) {
-        alert('暂无可用 CI/CI/CD 流水线模版，请先在「流水线配置 → 流水线管理」中配置');
+        notify('暂无可用 CI/CI/CD 流水线模版，请先在「流水线配置 → 流水线管理」中配置');
         return;
     }
 
@@ -1714,7 +1714,7 @@ async function openPipelineTaskModal(jobId) {
     }
 
     if (!envs.length) {
-        alert('暂无可用环境，请先在「环境配置」中添加非生产环境');
+        notify('暂无可用环境，请先在「环境配置」中添加非生产环境');
         return;
     }
 
@@ -1996,7 +1996,7 @@ async function loadServiceBranches(serviceId, selectedBranch, options = {}) {
         branchSelect.innerHTML = '<option value="">加载失败</option>';
         branchSelect.disabled = false;
         if (showAlertOnError) {
-            alert(`加载 Git ${refLabel} 失败: ` + error.message);
+            notify(`加载 Git ${refLabel} 失败: ` + error.message);
         }
         return false;
     }
@@ -2014,7 +2014,7 @@ async function loadPipelineGitRefs() {
     const serviceSelect = document.getElementById('pipelineTaskServiceSelect');
     const serviceId = serviceSelect?.value;
     if (!serviceId) {
-        alert('请先选择服务');
+        notify('请先选择服务');
         return;
     }
     const branchSelect = document.getElementById('pipelineTaskBranchSelect');
@@ -2081,10 +2081,10 @@ async function submitEditPipelineTask() {
             window.closeModal();
         }
         await loadPipelineJobsView();
-        alert(webhookError ? '任务已更新，但推送自动构建设置失败: ' + webhookError : '任务已更新');
+        notify(webhookError ? '任务已更新，但推送自动构建设置失败: ' + webhookError : '任务已更新');
     } catch (error) {
         console.error('Update pipeline task error:', error);
-        alert('更新失败: ' + error.message);
+        notify('更新失败: ' + error.message);
     }
 }
 window.submitEditPipelineTask = submitEditPipelineTask;
@@ -2093,7 +2093,7 @@ let pipelineRollbackContext = null;
 
 async function showPipelineRollbackModal(jobId, rowJobId) {
     if (typeof window.showModal !== 'function') {
-        alert('弹窗组件未加载');
+        notify('弹窗组件未加载');
         return;
     }
     const rowId = rowJobId != null ? rowJobId : jobId;
@@ -2182,7 +2182,7 @@ async function showPipelineRollbackModal(jobId, rowJobId) {
         if (box) {
             box.innerHTML = `<div style="color:#dc2626;">${escapeHtml(error.message || '加载失败')}</div>`;
         } else {
-            alert(error.message || '加载失败');
+            notify(error.message || '加载失败');
         }
     }
 }
@@ -2190,18 +2190,18 @@ window.showPipelineRollbackModal = showPipelineRollbackModal;
 
 async function submitPipelineRollback() {
     if (!pipelineRollbackContext || !pipelineRollbackContext.jobId) {
-        alert('回滚上下文丢失，请重新打开');
+        notify('回滚上下文丢失，请重新打开');
         return;
     }
     const selected = document.querySelector('input[name="pipelineRollbackSource"]:checked');
     if (!selected) {
-        alert('请选择要回滚到的历史版本');
+        notify('请选择要回滚到的历史版本');
         return;
     }
     if (pipelineRollbackContext.prodEnv) {
         const confirmed = document.getElementById('pipelineRollbackConfirmProd');
         if (!confirmed || !confirmed.checked) {
-            alert('生产环境回滚请勾选确认');
+            notify('生产环境回滚请勾选确认');
             return;
         }
     }
@@ -2235,7 +2235,7 @@ async function submitPipelineRollback() {
         startPipelineListPolling();
     } catch (error) {
         console.error('Rollback pipeline job error:', error);
-        alert('回滚失败: ' + error.message);
+        notify('回滚失败: ' + error.message);
     }
 }
 window.submitPipelineRollback = submitPipelineRollback;
@@ -2277,13 +2277,13 @@ async function triggerPipelineBuild(jobId, rowJobId) {
             btn.disabled = false;
             btn.textContent = previousLabel;
         }
-        alert('构建失败: ' + error.message);
+        notify('构建失败: ' + error.message);
     }
 }
 window.triggerPipelineBuild = triggerPipelineBuild;
 
 async function deletePipelineTask(jobId) {
-    if (!confirm('确定要删除这个流水线任务吗？删除后不可恢复。')) return;
+    if (!await confirmDialog('确定要删除这个流水线任务吗？删除后不可恢复。')) return;
 
     try {
         const response = await fetch(`/api/pipeline-run/${jobId}`, { method: 'DELETE' });
@@ -2300,9 +2300,9 @@ async function deletePipelineTask(jobId) {
             stopPipelinePolling();
         }
         await loadPipelineJobsView();
-        alert('删除成功');
+        notify('删除成功');
     } catch (error) {
-        alert('删除失败: ' + error.message);
+        notify('删除失败: ' + error.message);
     }
 }
 window.deletePipelineTask = deletePipelineTask;
@@ -2323,7 +2323,7 @@ function buildPipelineTaskPayload(formData) {
     const taskName = resolvePipelineTaskServiceName();
 
     if (!taskName || !serviceId || !envId || !pipelineTemplateId || !branch) {
-        alert('请填写所有必填项，并点击「加载」选择 Git 分支或 Tag');
+        notify('请填写所有必填项，并点击「加载」选择 Git 分支或 Tag');
         return null;
     }
 
@@ -2367,7 +2367,7 @@ async function submitCreatePipelineTask() {
             try {
                 await savePipelineWebhookSetting(result.jobId, true);
             } catch (e) {
-                alert('Job 已创建，但推送自动构建设置失败: ' + e.message);
+                notify('Job 已创建，但推送自动构建设置失败: ' + e.message);
             }
         }
 
@@ -2380,11 +2380,11 @@ async function submitCreatePipelineTask() {
         if (result.jobId) {
             await showPipelineDetail(result.jobId);
         } else {
-            alert('Job 已创建：' + (result.taskName || result.jobNumber || ''));
+            notify('Job 已创建：' + (result.taskName || result.jobNumber || ''));
         }
     } catch (error) {
         console.error('Create pipeline task error:', error);
-        alert('创建失败: ' + error.message);
+        notify('创建失败: ' + error.message);
     }
 }
 window.submitCreatePipelineTask = submitCreatePipelineTask;

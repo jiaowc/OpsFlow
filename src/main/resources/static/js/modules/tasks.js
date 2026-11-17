@@ -477,7 +477,7 @@ function isProdTaskEnv(env) {
 
 async function showCreateTaskModal() {
     if (typeof hasPermission === 'function' && !hasPermission('deploy:create')) {
-        alert('无权限创建上线任务');
+        notify('无权限创建上线任务');
         return;
     }
     // 加载服务 / 环境 / 集群 / 审批流 / CD 模版 / Harbor 注册地址 / 通知选项
@@ -528,23 +528,23 @@ async function showCreateTaskModal() {
     window._taskCreateEnvsCache = envs;
     clusters = (clusters || []).filter(c => c.status === 1 || c.status == null);
     if (!clusters.length) {
-        alert('暂无可用集群，请先在「集群管理」中添加集群');
+        notify('暂无可用集群，请先在「集群管理」中添加集群');
         return;
     }
     if (!approvals.length) {
-        alert('暂无启用的审批流，请先在「审批流程」中创建并启用');
+        notify('暂无启用的审批流，请先在「审批流程」中创建并启用');
         return;
     }
     if (!cdPipelines.length) {
-        alert('暂无可用的 CD 流水线模版，请先在「流水线配置 → 流水线管理」中创建类型为 CD 的模版');
+        notify('暂无可用的 CD 流水线模版，请先在「流水线配置 → 流水线管理」中创建类型为 CD 的模版');
         return;
     }
     if (!envs.length) {
-        alert('暂无生产环境，请先在「环境配置」中添加并标记生产环境');
+        notify('暂无生产环境，请先在「环境配置」中添加并标记生产环境');
         return;
     }
     if (!harborRegistry) {
-        alert('无法获取 Harbor 地址，请先在「凭据与组件」中配置 Harbor');
+        notify('无法获取 Harbor 地址，请先在「凭据与组件」中配置 Harbor');
         return;
     }
     window._taskCreateHarborRegistry = harborRegistry;
@@ -553,7 +553,7 @@ async function showCreateTaskModal() {
     const projects = (typeof loadProjectOptions === 'function' ? await loadProjectOptions() : [])
         .filter(p => p.myRole && p.myRole !== 'VIEWER');
     if (!projects.length) {
-        alert('你不是任何项目的开发成员，无法创建上线任务，请联系项目管理员');
+        notify('你不是任何项目的开发成员，无法创建上线任务，请联系项目管理员');
         return;
     }
     const currentProjectId = typeof getCurrentProjectId === 'function' ? getCurrentProjectId() : '';
@@ -657,12 +657,12 @@ async function showCreateTaskModal() {
         
         const projectId = parseInt(form.querySelector('[name="projectId"]').value, 10);
         if (!projectId) {
-            alert('请选择所属项目');
+            notify('请选择所属项目');
             return;
         }
         const taskName = form.querySelector('[name="taskName"]').value;
         if (!taskName) {
-            alert('请输入任务名称');
+            notify('请输入任务名称');
             return;
         }
         
@@ -676,43 +676,43 @@ async function showCreateTaskModal() {
             const version = item.querySelector('.module-version').value;
             if (serviceCode && project && version) {
                 if (!registry) {
-                    alert('Harbor 地址未知，无法生成完整镜像地址');
+                    notify('Harbor 地址未知，无法生成完整镜像地址');
                     return;
                 }
                 deployModules.push(`${registry}/${project}/${serviceCode}:${version}`);
             }
         }
         if (deployModules.length === 0) {
-            alert('请完整选择服务、Harbor 项目和版本');
+            notify('请完整选择服务、Harbor 项目和版本');
             return;
         }
 
         const clusterId = parseInt(form.querySelector('[name="clusterId"]').value, 10);
         const k8sNamespace = (form.querySelector('[name="k8sNamespace"]').value || '').trim();
         if (!clusterId) {
-            alert('请选择上线集群');
+            notify('请选择上线集群');
             return;
         }
         if (!k8sNamespace) {
-            alert('请选择 Namespace');
+            notify('请选择 Namespace');
             return;
         }
         const matchedProdEnv = (window._taskCreateEnvsCache || []).some(env =>
             String(env.clusterId) === String(clusterId) && String((env.k8sNamespace || '').trim()) === k8sNamespace
         );
         if (!matchedProdEnv) {
-            alert('创建上线任务只能选择生产环境，请检查该集群关联的环境类型');
+            notify('创建上线任务只能选择生产环境，请检查该集群关联的环境类型');
             return;
         }
         
         const approvalFlowId = parseInt(form.querySelector('[name="approvalFlowId"]').value, 10);
         if (!approvalFlowId) {
-            alert('请选择审批流');
+            notify('请选择审批流');
             return;
         }
         const pipelineTemplateId = parseInt(form.querySelector('[name="pipelineTemplateId"]').value, 10);
         if (!pipelineTemplateId) {
-            alert('请选择 CD 流水线模版');
+            notify('请选择 CD 流水线模版');
             return;
         }
 
@@ -721,7 +721,7 @@ async function showCreateTaskModal() {
         if (deployMode === 'parallel') {
             deployParallelism = parseInt(form.querySelector('[name="deployParallelism"]').value, 10);
             if (!deployParallelism || deployParallelism < 1 || deployParallelism > 20) {
-                alert('并发数须为 1–20 的整数');
+                notify('并发数须为 1–20 的整数');
                 return;
             }
         }
@@ -736,7 +736,7 @@ async function showCreateTaskModal() {
             notifyChannels.push('feishu');
         }
         if (!notifyChannels.length) {
-            alert('请至少选择一种已启用的审批通知方式（可在「集成与通知 → 通知设置」开启）');
+            notify('请至少选择一种已启用的审批通知方式（可在「集成与通知 → 通知设置」开启）');
             return;
         }
         
@@ -762,7 +762,7 @@ async function showCreateTaskModal() {
             });
             
             if (response.ok) {
-                alert('创建成功：任务已进入协作编辑，锁定并提交审批通过后可发布');
+                notify('创建成功：任务已进入协作编辑，锁定并提交审批通过后可发布');
                 loadTasks();
                 if (typeof refreshInboxBadge === 'function') refreshInboxBadge();
                 closeModal();
@@ -772,10 +772,10 @@ async function showCreateTaskModal() {
                     const errJson = JSON.parse(errText);
                     errText = errJson.message || errJson.error || errText;
                 } catch (e) { /* ignore */ }
-                alert('创建失败: ' + (errText || '未知错误'));
+                notify('创建失败: ' + (errText || '未知错误'));
             }
         } catch (error) {
-            alert('创建失败: ' + error.message);
+            notify('创建失败: ' + error.message);
         }
     });
     refreshDeployModuleOrderButtons();
@@ -868,7 +868,7 @@ async function onDeployModuleServiceChange(serviceSelect) {
         console.error('Load harbor projects error:', error);
         projectSelect.innerHTML = `<option value="">加载失败</option>`;
         projectSelect.disabled = true;
-        alert('加载 Harbor 项目失败: ' + (error.message || '未知错误'));
+        notify('加载 Harbor 项目失败: ' + (error.message || '未知错误'));
     }
 }
 window.onDeployModuleServiceChange = onDeployModuleServiceChange;
@@ -917,7 +917,7 @@ async function onDeployModuleProjectChange(projectSelect) {
         console.error('Load service versions error:', error);
         versionSelect.innerHTML = '<option value="">加载失败</option>';
         versionSelect.disabled = true;
-        alert('加载镜像版本失败: ' + (error.message || '未知错误'));
+        notify('加载镜像版本失败: ' + (error.message || '未知错误'));
     }
 }
 window.onDeployModuleProjectChange = onDeployModuleProjectChange;
@@ -1022,7 +1022,7 @@ function removeDeployModule(btn) {
     if (!container || !item) return;
     const items = container.querySelectorAll('.deploy-module-item');
     if (items.length <= 1) {
-        alert('至少保留一个上线模块');
+        notify('至少保留一个上线模块');
         return;
     }
     item.remove();
@@ -1157,7 +1157,7 @@ async function refreshHarborImages() {
 
 async function editTask(id) {
     if (typeof hasPermission === 'function' && !hasPermission('deploy:create')) {
-        alert('无权限编辑上线任务');
+        notify('无权限编辑上线任务');
         return;
     }
     try {
@@ -1167,7 +1167,7 @@ async function editTask(id) {
         }
         const task = await response.json();
         if (!task.canEdit) {
-            alert('当前任务不可编辑（可能已锁定或已进入审批）');
+            notify('当前任务不可编辑（可能已锁定或已进入审批）');
             return;
         }
 
@@ -1283,14 +1283,14 @@ async function editTask(id) {
                 const version = item.querySelector('.module-version')?.value;
                 if (serviceCode && project && version) {
                     if (!registry) {
-                        alert('Harbor 地址未知');
+                        notify('Harbor 地址未知');
                         throw new Error('no registry');
                     }
                     deployModules.push(`${registry}/${project}/${serviceCode}:${version}`);
                 }
             });
             if (!deployModules.length) {
-                alert('请至少保留一个上线模块');
+                notify('请至少保留一个上线模块');
                 return;
             }
             const payload = { deployModules };
@@ -1307,14 +1307,14 @@ async function editTask(id) {
                 if (!res.ok) {
                     let errText = await res.text();
                     try { errText = JSON.parse(errText).message || errText; } catch (e) {}
-                    alert('保存失败: ' + errText);
+                    notify('保存失败: ' + errText);
                     return;
                 }
-                alert('保存成功');
+                notify('保存成功');
                 loadTasks();
                 closeModal();
             } catch (e) {
-                if (e.message !== 'no registry') alert('保存失败: ' + e.message);
+                if (e.message !== 'no registry') notify('保存失败: ' + e.message);
             }
         });
 
@@ -1340,7 +1340,7 @@ async function editTask(id) {
             }
         }
     } catch (error) {
-        alert('打开编辑失败: ' + error.message);
+        notify('打开编辑失败: ' + error.message);
     }
 }
 
@@ -1360,72 +1360,72 @@ function parseDeployImageParts(image) {
 }
 
 async function lockDeployTask(id) {
-    if (!confirm('锁定后将无法编辑模块，确定锁定？')) return;
+    if (!await confirmDialog('锁定后将无法编辑模块，确定锁定？')) return;
     try {
         const res = await fetch(`/api/task/${id}/lock`, { method: 'POST' });
         if (!res.ok) {
             let t = await res.text();
             try { t = JSON.parse(t).message || t; } catch (e) {}
-            alert('锁定失败: ' + t);
+            notify('锁定失败: ' + t);
             return;
         }
-        alert('已锁定');
+        notify('已锁定');
         loadTasks();
     } catch (e) {
-        alert('锁定失败: ' + e.message);
+        notify('锁定失败: ' + e.message);
     }
 }
 
 async function unlockDeployTask(id) {
-    if (!confirm('解锁后可继续编辑；若已在审批中将取消未完成审批。确定解锁？')) return;
+    if (!await confirmDialog('解锁后可继续编辑；若已在审批中将取消未完成审批。确定解锁？')) return;
     try {
         const res = await fetch(`/api/task/${id}/unlock`, { method: 'POST' });
         if (!res.ok) {
             let t = await res.text();
             try { t = JSON.parse(t).message || t; } catch (e) {}
-            alert('解锁失败: ' + t);
+            notify('解锁失败: ' + t);
             return;
         }
-        alert('已解锁');
+        notify('已解锁');
         loadTasks();
     } catch (e) {
-        alert('解锁失败: ' + e.message);
+        notify('解锁失败: ' + e.message);
     }
 }
 
 async function submitDeployTaskApproval(id) {
-    if (!confirm('提交后将进入审批流程，确定提交审批？')) return;
+    if (!await confirmDialog('提交后将进入审批流程，确定提交审批？')) return;
     try {
         const res = await fetch(`/api/task/${id}/submit-approval`, { method: 'POST' });
         if (!res.ok) {
             let t = await res.text();
             try { t = JSON.parse(t).message || t; } catch (e) {}
-            alert('提交审批失败: ' + t);
+            notify('提交审批失败: ' + t);
             return;
         }
-        alert('已提交审批');
+        notify('已提交审批');
         loadTasks();
         if (typeof refreshInboxBadge === 'function') refreshInboxBadge();
     } catch (e) {
-        alert('提交审批失败: ' + e.message);
+        notify('提交审批失败: ' + e.message);
     }
 }
 
 async function publishDeployTask(id) {
-    if (!confirm('审批已通过，确定开始发布部署？')) return;
+    if (!await confirmDialog('审批已通过，确定开始发布部署？')) return;
     try {
         const res = await fetch(`/api/task/${id}/publish`, { method: 'POST' });
         if (!res.ok) {
             let t = await res.text();
             try { t = JSON.parse(t).message || t; } catch (e) {}
-            alert('发布失败: ' + t);
+            notify('发布失败: ' + t);
             return;
         }
-        alert('已开始发布');
+        notify('已开始发布');
         loadTasks();
         if (typeof refreshInboxBadge === 'function') refreshInboxBadge();
     } catch (e) {
-        alert('发布失败: ' + e.message);
+        notify('发布失败: ' + e.message);
     }
 }
 
@@ -1505,21 +1505,21 @@ async function viewTask(id) {
             showModal('任务详情', content, null);
         }
     } catch (error) {
-        alert('加载失败: ' + error.message);
+        notify('加载失败: ' + error.message);
     }
 }
 
 async function deleteTask(id) {
     if (typeof hasPermission === 'function' && !hasPermission('deploy:delete')) {
-        alert('无删除权限');
+        notify('无删除权限');
         return;
     }
-    if (!confirm('确定要删除这个任务吗？删除后关联的审批记录与 CD 构建也会一并清除。')) return;
+    if (!await confirmDialog('确定要删除这个任务吗？删除后关联的审批记录与 CD 构建也会一并清除。')) return;
 
     try {
         const response = await fetch(`/api/task/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             loadTasks();
             return;
         }
@@ -1528,9 +1528,9 @@ async function deleteTask(id) {
             const body = await response.json();
             if (body && body.message) message = body.message;
         } catch (_) { /* ignore */ }
-        alert(message);
+        notify(message);
     } catch (error) {
-        alert('删除失败: ' + error.message);
+        notify('删除失败: ' + error.message);
     }
 }
 

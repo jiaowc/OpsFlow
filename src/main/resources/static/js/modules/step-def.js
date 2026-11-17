@@ -285,7 +285,7 @@ async function onStepTemplateSelectChange(selectEl) {
     try {
         const response = await fetch(`/api/pipeline-template/${templateId}`);
         if (!response.ok) {
-            alert('加载模版失败');
+            notify('加载模版失败');
             return;
         }
         const template = await response.json();
@@ -295,7 +295,7 @@ async function onStepTemplateSelectChange(selectEl) {
             setHiddenStepField(form, 'serviceType', template.serviceType || 'ClusterIP');
         }
     } catch (e) {
-        alert('加载模版失败: ' + e.message);
+        notify('加载模版失败: ' + e.message);
     }
 }
 
@@ -360,11 +360,11 @@ function collectStepDefFormData(form) {
     const description = (form.querySelector('[name="description"]')?.value || '').trim();
     const timeoutRaw = (form.querySelector('[name="timeoutSeconds"]')?.value || '').trim();
     const timeoutSeconds = timeoutRaw ? parseInt(timeoutRaw, 10) : 60;
-    if (!name) { alert('步骤名称不能为空'); return null; }
-    if (!stepType) { alert('请选择步骤类型'); return null; }
-    if (!phase) { alert('请选择阶段'); return null; }
+    if (!name) { notify('步骤名称不能为空'); return null; }
+    if (!stepType) { notify('请选择步骤类型'); return null; }
+    if (!phase) { notify('请选择阶段'); return null; }
     if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 1) {
-        alert('超时时间必须是大于0的整数（秒）');
+        notify('超时时间必须是大于0的整数（秒）');
         return null;
     }
 
@@ -375,17 +375,17 @@ function collectStepDefFormData(form) {
         if (!input) continue;
         const val = (input.value || '').trim();
         if (field.required && !val) {
-            alert(`请填写 ${field.label.replace(' *', '')}`);
+            notify(`请填写 ${field.label.replace(' *', '')}`);
             return null;
         }
         if (val) contentConfig[field.key] = val;
     }
     if (stepType === 'docker_build' && !contentConfig.dockerfileContent) {
-        alert('请选择 Dockerfile 模版并确认内容已填充');
+        notify('请选择 Dockerfile 模版并确认内容已填充');
         return null;
     }
     if (stepType === 'render_template' && !contentConfig.deploymentTemplateContent) {
-        alert('请选择 Deployment 模版并确认内容已填充');
+        notify('请选择 Deployment 模版并确认内容已填充');
         return null;
     }
     const statusRaw = form.querySelector('[name="status"]')?.value;
@@ -395,7 +395,7 @@ function collectStepDefFormData(form) {
 
 function showCreateStepDefModal() {
     if (typeof window.showModal !== 'function') {
-        alert('模态框功能未加载，请刷新页面');
+        notify('模态框功能未加载，请刷新页面');
         return;
     }
     const stepTypeOptions = Object.entries(STEP_TYPE_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
@@ -445,7 +445,7 @@ function showCreateStepDefModal() {
                 body: JSON.stringify(data)
             });
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 pipelineStepDefCache = [];
                 loadStepDefs();
                 if (typeof window.closeModal === 'function') {
@@ -454,10 +454,10 @@ function showCreateStepDefModal() {
                     closeModal();
                 }
             } else {
-                alert('创建失败: ' + await response.text());
+                notify('创建失败: ' + await response.text());
             }
         } catch (e) {
-            alert('创建失败: ' + e.message);
+            notify('创建失败: ' + e.message);
         }
     });
     wireStepTemplateVarChecks(document.getElementById('createStepDefForm'));
@@ -485,7 +485,7 @@ if (document.readyState === 'loading') {
 async function editStepDef(id) {
     try {
         const response = await fetch(`/api/pipeline-step-def/${id}`);
-        if (!response.ok) { alert('加载失败'); return; }
+        if (!response.ok) { notify('加载失败'); return; }
         const def = await response.json();
         const contentConfig = await refreshContentConfigFromTemplates(def.contentConfig || {});
         const stepTypeOptions = Object.entries(STEP_TYPE_LABELS).map(([k, v]) =>
@@ -536,38 +536,38 @@ async function editStepDef(id) {
                     body: JSON.stringify(data)
                 });
                 if (resp.ok) {
-                    alert('更新成功');
+                    notify('更新成功');
                     pipelineStepDefCache = [];
                     loadStepDefs();
                     closeModal();
                 } else {
-                    alert('更新失败: ' + await resp.text());
+                    notify('更新失败: ' + await resp.text());
                 }
             } catch (e) {
-                alert('更新失败: ' + e.message);
+                notify('更新失败: ' + e.message);
             }
         });
         wireStepTemplateVarChecks(document.getElementById('editStepDefForm'));
     } catch (e) {
-        alert('加载失败: ' + e.message);
+        notify('加载失败: ' + e.message);
     }
 }
 window.editStepDef = editStepDef;
 window.onStepDefTypeChange = onStepDefTypeChange;
 
 async function deleteStepDef(id) {
-    if (!confirm('确定删除此步骤？已被 Pipeline 模板引用的步骤删除后需重新配置模板。')) return;
+    if (!await confirmDialog('确定删除此步骤？已被 Pipeline 模板引用的步骤删除后需重新配置模板。')) return;
     try {
         const response = await fetch(`/api/pipeline-step-def/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             pipelineStepDefCache = [];
             loadStepDefs();
         } else {
-            alert('删除失败');
+            notify('删除失败');
         }
     } catch (e) {
-        alert('删除失败');
+        notify('删除失败');
     }
 }
 window.deleteStepDef = deleteStepDef;
@@ -723,14 +723,14 @@ async function onPipelineOverrideTemplateChange(selectEl, stepId) {
     try {
         const response = await fetch(`/api/pipeline-template/${templateId}`);
         if (!response.ok) {
-            alert('加载模版失败');
+            notify('加载模版失败');
             return;
         }
         const template = await response.json();
         contentInput.value = template.content || '';
         contentInput.dispatchEvent(new Event('input', { bubbles: true }));
     } catch (e) {
-        alert('加载模版失败: ' + e.message);
+        notify('加载模版失败: ' + e.message);
     }
 }
 window.onPipelineOverrideTemplateChange = onPipelineOverrideTemplateChange;

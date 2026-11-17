@@ -85,7 +85,7 @@ async function showProjectFormModal(projectId) {
     try {
         users = await loadProjectUserOptions();
     } catch (e) {
-        alert('加载用户列表失败: ' + e.message);
+        notify('加载用户列表失败: ' + e.message);
         return;
     }
     const ownerId = project.ownerUserId != null ? String(project.ownerUserId) : '';
@@ -113,7 +113,7 @@ async function showProjectFormModal(projectId) {
         const form = document.getElementById('projectForm');
         const name = form.querySelector('[name="name"]').value.trim();
         if (!name) {
-            alert('请输入项目名称');
+            notify('请输入项目名称');
             return;
         }
         const owner = form.querySelector('[name="ownerUserId"]').value;
@@ -131,19 +131,19 @@ async function showProjectFormModal(projectId) {
             closeModal();
             loadProjects();
         } catch (e) {
-            alert('保存失败: ' + e.message);
+            notify('保存失败: ' + e.message);
         }
     });
 }
 window.showProjectFormModal = showProjectFormModal;
 
 async function deleteProject(projectId) {
-    if (!confirm('确定删除该项目吗？仅能删除没有服务和上线任务的空项目。')) return;
+    if (!await confirmDialog('确定删除该项目吗？仅能删除没有服务和上线任务的空项目。')) return;
     try {
         await projectRequest(`/api/project/${projectId}`, { method: 'DELETE' });
         loadProjects();
     } catch (e) {
-        alert('删除失败: ' + e.message);
+        notify('删除失败: ' + e.message);
     }
 }
 window.deleteProject = deleteProject;
@@ -237,7 +237,7 @@ async function addProjectMember(projectId) {
         .map(el => parseInt(el.value, 10));
     const role = document.getElementById('projectMemberRole')?.value;
     if (!userIds.length) {
-        alert('请勾选要添加的用户');
+        notify('请勾选要添加的用户');
         return;
     }
     try {
@@ -249,7 +249,7 @@ async function addProjectMember(projectId) {
         await renderProjectMembers(projectId);
         loadProjects();
     } catch (e) {
-        alert('添加失败: ' + e.message);
+        notify('添加失败: ' + e.message);
     }
 }
 window.addProjectMember = addProjectMember;
@@ -258,20 +258,20 @@ async function saveProjectMemberRole(projectId, userId, role) {
     try {
         await saveProjectMember(projectId, userId, role);
     } catch (e) {
-        alert('修改失败: ' + e.message);
+        notify('修改失败: ' + e.message);
     }
     renderProjectMembers(projectId);
 }
 window.saveProjectMemberRole = saveProjectMemberRole;
 
 async function removeProjectMember(projectId, userId) {
-    if (!confirm('确定移除该成员吗？')) return;
+    if (!await confirmDialog('确定移除该成员吗？')) return;
     try {
         await projectRequest(`/api/project/${projectId}/members/${userId}`, { method: 'DELETE' });
         await renderProjectMembers(projectId);
         loadProjects();
     } catch (e) {
-        alert('移除失败: ' + e.message);
+        notify('移除失败: ' + e.message);
     }
 }
 window.removeProjectMember = removeProjectMember;

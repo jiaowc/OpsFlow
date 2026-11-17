@@ -227,7 +227,7 @@ function showCreateCredentialModal() {
             description: formData.get('description') || ''
         };
         if (!data.name) {
-            alert('钥匙名称不能为空');
+            notify('钥匙名称不能为空');
             return;
         }
         try {
@@ -237,15 +237,15 @@ function showCreateCredentialModal() {
                 body: JSON.stringify(data)
             });
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 loadCredentials();
                 closeModal();
             } else {
                 const err = await response.text();
-                alert('创建失败: ' + err);
+                notify('创建失败: ' + err);
             }
         } catch (error) {
-            alert('创建失败: ' + error.message);
+            notify('创建失败: ' + error.message);
         }
     });
 }
@@ -298,31 +298,31 @@ async function editCredential(id) {
                 body: JSON.stringify(data)
             });
             if (updateResp.ok) {
-                alert('修改成功');
+                notify('修改成功');
                 loadCredentials();
                 closeModal();
             } else {
-                alert('修改失败: ' + await updateResp.text());
+                notify('修改失败: ' + await updateResp.text());
             }
         });
     } catch (error) {
-        alert('加载失败: ' + error.message);
+        notify('加载失败: ' + error.message);
     }
 }
 window.editCredential = editCredential;
 
 async function deleteCredential(id) {
-    if (!confirm('确定要删除这把钥匙吗？')) return;
+    if (!await confirmDialog('确定要删除这把钥匙吗？')) return;
     try {
         const response = await fetch(`/api/credential/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             loadCredentials();
         } else {
-            alert('删除失败');
+            notify('删除失败');
         }
     } catch (error) {
-        alert('删除失败');
+        notify('删除失败');
     }
 }
 window.deleteCredential = deleteCredential;

@@ -95,7 +95,7 @@ async function markAllInboxRead() {
         await loadInboxMessages();
         refreshInboxBadge();
     } catch (e) {
-        alert('操作失败: ' + (e.message || e));
+        notify('操作失败: ' + (e.message || e));
     }
 }
 window.markAllInboxRead = markAllInboxRead;

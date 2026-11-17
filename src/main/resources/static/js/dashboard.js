@@ -168,10 +168,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.showAddPipelineModal();
                 } catch (error) {
                     console.error('Error calling showAddPipelineModal:', error);
-                    alert('打开Pipeline模态框时出错: ' + error.message);
+                    notify('打开Pipeline模态框时出错: ' + error.message);
                 }
             } else {
-                alert('Pipeline功能未加载，请稍后再试');
+                notify('Pipeline功能未加载，请稍后再试');
             }
         });
         
@@ -231,7 +231,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 window.showConfigTab(tabName, tabBtn);
                             } catch (error) {
                                 console.error('Error calling showConfigTab:', error);
-                                alert('调用系统功能时出错: ' + error.message);
+                                notify('调用系统功能时出错: ' + error.message);
                             }
                         } else if (retries >= maxRetries) {
                             clearInterval(retryInterval);
@@ -248,7 +248,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             console.log('Available system functions:', systemFunctions);
                             console.log('All window properties with "show":', Object.keys(window).filter(k => k.toLowerCase().includes('show')));
                             
-                            alert('系统功能未加载完成。\n\n请检查：\n1. 浏览器控制台是否有错误\n2. Network标签中system.js是否成功加载\n3. 尝试强制刷新页面（Ctrl+Shift+R）');
+                            notify('系统功能未加载完成。\n\n请检查：\n1. 浏览器控制台是否有错误\n2. Network标签中system.js是否成功加载\n3. 尝试强制刷新页面（Ctrl+Shift+R）');
                         } else if (retries % 10 === 0) {
                             // 每10次重试输出一次日志
                             console.log(`Still waiting... (${retries}/${maxRetries})`);
@@ -262,7 +262,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.showConfigTab(tabName, tabBtn);
                 } catch (error) {
                     console.error('Error calling showConfigTab:', error);
-                    alert('调用系统功能时出错: ' + error.message);
+                    notify('调用系统功能时出错: ' + error.message);
                 }
                 return;
             }
@@ -285,11 +285,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                 window.showAddComponentModal();
                             } catch (error) {
                                 console.error('Error calling showAddComponentModal:', error);
-                                alert('打开组件添加对话框时出错: ' + error.message);
+                                notify('打开组件添加对话框时出错: ' + error.message);
                             }
                         } else if (retries >= maxRetries) {
                             clearInterval(retryInterval);
-                            alert('组件管理功能未加载完成，请刷新页面重试');
+                            notify('组件管理功能未加载完成，请刷新页面重试');
                         }
                     }, 100);
                     return;
@@ -299,7 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.showAddComponentModal();
                 } catch (error) {
                     console.error('Error calling showAddComponentModal:', error);
-                    alert('打开组件添加对话框时出错: ' + error.message);
+                    notify('打开组件添加对话框时出错: ' + error.message);
                 }
                 return;
             }
@@ -314,10 +314,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         window.showCreateStepDefModal();
                     } catch (error) {
                         console.error('Error calling showCreateStepDefModal:', error);
-                        alert('打开添加步骤对话框时出错: ' + error.message);
+                        notify('打开添加步骤对话框时出错: ' + error.message);
                     }
                 } else {
-                    alert('步骤管理功能未加载，请刷新页面');
+                    notify('步骤管理功能未加载，请刷新页面');
                 }
                 return;
             }
@@ -332,10 +332,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         window.showCreatePipelineViewModal();
                     } catch (error) {
                         console.error('Error calling showCreatePipelineViewModal:', error);
-                        alert('打开新建视图对话框时出错: ' + error.message);
+                        notify('打开新建视图对话框时出错: ' + error.message);
                     }
                 } else {
-                    alert('视图管理功能未加载，请刷新页面');
+                    notify('视图管理功能未加载，请刷新页面');
                 }
                 return;
             }
@@ -378,11 +378,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                 window.showSSOTab(ssoType, ssoTabBtn);
                             } catch (error) {
                                 console.error('Error calling showSSOTab:', error);
-                                alert('切换SSO标签页时出错: ' + error.message);
+                                notify('切换SSO标签页时出错: ' + error.message);
                             }
                         } else if (retries >= maxRetries) {
                             clearInterval(retryInterval);
-                            alert('SSO功能未加载完成，请刷新页面重试');
+                            notify('SSO功能未加载完成，请刷新页面重试');
                         }
                     }, 100);
                     return;
@@ -392,7 +392,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.showSSOTab(ssoType, ssoTabBtn);
                 } catch (error) {
                     console.error('Error calling showSSOTab:', error);
-                    alert('切换SSO标签页时出错: ' + error.message);
+                    notify('切换SSO标签页时出错: ' + error.message);
                 }
                 return;
             }

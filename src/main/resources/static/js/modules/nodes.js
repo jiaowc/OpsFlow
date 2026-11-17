@@ -158,13 +158,13 @@ function showCreateNodeModal() {
             delete data.privateKey;
             delete data.privateKeyPassphrase;
             if (!data.password) {
-                alert('请输入SSH密码');
+                notify('请输入SSH密码');
                 return;
             }
         } else if (data.authType === 'private_key') {
             delete data.password;
             if (!data.privateKey || !data.privateKey.trim()) {
-                alert('请输入SSH私钥');
+                notify('请输入SSH私钥');
                 return;
             }
         }
@@ -179,7 +179,7 @@ function showCreateNodeModal() {
             });
             
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 loadNodes();
                 loadNodesForSelect();
                 // 刷新全局节点列表，以便Pipeline模态框中的节点列表也更新
@@ -187,10 +187,10 @@ function showCreateNodeModal() {
                 closeModal();
             } else {
                 const errorText = await response.text();
-                alert('创建失败: ' + errorText);
+                notify('创建失败: ' + errorText);
             }
         } catch (error) {
-            alert('创建失败: ' + error.message);
+            notify('创建失败: ' + error.message);
         }
     });
 }
@@ -226,7 +226,7 @@ async function editNode(id) {
     try {
         const response = await fetch(`/api/node/${id}`);
         if (!response.ok) {
-            alert('获取节点信息失败');
+            notify('获取节点信息失败');
             return;
         }
         const node = await response.json();
@@ -339,7 +339,7 @@ async function editNode(id) {
                 });
                 
                 if (response.ok) {
-                    alert('更新成功');
+                    notify('更新成功');
                     loadNodes();
                     loadNodesForSelect();
                     // 刷新全局节点列表，以便Pipeline模态框中的节点列表也更新
@@ -347,14 +347,14 @@ async function editNode(id) {
                     closeModal();
                 } else {
                     const errorText = await response.text();
-                    alert('更新失败: ' + errorText);
+                    notify('更新失败: ' + errorText);
                 }
             } catch (error) {
-                alert('更新失败: ' + error.message);
+                notify('更新失败: ' + error.message);
             }
         });
     } catch (error) {
-        alert('获取节点信息失败: ' + error.message);
+        notify('获取节点信息失败: ' + error.message);
     }
 }
 
@@ -378,20 +378,20 @@ function toggleEditNodeAuthFields() {
 
 // 重置 SSH 主机指纹（节点重装系统 / 更换主机后使用）
 async function resetNodeHostKey(id) {
-    if (!confirm('仅在确认节点已重装系统或更换主机时重置。\n重置后下次连接将重新记录指纹，若此时存在中间人将无法识别。确定重置？')) return;
+    if (!await confirmDialog('仅在确认节点已重装系统或更换主机时重置。\n重置后下次连接将重新记录指纹，若此时存在中间人将无法识别。确定重置？')) return;
     try {
         const response = await fetch(`/api/node/${id}/reset-host-key`, { method: 'POST' });
         if (!response.ok) {
             const text = await response.text();
             let msg = text;
             try { msg = JSON.parse(text).message || text; } catch (e) { /* 非 JSON */ }
-            alert('重置失败: ' + msg);
+            notify('重置失败: ' + msg);
             return;
         }
-        alert('已重置，下次连接时将重新记录主机指纹');
+        notify('已重置，下次连接时将重新记录主机指纹');
         loadNodes();
     } catch (e) {
-        alert('重置失败: ' + e.message);
+        notify('重置失败: ' + e.message);
     }
 }
 
@@ -503,18 +503,18 @@ function renderNodeEnvCheckResult(result) {
 
 // 删除节点
 async function deleteNode(id) {
-    if (!confirm('确定要删除这个节点吗？')) return;
+    if (!await confirmDialog('确定要删除这个节点吗？')) return;
     try {
         const response = await fetch(`/api/node/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             loadNodes();
             loadNodesForSelect();
             // 刷新全局节点列表，以便Pipeline模态框中的节点列表也更新
             await refreshGlobalNodes();
         }
     } catch (error) {
-        alert('删除失败');
+        notify('删除失败');
     }
 }
 

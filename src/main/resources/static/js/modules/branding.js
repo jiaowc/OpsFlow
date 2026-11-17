@@ -92,12 +92,12 @@ async function loadBrandingAdminPanel() {
 
 async function uploadBrandingLogo() {
     if (typeof hasFeature === 'function' && !hasFeature('branding')) {
-        alert(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为 Pro 功能，请导入含 branding 的 License');
+        notify(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为 Pro 功能，请导入含 branding 的 License');
         return;
     }
     const input = document.getElementById('brandingLogoFile');
     if (!input || !input.files || !input.files[0]) {
-        alert(typeof t === 'function' ? t('branding.pickFile') : '请选择 Logo 文件');
+        notify(typeof t === 'function' ? t('branding.pickFile') : '请选择 Logo 文件');
         return;
     }
     const form = new FormData();
@@ -106,20 +106,20 @@ async function uploadBrandingLogo() {
         const response = await fetch('/api/branding/logo', { method: 'POST', body: form });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            alert(data.message || data.error || '上传失败');
+            notify(data.message || data.error || '上传失败');
             return;
         }
         await loadBrandingAdminPanel();
         await loadPublicBranding();
-        alert(typeof t === 'function' ? t('branding.uploadOk') : 'Logo 已更新');
+        notify(typeof t === 'function' ? t('branding.uploadOk') : 'Logo 已更新');
     } catch (e) {
-        alert((typeof t === 'function' ? t('common.failed') : '操作失败') + ': ' + (e.message || e));
+        notify((typeof t === 'function' ? t('common.failed') : '操作失败') + ': ' + (e.message || e));
     }
 }
 
 async function saveBrandingTitle() {
     if (typeof hasFeature === 'function' && !hasFeature('branding')) {
-        alert(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为 Pro 功能，请导入含 branding 的 License');
+        notify(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为 Pro 功能，请导入含 branding 的 License');
         return;
     }
     const titleInput = document.getElementById('brandingTitleInput');
@@ -132,39 +132,39 @@ async function saveBrandingTitle() {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            alert(data.message || data.error || '保存失败');
+            notify(data.message || data.error || '保存失败');
             return;
         }
         await loadBrandingAdminPanel();
         await loadPublicBranding();
-        alert(typeof t === 'function' ? t('branding.titleOk') : '品牌名称已保存');
+        notify(typeof t === 'function' ? t('branding.titleOk') : '品牌名称已保存');
     } catch (e) {
-        alert((typeof t === 'function' ? t('common.failed') : '操作失败') + ': ' + (e.message || e));
+        notify((typeof t === 'function' ? t('common.failed') : '操作失败') + ': ' + (e.message || e));
     }
 }
 
 async function clearBrandingLogo() {
     if (typeof hasFeature === 'function' && !hasFeature('branding')) {
-        alert(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为 Pro 功能，请导入含 branding 的 License');
+        notify(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为 Pro 功能，请导入含 branding 的 License');
         return;
     }
-    if (!confirm(typeof t === 'function' ? t('branding.clearConfirm') : '确定清除自定义 Logo？')) {
+    if (!await confirmDialog(typeof t === 'function' ? t('branding.clearConfirm') : '确定清除自定义 Logo？')) {
         return;
     }
     try {
         const response = await fetch('/api/branding/logo', { method: 'DELETE' });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            alert(data.message || data.error || '清除失败');
+            notify(data.message || data.error || '清除失败');
             return;
         }
         const input = document.getElementById('brandingLogoFile');
         if (input) input.value = '';
         await loadBrandingAdminPanel();
         await loadPublicBranding();
-        alert(typeof t === 'function' ? t('branding.clearOk') : '已清除自定义 Logo');
+        notify(typeof t === 'function' ? t('branding.clearOk') : '已清除自定义 Logo');
     } catch (e) {
-        alert((typeof t === 'function' ? t('common.failed') : '操作失败') + ': ' + (e.message || e));
+        notify((typeof t === 'function' ? t('common.failed') : '操作失败') + ': ' + (e.message || e));
     }
 }
 

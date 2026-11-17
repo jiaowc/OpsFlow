@@ -3866,3 +3866,171 @@ td .btn-success {
 .tpl-var-supported li code {
     flex: 0 0 auto;
 }
+
+/* ============================================
+   公共 UI：提示条、确认框、输入框（js/ui.js）
+   ============================================ */
+.ui-toast-host {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 10200;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(380px, calc(100vw - 32px));
+    pointer-events: none;
+}
+
+.ui-toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg, 0 10px 30px rgba(15, 23, 42, 0.16));
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    line-height: 20px;
+    animation: ui-toast-in 0.18s ease-out;
+}
+
+.ui-toast.is-leaving {
+    opacity: 0;
+    transform: translateX(12px);
+    transition: opacity 0.18s, transform 0.18s;
+}
+
+.ui-toast.is-success { border-left-color: var(--success); }
+.ui-toast.is-error { border-left-color: var(--danger); background: var(--danger-soft); }
+.ui-toast.is-warning { border-left-color: #d97706; background: var(--warning-soft); }
+.ui-toast.is-info { border-left-color: var(--info); }
+
+.ui-toast-text {
+    flex: 1;
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.ui-toast-close {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--text-4);
+    font-size: 16px;
+    line-height: 20px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+}
+
+.ui-toast-close:hover {
+    color: var(--text-1);
+    background: rgba(15, 23, 42, 0.06);
+}
+
+@keyframes ui-toast-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ui-toast { animation: none; }
+    .ui-toast.is-leaving { transition: none; }
+}
+
+/* 层级高于 .modal-overlay(10000)，可以叠在表单弹窗之上 */
+.ui-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.ui-dialog {
+    width: min(420px, 100%);
+    padding: 20px 22px 18px;
+    background: var(--bg-card);
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg, 0 10px 30px rgba(15, 23, 42, 0.16));
+}
+
+.ui-dialog-title {
+    margin-bottom: 10px;
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    color: var(--text-1);
+}
+
+.ui-dialog-message {
+    color: var(--text-2);
+    font-size: var(--fs-base);
+    line-height: 22px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.ui-dialog-input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 12px;
+    padding: 7px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: var(--fs-base);
+    color: var(--text-1);
+    background: var(--bg-card);
+    resize: vertical;
+}
+
+.ui-dialog-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(91, 92, 224, 0.15);
+}
+
+.ui-dialog-error {
+    min-height: 18px;
+    margin-top: 4px;
+    color: var(--danger);
+    font-size: var(--fs-xs);
+}
+
+.ui-dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.ui-dialog-footer button {
+    min-width: 72px;
+}
+
+.ui-dialog-footer .ui-dialog-danger {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+}
+
+.ui-dialog-footer .ui-dialog-danger:hover:not(:disabled) {
+    background: var(--danger-hover);
+    border-color: var(--danger-hover);
+}

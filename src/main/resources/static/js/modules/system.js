@@ -103,7 +103,7 @@ function showConfigTab(tabName, element) {
         }
     } catch (error) {
         console.error('Error in showConfigTab:', error);
-        alert('切换标签页时出错: ' + error.message);
+        notify('切换标签页时出错: ' + error.message);
     }
 }
 // 立即注册到全局作用域
@@ -305,7 +305,7 @@ async function saveConfigForm(form) {
     } else {
         const configType = form.getAttribute('data-config-type');
         if (!configType) {
-            alert('表单缺少配置类型');
+            notify('表单缺少配置类型');
             return;
         }
         const all = collectFormConfigValues(form);
@@ -313,7 +313,7 @@ async function saveConfigForm(form) {
     }
     const types = Object.keys(byType);
     if (!types.length) {
-        alert('没有可保存的配置项');
+        notify('没有可保存的配置项');
         return;
     }
 
@@ -327,16 +327,16 @@ async function saveConfigForm(form) {
             });
             if (!response.ok) {
                 const text = await response.text();
-                alert('保存失败 (' + configType + '): ' + (text || response.status));
+                notify('保存失败 (' + configType + '): ' + (text || response.status));
                 return;
             }
         }
-        alert('保存成功');
+        notify('保存成功');
         if (typeof applySystemConfigsToForms === 'function') {
             applySystemConfigsToForms();
         }
     } catch (error) {
-        alert('保存失败: ' + error.message);
+        notify('保存失败: ' + error.message);
     }
 }
 window.saveConfigForm = saveConfigForm;
@@ -491,7 +491,7 @@ function showAddComponentModal() {
     
     if (typeof window.showModal !== 'function') {
         console.error('showModal function not available');
-        alert('模态框功能未加载，请刷新页面');
+        notify('模态框功能未加载，请刷新页面');
         return;
     }
     
@@ -548,16 +548,16 @@ function showAddComponentModal() {
             });
             
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 window.loadComponents();
                 window.closeModal();
             } else {
                 const errorMessage = await (typeof window.handleApiError === 'function' ? window.handleApiError(response) : response.text());
-                alert('创建失败: ' + errorMessage);
+                notify('创建失败: ' + errorMessage);
             }
         } catch (error) {
             console.error('Create component error:', error);
-            alert('创建失败: ' + (error.message || '网络错误'));
+            notify('创建失败: ' + (error.message || '网络错误'));
         }
     });
 
@@ -645,10 +645,10 @@ async function editComponent(id) {
             const component = await response.json();
             showEditComponentModal(component);
         } else {
-            alert('加载失败');
+            notify('加载失败');
         }
     } catch (error) {
-        alert('加载失败: ' + error.message);
+        notify('加载失败: ' + error.message);
     }
 }
 window.editComponent = editComponent;
@@ -686,7 +686,7 @@ function showEditComponentModal(component) {
     `;
     
     if (typeof window.showModal !== 'function') {
-        alert('模态框功能未加载，请刷新页面');
+        notify('模态框功能未加载，请刷新页面');
         return;
     }
     
@@ -712,15 +712,15 @@ function showEditComponentModal(component) {
             });
             
             if (response.ok) {
-                alert('更新成功');
+                notify('更新成功');
                 window.loadComponents();
                 window.closeModal();
             } else {
                 const error = await response.json().catch(() => ({ message: '未知错误' }));
-                alert('更新失败: ' + (error.message || '未知错误'));
+                notify('更新失败: ' + (error.message || '未知错误'));
             }
         } catch (error) {
-            alert('更新失败: ' + error.message);
+            notify('更新失败: ' + error.message);
         }
     });
 
@@ -762,18 +762,18 @@ window.showEditComponentModal = showEditComponentModal;
 
 // 删除组件
 async function deleteComponent(id) {
-    if (!confirm('确定要删除这个组件吗？')) return;
+    if (!await confirmDialog('确定要删除这个组件吗？')) return;
     
     try {
         const response = await fetch(`/api/component/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             window.loadComponents();
         } else {
-            alert('删除失败');
+            notify('删除失败');
         }
     } catch (error) {
-        alert('删除失败: ' + error.message);
+        notify('删除失败: ' + error.message);
     }
 }
 window.deleteComponent = deleteComponent;
@@ -807,14 +807,14 @@ async function testComponent(id) {
         
         // 显示结果提示
         if (result.success) {
-            alert('✓ 连接成功！\n\n' + result.message);
+            notify('✓ 连接成功！\n\n' + result.message);
         } else {
-            alert('✗ 连接失败\n\n' + result.message);
+            notify('✗ 连接失败\n\n' + result.message);
         }
     } catch (error) {
         console.error('Test component error:', error);
         updateComponentStatus(id, false);
-        alert('测试连接时出错: ' + (error.message || '网络错误'));
+        notify('测试连接时出错: ' + (error.message || '网络错误'));
     } finally {
         // 恢复按钮状态
         if (testBtn) {
@@ -1032,38 +1032,38 @@ function resolvePipelineFormPhases(steps) {
 function collectPipelineFormData(form) {
     const steps = window.collectPipelineSteps();
     if (!steps || steps.length === 0) {
-        alert('请至少添加一个 CI 或 CD 步骤');
+        notify('请至少添加一个 CI 或 CD 步骤');
         return null;
     }
     const { hasCi, hasCd } = resolvePipelineFormPhases(steps);
     if (!hasCi && !hasCd) {
-        alert('请至少添加一个 CI 或 CD 步骤');
+        notify('请至少添加一个 CI 或 CD 步骤');
         return null;
     }
 
     const pipelineType = (form.querySelector('[name="pipelineType"]')?.value || '').trim();
     if (!['ci', 'cd', 'cicd'].includes(pipelineType)) {
-        alert('请选择流水线类型：CI / CD / CI/CD');
+        notify('请选择流水线类型：CI / CD / CI/CD');
         return null;
     }
     if (pipelineType === 'ci' && !hasCi) {
-        alert('类型为 CI 时，请至少配置一个 CI 步骤');
+        notify('类型为 CI 时，请至少配置一个 CI 步骤');
         return null;
     }
     if (pipelineType === 'cd' && !hasCd) {
-        alert('类型为 CD 时，请至少配置一个 CD 步骤');
+        notify('类型为 CD 时，请至少配置一个 CD 步骤');
         return null;
     }
     if (pipelineType === 'cicd' && (!hasCi || !hasCd)) {
-        alert('类型为 CI/CD 时，请同时配置 CI 与 CD 步骤');
+        notify('类型为 CI/CD 时，请同时配置 CI 与 CD 步骤');
         return null;
     }
     if (pipelineType === 'ci' && hasCd) {
-        alert('类型为 CI 时不应包含 CD 步骤，请移除 CD 步骤或改为 CI/CD');
+        notify('类型为 CI 时不应包含 CD 步骤，请移除 CD 步骤或改为 CI/CD');
         return null;
     }
     if (pipelineType === 'cd' && hasCi) {
-        alert('类型为 CD 时不应包含 CI 步骤，请移除 CI 步骤或改为 CI/CD');
+        notify('类型为 CD 时不应包含 CI 步骤，请移除 CI 步骤或改为 CI/CD');
         return null;
     }
 
@@ -1075,17 +1075,17 @@ function collectPipelineFormData(form) {
     const deployNodeId = deployNodeRaw ? parseInt(deployNodeRaw, 10) : null;
 
     if (hasCi && !buildNodeIds.length) {
-        alert('已配置 CI 步骤，请至少选择一个 CI 构建节点');
+        notify('已配置 CI 步骤，请至少选择一个 CI 构建节点');
         return null;
     }
     if (hasCd && !deployNodeId) {
-        alert('已配置 CD 步骤，请选择 CD 部署节点');
+        notify('已配置 CD 步骤，请选择 CD 部署节点');
         return null;
     }
 
     const nameInput = form.querySelector('[name="name"]');
     if (!nameInput || !nameInput.value.trim()) {
-        alert('Pipeline 名称不能为空');
+        notify('Pipeline 名称不能为空');
         return null;
     }
     return {
@@ -1294,7 +1294,7 @@ async function showAddPipelineModal() {
     
     if (typeof window.showModal !== 'function') {
         console.error('showModal function not available');
-        alert('模态框功能未加载，请刷新页面');
+        notify('模态框功能未加载，请刷新页面');
         return;
     }
     
@@ -1339,7 +1339,7 @@ async function showAddPipelineModal() {
     window.showModal('添加 Pipeline 模版', content, async () => {
         const form = document.getElementById('createPipelineForm');
         if (!form) {
-            alert('表单不存在');
+            notify('表单不存在');
             return;
         }
         
@@ -1358,16 +1358,16 @@ async function showAddPipelineModal() {
             });
             
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 window.loadPipelines();
                 window.closeModal();
             } else {
                 const errorMessage = await (typeof window.handleApiError === 'function' ? window.handleApiError(response) : response.text());
-                alert('创建失败: ' + errorMessage);
+                notify('创建失败: ' + errorMessage);
             }
         } catch (error) {
             console.error('Create pipeline error:', error);
-            alert('创建失败: ' + (error.message || '网络错误'));
+            notify('创建失败: ' + (error.message || '网络错误'));
         }
     });
     
@@ -1391,10 +1391,10 @@ async function editPipeline(id) {
             const pipeline = await response.json();
             showEditPipelineModal(pipeline);
         } else {
-            alert('加载失败');
+            notify('加载失败');
         }
     } catch (error) {
-        alert('加载失败: ' + error.message);
+        notify('加载失败: ' + error.message);
     }
 }
 window.editPipeline = editPipeline;
@@ -1406,17 +1406,17 @@ async function clonePipeline(id) {
     try {
         const response = await fetch(`/api/pipeline/${id}`);
         if (!response.ok) {
-            alert('加载源模版失败');
+            notify('加载源模版失败');
             return;
         }
         const source = await response.json();
         const defaultName = (source.name || '未命名模版') + ' 副本';
-        const newName = window.prompt('请输入新模版名称：', defaultName);
+        const newName = await promptDialog('新模版名称', defaultName, { title: '复制流水线模版', required: true });
         if (newName === null) {
             return;
         }
         if (!String(newName).trim()) {
-            alert('模版名称不能为空');
+            notify('模版名称不能为空');
             return;
         }
 
@@ -1426,7 +1426,7 @@ async function clonePipeline(id) {
             body: JSON.stringify({ name: String(newName).trim() })
         });
         if (cloneResp.ok) {
-            alert('克隆成功');
+            notify('克隆成功');
             if (typeof window.loadPipelines === 'function') {
                 window.loadPipelines();
             }
@@ -1434,10 +1434,10 @@ async function clonePipeline(id) {
             const errorMessage = await (typeof window.handleApiError === 'function'
                 ? window.handleApiError(cloneResp)
                 : cloneResp.text());
-            alert('克隆失败: ' + errorMessage);
+            notify('克隆失败: ' + errorMessage);
         }
     } catch (error) {
-        alert('克隆失败: ' + (error.message || '网络错误'));
+        notify('克隆失败: ' + (error.message || '网络错误'));
     }
 }
 window.clonePipeline = clonePipeline;
@@ -1445,7 +1445,7 @@ window.clonePipeline = clonePipeline;
 // 显示编辑Pipeline模态框
 async function showEditPipelineModal(pipeline) {
     if (typeof window.showModal !== 'function') {
-        alert('模态框功能未加载，请刷新页面');
+        notify('模态框功能未加载，请刷新页面');
         return;
     }
     
@@ -1487,7 +1487,7 @@ async function showEditPipelineModal(pipeline) {
     window.showModal('编辑 Pipeline 模版', content, async () => {
         const form = document.getElementById('editPipelineForm');
         if (!form) {
-            alert('表单不存在');
+            notify('表单不存在');
             return;
         }
         
@@ -1506,15 +1506,15 @@ async function showEditPipelineModal(pipeline) {
             });
             
             if (response.ok) {
-                alert('更新成功');
+                notify('更新成功');
                 window.loadPipelines();
                 window.closeModal();
             } else {
                 const errorMessage = await (typeof window.handleApiError === 'function' ? window.handleApiError(response) : response.text());
-                alert('更新失败: ' + errorMessage);
+                notify('更新失败: ' + errorMessage);
             }
         } catch (error) {
-            alert('更新失败: ' + error.message);
+            notify('更新失败: ' + error.message);
         }
     });
     
@@ -1703,7 +1703,7 @@ function collectPipelineSteps() {
     const sorted = steps.sort((a, b) => a.order - b.order);
     for (let i = 0; i < sorted.length; i++) {
         if (!sorted[i].stepTemplateId) {
-            alert('请为每个步骤选择步骤定义');
+            notify('请为每个步骤选择步骤定义');
             return [];
         }
     }
@@ -1713,18 +1713,18 @@ window.collectPipelineSteps = collectPipelineSteps;
 
 // 删除Pipeline
 async function deletePipeline(id) {
-    if (!confirm('确定要删除这个Pipeline模板吗？')) return;
+    if (!await confirmDialog('确定要删除这个Pipeline模板吗？')) return;
     
     try {
         const response = await fetch(`/api/pipeline/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             window.loadPipelines();
         } else {
-            alert('删除失败');
+            notify('删除失败');
         }
     } catch (error) {
-        alert('删除失败: ' + error.message);
+        notify('删除失败: ' + error.message);
     }
 }
 window.deletePipeline = deletePipeline;

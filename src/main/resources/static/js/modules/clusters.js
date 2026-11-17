@@ -158,14 +158,14 @@ async function showCreateClusterModal() {
                 const text = await response.text();
                 throw new Error(text || '创建失败');
             }
-            alert('创建成功');
+            notify('创建成功');
             await loadClusters();
             if (typeof loadClustersForSelect === 'function') {
                 await loadClustersForSelect();
             }
             closeModal();
         } catch (error) {
-            alert('创建失败: ' + error.message);
+            notify('创建失败: ' + error.message);
         }
     });
 }
@@ -226,7 +226,7 @@ async function editCluster(id) {
                     const text = await updateResp.text();
                     throw new Error(text || '修改失败');
                 }
-                alert('修改成功');
+                notify('修改成功');
                 await loadClusters();
                 if (typeof loadClustersForSelect === 'function') {
                     await loadClustersForSelect();
@@ -236,30 +236,30 @@ async function editCluster(id) {
                 }
                 closeModal();
             } catch (error) {
-                alert('修改失败: ' + error.message);
+                notify('修改失败: ' + error.message);
             }
         });
     } catch (error) {
-        alert('加载集群失败: ' + error.message);
+        notify('加载集群失败: ' + error.message);
     }
 }
 window.editCluster = editCluster;
 
 async function deleteCluster(id) {
-    if (!confirm('确定要删除这个集群吗？')) return;
+    if (!await confirmDialog('确定要删除这个集群吗？')) return;
     try {
         const response = await fetch(`/api/cluster/${id}`, { method: 'DELETE' });
         if (!response.ok) {
             const text = await response.text();
             throw new Error(text || '删除失败');
         }
-        alert('删除成功');
+        notify('删除成功');
         await loadClusters();
         if (typeof loadClustersForSelect === 'function') {
             await loadClustersForSelect();
         }
     } catch (error) {
-        alert('删除失败: ' + error.message);
+        notify('删除失败: ' + error.message);
     }
 }
 window.deleteCluster = deleteCluster;
@@ -298,7 +298,7 @@ async function buildProxyNodeOptions() {
 
 async function showTestClusterModal(clusterId, clusterName) {
     if (typeof showModal !== 'function') {
-        alert('模态框未加载');
+        notify('模态框未加载');
         return;
     }
     const nodeOptions = await buildProxyNodeOptions();

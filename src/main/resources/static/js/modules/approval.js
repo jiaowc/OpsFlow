@@ -199,11 +199,11 @@ function collectApprovalFormData(form) {
     const status = statusRaw && statusRaw.value === '0' ? 0 : 1;
     const steps = collectApprovalStepsFromForm();
     if (!name) {
-        alert('请填写流程名称');
+        notify('请填写流程名称');
         return null;
     }
     if (!steps.length) {
-        alert('请至少添加一个审批步骤');
+        notify('请至少添加一个审批步骤');
         return null;
     }
     return { name, description, status, steps };
@@ -251,11 +251,11 @@ async function showCreateApprovalModal() {
             if (!response.ok) {
                 throw new Error(await response.text() || '创建失败');
             }
-            alert('创建成功');
+            notify('创建成功');
             loadApprovalFlows();
             closeModal();
         } catch (error) {
-            alert('创建失败: ' + error.message);
+            notify('创建失败: ' + error.message);
         }
     });
 
@@ -305,11 +305,11 @@ async function editApproval(id) {
                     body: JSON.stringify(data)
                 });
                 if (!resp.ok) throw new Error(await resp.text() || '更新失败');
-                alert('更新成功');
+                notify('更新成功');
                 loadApprovalFlows();
                 closeModal();
             } catch (e) {
-                alert('更新失败: ' + e.message);
+                notify('更新失败: ' + e.message);
             }
         });
 
@@ -320,23 +320,23 @@ async function editApproval(id) {
             }
         }, 50);
     } catch (error) {
-        alert('加载失败: ' + error.message);
+        notify('加载失败: ' + error.message);
     }
 }
 window.editApproval = editApproval;
 
 async function deleteApproval(id) {
-    if (!confirm('确定要删除这个审批流吗？')) return;
+    if (!await confirmDialog('确定要删除这个审批流吗？')) return;
     try {
         const response = await fetch(`/api/approval/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             loadApprovalFlows();
         } else {
-            alert('删除失败: ' + (await response.text() || ''));
+            notify('删除失败: ' + (await response.text() || ''));
         }
     } catch (error) {
-        alert('删除失败: ' + error.message);
+        notify('删除失败: ' + error.message);
     }
 }
 window.deleteApproval = deleteApproval;
@@ -407,7 +407,7 @@ function renderApprovalRecordsHtml(records) {
 window.renderApprovalRecordsHtml = renderApprovalRecordsHtml;
 
 async function approveApprovalRecord(recordId) {
-    const comment = prompt('审批意见（可选）:', '同意');
+    const comment = await promptDialog('审批意见（可选）', '同意', { title: '通过审批', confirmText: '通过' });
     if (comment === null) return;
     try {
         const response = await fetch(`/api/approval/records/${recordId}/approve`, {
@@ -416,18 +416,18 @@ async function approveApprovalRecord(recordId) {
             body: JSON.stringify({ comment })
         });
         if (!response.ok) throw new Error(await response.text() || '审批失败');
-        alert('已通过');
+        notify('已通过');
         if (typeof closeModal === 'function') closeModal();
         if (typeof loadTasks === 'function') loadTasks();
         if (typeof refreshInboxBadge === 'function') refreshInboxBadge();
     } catch (e) {
-        alert('审批失败: ' + e.message);
+        notify('审批失败: ' + e.message);
     }
 }
 window.approveApprovalRecord = approveApprovalRecord;
 
 async function rejectApprovalRecord(recordId) {
-    const comment = prompt('拒绝原因:', '');
+    const comment = await promptDialog('拒绝原因', '', { title: '拒绝审批', confirmText: '拒绝', danger: true, multiline: true });
     if (comment === null) return;
     try {
         const response = await fetch(`/api/approval/records/${recordId}/reject`, {
@@ -436,12 +436,12 @@ async function rejectApprovalRecord(recordId) {
             body: JSON.stringify({ comment })
         });
         if (!response.ok) throw new Error(await response.text() || '操作失败');
-        alert('已拒绝');
+        notify('已拒绝');
         if (typeof closeModal === 'function') closeModal();
         if (typeof loadTasks === 'function') loadTasks();
         if (typeof refreshInboxBadge === 'function') refreshInboxBadge();
     } catch (e) {
-        alert('操作失败: ' + e.message);
+        notify('操作失败: ' + e.message);
     }
 }
 window.rejectApprovalRecord = rejectApprovalRecord;

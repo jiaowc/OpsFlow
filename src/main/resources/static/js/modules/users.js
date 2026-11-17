@@ -216,15 +216,15 @@ async function showAddUserModal() {
             });
             
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 loadUsers();
                 closeModal();
             } else {
                 const errorMessage = await handleApiError(response);
-                alert('创建失败: ' + errorMessage);
+                notify('创建失败: ' + errorMessage);
             }
         } catch (error) {
-            alert('创建失败: ' + error.message);
+            notify('创建失败: ' + error.message);
         }
     });
 }
@@ -234,7 +234,7 @@ async function editUser(id) {
     try {
         const response = await fetch(`/api/user/${id}`);
         if (!response.ok) {
-            alert('获取用户信息失败');
+            notify('获取用户信息失败');
             return;
         }
         const user = await response.json();
@@ -322,38 +322,38 @@ async function editUser(id) {
                 });
                 
                 if (response.ok) {
-                    alert('更新成功');
+                    notify('更新成功');
                     loadUsers();
                     closeModal();
                 } else {
                     const errorMessage = await handleApiError(response);
-                    alert('更新失败: ' + errorMessage);
+                    notify('更新失败: ' + errorMessage);
                 }
             } catch (error) {
-                alert('更新失败: ' + error.message);
+                notify('更新失败: ' + error.message);
             }
         });
     } catch (error) {
-        alert('获取用户信息失败: ' + error.message);
+        notify('获取用户信息失败: ' + error.message);
     }
 }
 
 // 删除用户
 async function deleteUser(id) {
-    if (!confirm('确定要删除该用户吗？')) {
+    if (!await confirmDialog('确定要删除该用户吗？')) {
         return;
     }
     
     try {
         const response = await fetch(`/api/user/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             loadUsers();
         } else {
-            alert('删除失败');
+            notify('删除失败');
         }
     } catch (error) {
-        alert('删除失败');
+        notify('删除失败');
     }
 }
 
@@ -464,15 +464,15 @@ async function showAddRoleModal() {
             });
             
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 loadRoles();
                 closeModal();
             } else {
                 const errorMessage = await handleApiError(response);
-                alert('创建失败: ' + errorMessage);
+                notify('创建失败: ' + errorMessage);
             }
         } catch (error) {
-            alert('创建失败: ' + error.message);
+            notify('创建失败: ' + error.message);
         }
     });
 }
@@ -482,7 +482,7 @@ async function editRole(id) {
     try {
         const response = await fetch(`/api/role/${id}`);
         if (!response.ok) {
-            alert('获取角色信息失败');
+            notify('获取角色信息失败');
             return;
         }
         const role = await response.json();
@@ -546,39 +546,39 @@ async function editRole(id) {
                 });
                 
                 if (response.ok) {
-                    alert('更新成功');
+                    notify('更新成功');
                     loadRoles();
                     closeModal();
                 } else {
                     const errorMessage = await handleApiError(response);
-                    alert('更新失败: ' + errorMessage);
+                    notify('更新失败: ' + errorMessage);
                 }
             } catch (error) {
-                alert('更新失败: ' + error.message);
+                notify('更新失败: ' + error.message);
             }
         });
     } catch (error) {
-        alert('获取角色信息失败: ' + error.message);
+        notify('获取角色信息失败: ' + error.message);
     }
 }
 
 // 删除角色
 async function deleteRole(id) {
-    if (!confirm('确定要删除该角色吗？删除后关联的用户将失去该角色。')) {
+    if (!await confirmDialog('确定要删除该角色吗？删除后关联的用户将失去该角色。')) {
         return;
     }
     
     try {
         const response = await fetch(`/api/role/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             loadRoles();
         } else {
             const errorMessage = await handleApiError(response);
-            alert('删除失败: ' + errorMessage);
+            notify('删除失败: ' + errorMessage);
         }
     } catch (error) {
-        alert('删除失败');
+        notify('删除失败');
     }
 }
 
@@ -690,15 +690,15 @@ async function showAddPermissionModal() {
             });
             
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 loadPermissions();
                 closeModal();
             } else {
                 const errorMessage = await handleApiError(response);
-                alert('创建失败: ' + errorMessage);
+                notify('创建失败: ' + errorMessage);
             }
         } catch (error) {
-            alert('创建失败: ' + error.message);
+            notify('创建失败: ' + error.message);
         }
     });
 }
@@ -708,7 +708,7 @@ async function editPermission(id) {
     try {
         const response = await fetch(`/api/permission/${id}`);
         if (!response.ok) {
-            alert('获取权限信息失败');
+            notify('获取权限信息失败');
             return;
         }
         const permission = await response.json();
@@ -778,39 +778,39 @@ async function editPermission(id) {
                 });
                 
                 if (response.ok) {
-                    alert('更新成功');
+                    notify('更新成功');
                     loadPermissions();
                     closeModal();
                 } else {
                     const errorMessage = await handleApiError(response);
-                    alert('更新失败: ' + errorMessage);
+                    notify('更新失败: ' + errorMessage);
                 }
             } catch (error) {
-                alert('更新失败: ' + error.message);
+                notify('更新失败: ' + error.message);
             }
         });
     } catch (error) {
-        alert('获取权限信息失败: ' + error.message);
+        notify('获取权限信息失败: ' + error.message);
     }
 }
 
 // 删除权限
 async function deletePermission(id) {
-    if (!confirm('确定要删除该权限吗？')) {
+    if (!await confirmDialog('确定要删除该权限吗？')) {
         return;
     }
     
     try {
         const response = await fetch(`/api/permission/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             loadPermissions();
         } else {
             const errorMessage = await handleApiError(response);
-            alert('删除失败: ' + errorMessage);
+            notify('删除失败: ' + errorMessage);
         }
     } catch (error) {
-        alert('删除失败');
+        notify('删除失败');
     }
 }
 

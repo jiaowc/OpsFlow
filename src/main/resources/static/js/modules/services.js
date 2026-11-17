@@ -249,23 +249,23 @@ function collectServiceFormData(form, includeStatus) {
     const portCheck = validateServicePort(formData.get('servicePort'));
 
     if (!portCheck.valid) {
-        alert(portCheck.message);
+        notify(portCheck.message);
         return null;
     }
 
     if (!componentId) {
-        alert('请选择组件');
+        notify('请选择组件');
         return null;
     }
     if (!gitRepoPath) {
-        alert('请填写仓库路径');
+        notify('请填写仓库路径');
         return null;
     }
 
     const componentUrl = getSelectedServiceComponentUrl();
     const resolved = resolveServiceGitRepo(componentUrl, gitRepoPath);
     if (!resolved.success) {
-        alert(resolved.message);
+        notify(resolved.message);
         return null;
     }
 
@@ -279,7 +279,7 @@ function collectServiceFormData(form, includeStatus) {
     };
     const projectId = formData.get('projectId');
     if (!projectId) {
-        alert('请选择所属项目');
+        notify('请选择所属项目');
         return null;
     }
     data.projectId = parseInt(projectId, 10);
@@ -291,7 +291,7 @@ function collectServiceFormData(form, includeStatus) {
         data.status = parseInt(formData.get('status'), 10);
     }
     if (!data.name) {
-        alert('服务名称不能为空');
+        notify('服务名称不能为空');
         return null;
     }
     return data;
@@ -418,16 +418,16 @@ function showCreateServiceModal() {
             });
 
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 loadServices();
                 loadServicesForSelect();
                 closeModal();
             } else {
                 const errText = await response.text();
-                alert('创建失败: ' + errText);
+                notify('创建失败: ' + errText);
             }
         } catch (error) {
-            alert('创建失败: ' + error.message);
+            notify('创建失败: ' + error.message);
         }
     });
 
@@ -477,35 +477,35 @@ async function editService(id) {
                     throw new Error(errorText || '修改失败');
                 }
 
-                alert('修改成功');
+                notify('修改成功');
                 await loadServices();
                 if (typeof loadServicesForSelect === 'function') {
                     await loadServicesForSelect();
                 }
                 closeModal();
             } catch (error) {
-                alert('修改失败: ' + error.message);
+                notify('修改失败: ' + error.message);
             }
         });
 
         setTimeout(() => initServiceGitForm(service), 50);
     } catch (error) {
-        alert('加载服务失败: ' + error.message);
+        notify('加载服务失败: ' + error.message);
     }
 }
 window.editService = editService;
 
 async function deleteService(id) {
-    if (!confirm('确定要删除这个服务吗？')) return;
+    if (!await confirmDialog('确定要删除这个服务吗？')) return;
     try {
         const response = await fetch(`/api/service/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             loadServices();
             loadServicesForSelect();
         }
     } catch (error) {
-        alert('删除失败');
+        notify('删除失败');
     }
 }
 window.deleteService = deleteService;

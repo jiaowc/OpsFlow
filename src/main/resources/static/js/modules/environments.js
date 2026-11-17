@@ -104,15 +104,15 @@ async function showCreateEnvModal() {
             });
             
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 loadEnvironments();
                 loadEnvs();
                 closeModal();
             } else {
-                alert('创建失败');
+                notify('创建失败');
             }
         } catch (error) {
-            alert('创建失败: ' + error.message);
+            notify('创建失败: ' + error.message);
         }
     });
     if (typeof loadClustersForSelect === 'function') {
@@ -186,37 +186,37 @@ async function editEnv(id) {
                     throw new Error(errorText || '修改失败');
                 }
 
-                alert('修改成功');
+                notify('修改成功');
                 await loadEnvironments();
                 if (typeof loadEnvs === 'function') {
                     await loadEnvs();
                 }
                 closeModal();
             } catch (error) {
-                alert('修改失败: ' + error.message);
+                notify('修改失败: ' + error.message);
             }
         });
         if (typeof loadClustersForSelect === 'function') {
             await loadClustersForSelect(env.clusterId);
         }
     } catch (error) {
-        alert('加载环境失败: ' + error.message);
+        notify('加载环境失败: ' + error.message);
     }
 }
 window.editEnv = editEnv;
 
 // 删除环境
 async function deleteEnv(id) {
-    if (!confirm('确定要删除这个环境吗？')) return;
+    if (!await confirmDialog('确定要删除这个环境吗？')) return;
     try {
         const response = await fetch(`/api/env/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             loadEnvironments();
             loadEnvs();
         }
     } catch (error) {
-        alert('删除失败');
+        notify('删除失败');
     }
 }
 window.deleteEnv = deleteEnv;

@@ -63,13 +63,13 @@ async function loadLicensePage() {
 
 async function importLicenseFromForm() {
     if (typeof hasPermission === 'function' && !hasPermission('system:config')) {
-        alert('无权限导入 License');
+        notify('无权限导入 License');
         return;
     }
     const textarea = document.getElementById('licenseImportText');
     const raw = (textarea && textarea.value || '').trim();
     if (!raw) {
-        alert('请粘贴 License 内容或选择文件');
+        notify('请粘贴 License 内容或选择文件');
         return;
     }
     try {
@@ -80,7 +80,7 @@ async function importLicenseFromForm() {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            alert(data.message || data.error || ('导入失败 HTTP ' + response.status));
+            notify(data.message || data.error || ('导入失败 HTTP ' + response.status));
             return;
         }
         if (typeof loadLicenseStatus === 'function') {
@@ -96,25 +96,25 @@ async function importLicenseFromForm() {
         if (typeof loadPublicBranding === 'function') {
             await loadPublicBranding();
         }
-        alert('License 导入成功');
+        notify('License 导入成功');
     } catch (e) {
-        alert('导入失败: ' + (e.message || e));
+        notify('导入失败: ' + (e.message || e));
     }
 }
 
 async function clearLicenseFromForm() {
     if (typeof hasPermission === 'function' && !hasPermission('system:config')) {
-        alert('无权限清除 License');
+        notify('无权限清除 License');
         return;
     }
-    if (!confirm('确定清除已导入的 License？商业功能（审批/审计/集成通知/生产回滚）将立即不可用。')) {
+    if (!await confirmDialog('确定清除已导入的 License？商业功能（审批/审计/集成通知/生产回滚）将立即不可用。')) {
         return;
     }
     try {
         const response = await fetch('/api/license', { method: 'DELETE' });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            alert(data.message || data.error || ('清除失败 HTTP ' + response.status));
+            notify(data.message || data.error || ('清除失败 HTTP ' + response.status));
             return;
         }
         const textarea = document.getElementById('licenseImportText');
@@ -126,9 +126,9 @@ async function clearLicenseFromForm() {
             applyPermissionUI();
         }
         renderLicenseStatusCard(typeof getLicenseStatus === 'function' ? getLicenseStatus() : {});
-        alert('已清除 License');
+        notify('已清除 License');
     } catch (e) {
-        alert('清除失败: ' + (e.message || e));
+        notify('清除失败: ' + (e.message || e));
     }
 }
 

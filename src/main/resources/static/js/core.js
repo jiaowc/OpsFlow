@@ -359,7 +359,7 @@ async function submitChangePassword() {
         });
         const data = await resp.json().catch(() => ({}));
         if (resp.ok && data.success) {
-            alert('密码修改成功');
+            notifyAfterReload('密码修改成功', 'success');
             window.location.reload();
             return;
         }
@@ -553,11 +553,11 @@ function showSection(sectionId, element, options) {
 
     // License 未开通时，拦截商业功能深链
     if (sectionId === 'audit' && !hasFeature('audit')) {
-        alert(typeof t === 'function' ? t('license.feature.audit') : '操作审计为 Pro 订阅功能，请导入有效 License');
+        notify(typeof t === 'function' ? t('license.feature.audit') : '操作审计为 Pro 订阅功能，请导入有效 License');
         sectionId = firstAccessibleSection();
         element = document.querySelector(`.menu-item[data-section="${sectionId}"]`);
     } else if (sectionId === 'integration-config' && !hasFeature('notify_integration')) {
-        alert(typeof t === 'function' ? t('license.feature.notify') : '集成与通知为 Pro 订阅功能，请导入有效 License');
+        notify(typeof t === 'function' ? t('license.feature.notify') : '集成与通知为 Pro 订阅功能，请导入有效 License');
         sectionId = firstAccessibleSection();
         element = document.querySelector(`.menu-item[data-section="${sectionId}"]`);
     } else if ((sectionId === 'tasks' || sectionId === 'approval') && !hasFeature('deploy_approval')) {
@@ -731,7 +731,7 @@ async function confirmModal() {
         closeModal();
     } catch (error) {
         console.error('Modal confirm error:', error);
-        alert((error && error.message) || '操作失败');
+        notify((error && error.message) || '操作失败');
     }
 }
 window.confirmModal = confirmModal;
@@ -804,11 +804,11 @@ document.addEventListener('DOMContentLoaded', async function() {
                         console.log('showAddPipelineModal called successfully');
                     } catch (error) {
                         console.error('Error calling showAddPipelineModal:', error);
-                        alert('打开Pipeline模态框时出错: ' + error.message);
+                        notify('打开Pipeline模态框时出错: ' + error.message);
                     }
                 } else {
                     console.error('showAddPipelineModal not available');
-                    alert('Pipeline功能未加载，请刷新页面');
+                    notify('Pipeline功能未加载，请刷新页面');
                 }
             });
             console.log('Pipeline button bound successfully');
@@ -860,12 +860,12 @@ document.addEventListener('DOMContentLoaded', async function() {
                         window.showConfigTab(tabName, tabBtn);
                     } catch (error) {
                         console.error('Error calling showConfigTab:', error);
-                        alert('调用系统功能时出错: ' + error.message);
+                        notify('调用系统功能时出错: ' + error.message);
                     }
                 } else {
                     console.error('showConfigTab function not available');
                     console.log('Available functions:', Object.keys(window).filter(k => k.includes('show') || k.includes('Config')));
-                    alert('系统功能未加载完成，请刷新页面');
+                    notify('系统功能未加载完成，请刷新页面');
                 }
                 return;
             }
@@ -878,7 +878,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 if (typeof window.showCreateStepDefModal === 'function') {
                     window.showCreateStepDefModal();
                 } else {
-                    alert('步骤管理功能未加载，请刷新页面');
+                    notify('步骤管理功能未加载，请刷新页面');
                 }
                 return;
             }
@@ -891,7 +891,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 if (typeof window.showCreatePipelineViewModal === 'function') {
                     window.showCreatePipelineViewModal();
                 } else {
-                    alert('视图管理功能未加载，请刷新页面');
+                    notify('视图管理功能未加载，请刷新页面');
                 }
                 return;
             }
@@ -908,11 +908,11 @@ document.addEventListener('DOMContentLoaded', async function() {
                         window.showAddComponentModal();
                     } catch (error) {
                         console.error('Error calling showAddComponentModal:', error);
-                        alert('打开组件添加对话框时出错: ' + error.message);
+                        notify('打开组件添加对话框时出错: ' + error.message);
                     }
                 } else {
                     console.error('showAddComponentModal function not available');
-                    alert('组件管理功能未加载完成，请刷新页面');
+                    notify('组件管理功能未加载完成，请刷新页面');
                 }
                 return;
             }
@@ -949,11 +949,11 @@ document.addEventListener('DOMContentLoaded', async function() {
                         window.showSSOTab(ssoType, ssoTabBtn);
                     } catch (error) {
                         console.error('Error calling showSSOTab:', error);
-                        alert('切换SSO标签页时出错: ' + error.message);
+                        notify('切换SSO标签页时出错: ' + error.message);
                     }
                 } else {
                     console.error('showSSOTab function not available');
-                    alert('SSO功能未加载完成，请刷新页面');
+                    notify('SSO功能未加载完成，请刷新页面');
                 }
                 return;
             }

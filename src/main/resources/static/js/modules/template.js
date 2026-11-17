@@ -546,11 +546,11 @@ function collectTemplateFormData(form, type) {
     const description = ((descInput && descInput.value) || '').trim();
     const content = (contentInput && contentInput.value) || '';
     if (!name) {
-        alert('模版名称不能为空');
+        notify('模版名称不能为空');
         return null;
     }
     if (!content.trim()) {
-        alert('模版内容不能为空');
+        notify('模版内容不能为空');
         return null;
     }
     const payload = {
@@ -564,7 +564,7 @@ function collectTemplateFormData(form, type) {
         const baseImageInput = form.querySelector('[name="baseImage"]');
         const baseImage = ((baseImageInput && baseImageInput.value) || '').trim();
         if (!baseImage) {
-            alert('请填写基础镜像');
+            notify('请填写基础镜像');
             return null;
         }
         payload.baseImage = baseImage;
@@ -572,7 +572,7 @@ function collectTemplateFormData(form, type) {
         const serviceTypeInput = form.querySelector('[name="serviceType"]');
         const serviceType = serviceTypeInput && serviceTypeInput.value;
         if (!serviceType) {
-            alert('请选择服务类型');
+            notify('请选择服务类型');
             return null;
         }
         payload.serviceType = serviceType;
@@ -588,7 +588,7 @@ function reloadTemplateList(type) {
 
 async function showAddPipelineTemplateModal(type) {
     if (typeof window.showModal !== 'function') {
-        alert('模态框功能未加载，请刷新页面');
+        notify('模态框功能未加载，请刷新页面');
         return;
     }
     const label = TEMPLATE_TYPE_LABELS[type] || type;
@@ -610,14 +610,14 @@ async function showAddPipelineTemplateModal(type) {
                 body: JSON.stringify(data)
             });
             if (response.ok) {
-                alert('创建成功');
+                notify('创建成功');
                 await reloadTemplateList(type);
                 window.closeModal();
             } else {
-                alert('创建失败: ' + await response.text());
+                notify('创建失败: ' + await response.text());
             }
         } catch (e) {
-            alert('创建失败: ' + e.message);
+            notify('创建失败: ' + e.message);
         }
     });
     wireTemplateVarChecks(document.getElementById('createPipelineTemplateForm'));
@@ -628,7 +628,7 @@ async function editPipelineTemplate(type, id) {
     try {
         const response = await fetch(`/api/pipeline-template/${id}`);
         if (!response.ok) {
-            alert('加载失败');
+            notify('加载失败');
             return;
         }
         const template = await response.json();
@@ -651,35 +651,35 @@ async function editPipelineTemplate(type, id) {
                     body: JSON.stringify(data)
                 });
                 if (resp.ok) {
-                    alert('更新成功');
+                    notify('更新成功');
                     await reloadTemplateList(type);
                     window.closeModal();
                 } else {
-                    alert('更新失败: ' + await resp.text());
+                    notify('更新失败: ' + await resp.text());
                 }
             } catch (e) {
-                alert('更新失败: ' + e.message);
+                notify('更新失败: ' + e.message);
             }
         });
         wireTemplateVarChecks(document.getElementById('editPipelineTemplateForm'));
     } catch (e) {
-        alert('加载失败: ' + e.message);
+        notify('加载失败: ' + e.message);
     }
 }
 window.editPipelineTemplate = editPipelineTemplate;
 
 async function deletePipelineTemplate(id, type) {
-    if (!confirm('确定删除此模版？')) return;
+    if (!await confirmDialog('确定删除此模版？')) return;
     try {
         const response = await fetch(`/api/pipeline-template/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            alert('删除成功');
+            notify('删除成功');
             await reloadTemplateList(type);
         } else {
-            alert('删除失败');
+            notify('删除失败');
         }
     } catch (e) {
-        alert('删除失败: ' + e.message);
+        notify('删除失败: ' + e.message);
     }
 }
 window.deletePipelineTemplate = deletePipelineTemplate;
@@ -700,23 +700,23 @@ window.showAddServiceTemplateModal = showAddServiceTemplateModal;
 function openTemplateModalSafe(fn, label) {
     try {
         if (typeof fn !== 'function') {
-            alert('模版功能未加载，请 Cmd+Shift+R 强制刷新');
+            notify('模版功能未加载，请 Cmd+Shift+R 强制刷新');
             return;
         }
         if (typeof window.showModal !== 'function') {
-            alert('模态框未加载（core.js），请强制刷新页面');
+            notify('模态框未加载（core.js），请强制刷新页面');
             return;
         }
         var result = fn();
         if (result && typeof result.catch === 'function') {
             result.catch(function(err) {
                 console.error(label + ' failed:', err);
-                alert(label + '失败: ' + (err && err.message ? err.message : err));
+                notify(label + '失败: ' + (err && err.message ? err.message : err));
             });
         }
     } catch (err) {
         console.error(label + ' error:', err);
-        alert(label + '失败: ' + (err && err.message ? err.message : err));
+        notify(label + '失败: ' + (err && err.message ? err.message : err));
     }
 }
 
