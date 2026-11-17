@@ -110,4 +110,40 @@ class DbMigrationFilesTest {
         }
         assertEquals(5, count);
     }
+
+    @Test
+    void tablesCreatedAfterBaselineDeclareTheProjectCollation() throws Exception {
+        // 基线之后新建的表必须显式写排序规则，不能依赖 MySQL 默认值（V3 就是为了收拾这个遗留问题）
+        Pattern createTable = Pattern.compile("(?s)CREATE TABLE[^;]*;");
+        for (java.util.Map.Entry<Integer, Resource> entry : migrations().entrySet()) {
+            if (entry.getKey() <= Integer.parseInt(DbMigrations.BASELINE_VERSION)) {
+                continue;
+            }
+            Matcher tables = createTable.matcher(read(entry.getValue()));
+            while (tables.find()) {
+                assertTrue(tables.group().contains("COLLATE=utf8mb4_unicode_ci"),
+                        entry.getValue().getFilename() + " 里的建表语句需要显式写 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
+        }
+    }
+
+    @Test
+    void collationMigrationCoversExactlyTheLegacyTables() throws Exception {
+        String baseline = read(migrations().get(1));
+        Set<String> legacy = new HashSet<>();
+        Matcher tables = Pattern.compile("(?s)CREATE TABLE `(\\w+)` \\((.*?)\\n\\) ENGINE=InnoDB([^;]*);").matcher(baseline);
+        while (tables.find()) {
+            if (!tables.group(3).contains("COLLATE=utf8mb4_unicode_ci")) {
+                legacy.add(tables.group(1));
+            }
+        }
+        Set<String> converted = new HashSet<>();
+        Matcher alters = Pattern.compile("(?m)^ALTER TABLE `(\\w+)` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
+                .matcher(read(migrations().get(3)));
+        while (alters.find()) {
+            converted.add(alters.group(1));
+        }
+        assertEquals(legacy, converted, "V3 应该正好覆盖基线里排序规则不是 utf8mb4_unicode_ci 的表");
+        assertEquals(4, converted.size());
+    }
 }

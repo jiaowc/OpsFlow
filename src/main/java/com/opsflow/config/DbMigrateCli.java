@@ -9,7 +9,7 @@ import java.util.List;
  * 命令行执行数据库迁移（不启动应用），供 {@code scripts/database/migrate.sh} 调用：
  * <pre>
  *   java -cp opsflow.jar -Dloader.main=com.opsflow.config.DbMigrateCli \
- *        org.springframework.boot.loader.PropertiesLauncher [migrate|info]
+ *        org.springframework.boot.loader.PropertiesLauncher [migrate|info|repair]
  * </pre>
  * 连接信息从环境变量读取：OPSFLOW_MIGRATE_URL / OPSFLOW_MIGRATE_USER / OPSFLOW_MIGRATE_PASSWORD
  * （密码不走命令行参数）。与应用启动时的迁移共用 {@link DbMigrations} 的配置和检查。
@@ -32,8 +32,13 @@ public final class DbMigrateCli {
             } else if ("migrate".equals(command)) {
                 List<String> executed = DbMigrations.migrateOrVerify(flyway, true);
                 System.out.println(executed.isEmpty() ? "已是最新版本，没有需要执行的迁移" : "已执行: " + executed);
+            } else if ("repair".equals(command)) {
+                List<String> cleared = DbMigrations.repair(flyway);
+                System.out.println(cleared.isEmpty()
+                        ? "没有失败的迁移记录，无需修复"
+                        : "已清除失败记录: " + cleared + "，现在可以重新执行迁移");
             } else {
-                System.err.println("未知命令: " + command + "（可用: migrate | info）");
+                System.err.println("未知命令: " + command + "（可用: migrate | info | repair）");
                 System.exit(2);
             }
         } catch (RuntimeException e) {
@@ -50,7 +55,13 @@ public final class DbMigrateCli {
             System.out.println("  （无：这个库还没有迁移历史）");
         }
         for (MigrationInfo info : applied) {
-            System.out.printf("  %-6s %-40s %s%n", info.getVersion(), info.getDescription(), info.getInstalledOn());
+            System.out.printf("  %-6s %-40s %s%s%n", info.getVersion(), info.getDescription(), info.getInstalledOn(),
+                    info.getState() != null && info.getState().isFailed() ? "  【执行失败】" : "");
+        }
+        List<String> failed = DbMigrations.failedVersions(flyway);
+        if (!failed.isEmpty()) {
+            System.out.println("有执行失败的版本: " + failed);
+            System.out.println("  处理导致失败的原因后，执行 migrate.sh --repair 清除失败记录，再重新迁移");
         }
         List<String> pending = DbMigrations.pendingVersions(flyway);
         System.out.println(pending.isEmpty() ? "待执行: 无" : "待执行:");

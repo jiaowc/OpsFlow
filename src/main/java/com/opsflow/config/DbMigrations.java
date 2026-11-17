@@ -70,6 +70,7 @@ public final class DbMigrations {
      */
     public static List<String> migrateOrVerify(Flyway flyway, boolean migrate) {
         assertSafeToBaseline(flyway);
+        assertNoFailedMigration(flyway);
         List<String> pending = pendingVersions(flyway);
         if (!migrate) {
             if (!pending.isEmpty()) {
@@ -81,6 +82,45 @@ public final class DbMigrations {
         }
         flyway.migrate();
         return pending;
+    }
+
+    /**
+     * 上一次迁移执行到一半失败时（MySQL 的表结构变更不能回滚），历史表里会留下一条失败记录，
+     * Flyway 在它被清掉之前拒绝继续。这里提前给出可操作的提示，而不是让使用者去读 Flyway 的英文报错。
+     */
+    static void assertNoFailedMigration(Flyway flyway) {
+        List<String> failed = failedVersions(flyway);
+        if (!failed.isEmpty()) {
+            throw new IllegalStateException("上一次数据库迁移执行失败，停在 " + failed + "。"
+                    + "请先处理导致失败的原因（见当时的报错和对应版本文件开头的说明），"
+                    + "然后执行 bash scripts/database/migrate.sh --repair 清除失败记录，再重新启动或执行迁移");
+        }
+    }
+
+    /** 执行失败、尚未修复的版本 */
+    public static List<String> failedVersions(Flyway flyway) {
+        List<String> versions = new ArrayList<>();
+        if (!historyTableExists(flyway)) {
+            return versions;
+        }
+        for (MigrationInfo info : flyway.info().all()) {
+            if (info.getState() != null && info.getState().isFailed() && info.getVersion() != null) {
+                versions.add(info.getVersion().getVersion() + " " + info.getDescription());
+            }
+        }
+        return versions;
+    }
+
+    /**
+     * 清除历史表里的失败记录，之后可以重新执行那个版本。
+     * 只在确认导致失败的原因已处理、且失败的版本没有留下做了一半的改动时使用。
+     *
+     * @return 被清除的失败版本
+     */
+    public static List<String> repair(Flyway flyway) {
+        List<String> failed = failedVersions(flyway);
+        flyway.repair();
+        return failed;
     }
 
     /** 尚未执行的版本号（空库时包含基线版本；已有库打基线后不含） */

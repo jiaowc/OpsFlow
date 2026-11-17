@@ -8,6 +8,7 @@
 #   bash scripts/database/migrate.sh --info            # 只列出已记录和待执行的版本，不改库
 #   bash scripts/database/migrate.sh                   # 执行待执行的版本
 #   bash scripts/database/migrate.sh --profile=prod    # 指定环境，连接解析规则见 db_env.sh
+#   bash scripts/database/migrate.sh --repair          # 某个版本执行失败后：处理完原因，清除失败记录以便重试
 #
 # 版本文件打在 jar 里（src/main/resources/db/migration），所以要先有 target/opsflow.jar，
 # 或用 OPSFLOW_JAR 指定 jar 路径。连接信息与应用一致；密码通过环境变量传给 Java，不出现在命令行。
@@ -22,8 +23,9 @@ for arg in "$@"; do
   case "$arg" in
     --profile=*) PROFILE="${arg#--profile=}" ;;
     --info) COMMAND="info" ;;
+    --repair) COMMAND="repair" ;;
     -h|--help)
-      echo "用法: $0 [--info] [--profile=dev|test|prod]"
+      echo "用法: $0 [--info|--repair] [--profile=dev|test|prod]"
       exit 0
       ;;
     *)

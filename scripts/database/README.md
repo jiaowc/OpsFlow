@@ -6,7 +6,8 @@
 src/main/resources/db/migration/
 ├── V1__baseline_schema.sql   # 基线：全部表结构
 ├── V2__default_data.sql      # 基线：角色权限、初始管理员、步骤定义、默认模版、通用流水线
-└── V3__xxx.sql ...           # 之后的每个变更一个文件
+├── V3__unify_table_collation.sql  # 统一 4 张表的排序规则
+└── V4__xxx.sql ...           # 之后的每个变更一个文件
 
 scripts/database/
 ├── migrate.sh                # 手动执行 / 查看迁移（不启动应用）
@@ -50,9 +51,20 @@ bash scripts/database/migrate.sh --profile=prod
 | 已有业务表、没有迁移历史 | 打基线：记为「已到版本 2」，不执行 V1、V2，只新建 `flyway_schema_history`；然后执行 V3 及之后的版本 |
 | 很早的旧库（缺少近期的表或列） | 拒绝启动并提示。先执行一次 `bash scripts/database/legacy/run_migrations.sh` 追平，再启动 |
 
+### 某个版本执行失败了
+
+MySQL 的表结构变更不能回滚，所以一个版本执行到一半失败时，Flyway 会在历史表里留下一条失败记录，并拒绝继续，直到它被清掉：
+
+```bash
+bash scripts/database/migrate.sh --info      # 看是哪个版本失败
+# 处理导致失败的原因（报错信息 + 该版本文件开头的说明）；如果它已经做了一部分改动，先手工撤销或补完
+bash scripts/database/migrate.sh --repair    # 清除失败记录
+bash scripts/database/migrate.sh             # 重新执行，或直接重启应用
+```
+
 ## 新增一个数据库变更
 
-1. 在 `src/main/resources/db/migration/` 新建 `V<下一个序号>__<英文描述>.sql`，例如 `V3__add_service_owner_index.sql`。
+1. 在 `src/main/resources/db/migration/` 新建 `V<下一个序号>__<英文描述>.sql`，例如 `V4__add_service_owner_index.sql`。
 2. 只写这一次变更需要的语句，不需要写成可重复执行的形式（Flyway 保证只执行一次）。
 3. **已经发布的版本文件不要再改**：Flyway 会校验内容，改过的文件会让已执行过它的环境启动失败。要修正就再加一个新版本。
 4. 本地启动应用验证；生产按上面的方式执行。
@@ -73,4 +85,4 @@ bash scripts/database/export_sample_data.sh                          # 从当前
 - **启用/禁用开关**用 `tinyint`，`1` 启用、`0` 禁用，列名 `status`（如 `cluster.status`、`user.status`）。
 - **状态机**用 `varchar` 存可读的状态码（如 `build_job.status` 的 `PENDING / BUILDING / SUCCESS / FAILED`、`deploy_task.task_status`、`approval_status`）。新表里这类列建议起更具体的名字（`task_status`、`approval_status`），避免和开关型的 `status` 混淆。
 - 关联用 `<表>_id` 的 `bigint` 列，不建数据库外键，一致性由应用保证；查询会用到的关联列要建索引。
-- 表和字符列统一 `utf8mb4` + `utf8mb4_unicode_ci`。现有 `audit_log`、`credential`、`inbox_message`、`pipeline_webhook_trigger` 4 张表是 `utf8mb4_0900_ai_ci`（历史遗留），与其他表做字符串关联时要留意排序规则不一致的报错。
+- 表和字符列统一 `utf8mb4` + `utf8mb4_unicode_ci`，建表时显式写出 `DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`，不要依赖 MySQL 的默认值（MySQL 8 默认是 `utf8mb4_0900_ai_ci`，混用后字符列关联会报排序规则冲突）。历史上有 4 张表用了默认值，已由 `V3__unify_table_collation.sql` 统一。
