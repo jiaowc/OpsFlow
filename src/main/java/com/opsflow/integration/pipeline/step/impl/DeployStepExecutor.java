@@ -174,9 +174,8 @@ public class DeployStepExecutor implements StepExecutor {
             StringBuilder applyCmd = new StringBuilder(kubeSetup);
             for (String path : files) {
                 String yaml = readManifestContent(path, context);
-                applyCmd.append("kubectl -n ").append(NodeCommandHelper.shellQuote(namespace))
-                        .append(" apply -f - <<'EOF'\n")
-                        .append(yaml).append("\nEOF\n");
+                applyCmd.append(NodeCommandHelper.heredoc(
+                        "kubectl -n " + NodeCommandHelper.shellQuote(namespace) + " apply -f -", yaml)).append('\n');
             }
             NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnDeployNode(context, applyCmd.toString());
             appendCmdOutput(logBuilder, cmdResult);

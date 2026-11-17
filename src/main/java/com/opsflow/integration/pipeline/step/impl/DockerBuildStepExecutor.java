@@ -83,8 +83,7 @@ public class DockerBuildStepExecutor implements StepExecutor {
                 Map<String, String> renderParams = new HashMap<>(stepParams);
                 renderParams.putAll(buildVars);
                 dockerfileContent = PipelineTemplateRenderer.render(dockerfileContent, context, renderParams);
-                String writeCmd = "cat <<'EOF' > " + dockerfileShell + "\n"
-                        + dockerfileContent + "\nEOF\n"
+                String writeCmd = NodeCommandHelper.heredoc("cat > " + dockerfileShell, dockerfileContent) + "\n"
                         + "echo \"Dockerfile 已写入: " + dockerfileShell + "\"\n"
                         + "ls -la " + dockerfileShell;
                 logBuilder.append("\n======== [1/2] 写入 Dockerfile ========\n");

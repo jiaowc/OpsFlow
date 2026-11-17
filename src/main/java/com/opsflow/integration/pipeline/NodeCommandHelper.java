@@ -260,6 +260,37 @@ public class NodeCommandHelper {
         return 60000;
     }
 
+    /**
+     * 生成「命令 + heredoc 正文」：{@code <command> <<'分隔符'\n正文\n分隔符}。
+     * <p>
+     * 正文来自模版或渲染结果，内容不受控。分隔符固定写成 EOF 时，正文里只要有一行恰好是 EOF，
+     * heredoc 就会提前结束，后面的内容被当成命令在节点上执行。这里保证分隔符不会作为整行出现在正文里。
+     * 分隔符带引号，正文中的 $、反引号不会被 shell 展开。
+     * </p>
+     *
+     * @param command heredoc 之前的命令，如 {@code cat > 'file'}
+     * @param content 正文
+     */
+    public static String heredoc(String command, String content) {
+        String body = content == null ? "" : content;
+        String delimiter = heredocDelimiter(body);
+        return command + " <<'" + delimiter + "'\n" + body + "\n" + delimiter;
+    }
+
+    /** 不会作为整行出现在正文里的 heredoc 分隔符 */
+    static String heredocDelimiter(String content) {
+        String delimiter = "__OPSFLOW_EOF__";
+        if (content == null || content.isEmpty()) {
+            return delimiter;
+        }
+        java.util.Set<String> lines = new java.util.HashSet<>(java.util.Arrays.asList(content.split("\\r?\\n", -1)));
+        int seq = 0;
+        while (lines.contains(delimiter)) {
+            delimiter = "__OPSFLOW_EOF_" + (++seq) + "__";
+        }
+        return delimiter;
+    }
+
     public static String shellQuote(String value) {
         if (value == null) {
             return "''";

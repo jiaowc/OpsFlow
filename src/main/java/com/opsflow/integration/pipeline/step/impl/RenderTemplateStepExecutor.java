@@ -105,8 +105,7 @@ public class RenderTemplateStepExecutor implements StepExecutor {
                     String logicalPath = manifestDir + "/deployment.yaml";
                     String remoteFileShell = WorkspacePathHelper.toRemoteShellPath(logicalPath);
                     String content = PipelineTemplateRenderer.render(deploymentTemplate, variables);
-                    String writeCmd = "cat <<'EOF' > " + remoteFileShell + "\n"
-                            + content + "\nEOF";
+                    String writeCmd = NodeCommandHelper.heredoc("cat > " + remoteFileShell, content);
                     NodeCommandHelper.CommandResult writeResult =
                             nodeCommandHelper.runOnBuildNode(context, writeCmd, workspace);
                     if (!writeResult.isSuccess()) {
@@ -124,8 +123,7 @@ public class RenderTemplateStepExecutor implements StepExecutor {
                     String logicalPath = manifestDir + "/service.yaml";
                     String remoteFileShell = WorkspacePathHelper.toRemoteShellPath(logicalPath);
                     String content = PipelineTemplateRenderer.render(serviceTemplate, variables);
-                    String writeCmd = "cat <<'EOF' > " + remoteFileShell + "\n"
-                            + content + "\nEOF";
+                    String writeCmd = NodeCommandHelper.heredoc("cat > " + remoteFileShell, content);
                     NodeCommandHelper.CommandResult writeResult =
                             nodeCommandHelper.runOnBuildNode(context, writeCmd, workspace);
                     if (!writeResult.isSuccess()) {
