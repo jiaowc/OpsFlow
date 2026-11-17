@@ -1,4 +1,7 @@
-# 本地调试用构建节点：SSH + JDK8 + Maven + Git + Docker CLI（挂宿主机 docker.sock）
+# 本地调试用构建节点：SSH + JDK8 + Maven + Node 22 + Git + Docker CLI（挂宿主机 docker.sock）
+# Node 取自官方镜像（jammy 的 apt 源只有 Node 12，跑不了 Vite 6）
+FROM node:22-bookworm-slim AS node
+
 FROM eclipse-temurin:8-jdk-jammy
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -30,6 +33,13 @@ RUN apt-get update \
     && ln -sfn /opt/java/openjdk/bin/java /usr/bin/java \
     && if [ -e /usr/bin/javac ] && [ ! -L /usr/bin/javac ]; then mv /usr/bin/javac /usr/bin/javac.distro; fi \
     && ln -sfn /opt/java/openjdk/bin/javac /usr/bin/javac
+
+# Node.js + npm：装到 /usr/local（已在默认 PATH，SSH 非登录 shell 可直接用）
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sfn ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sfn ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node -v && npm -v
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

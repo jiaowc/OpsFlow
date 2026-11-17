@@ -7,7 +7,7 @@
 | `local-build-1` | `127.0.0.1:2222` | root / `Build12345` |
 | `local-build-2` | `127.0.0.1:2223` | root / `Build12345` |
 
-容器内含：**JDK8、Maven、Git、Docker CLI**；挂载宿主机 `/var/run/docker.sock`，`docker build/push` 实际打在本机 Docker（可推本地 Harbor `localhost/...`）。
+容器内含：**JDK8、Maven、Node 22（npm）、Git、Docker CLI**；挂载宿主机 `/var/run/docker.sock`，`docker build/push` 实际打在本机 Docker（可推本地 Harbor `localhost/...`）。
 
 工作目录：`~/opsflow`（容器内 `/root/opsflow`，已卷持久化到 `.data/`）。
 

@@ -38,13 +38,13 @@ for port in "$BUILD_NODE1_PORT" "$BUILD_NODE2_PORT"; do
   echo "[build-nodes] 127.0.0.1:${port} 可连"
 done
 
-# 冒烟：SSH 执行 java/mvn/git/docker
+# 冒烟：SSH 执行 java/mvn/node/npm/git/docker
 smoke() {
   local port="$1" name="$2"
   echo "[build-nodes] 检测 ${name} (port ${port}) ..."
   sshpass -p "$BUILD_NODE_SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     -p "$port" "${BUILD_NODE_SSH_USER}@127.0.0.1" \
-    'java -version 2>&1 | head -n1; mvn -version 2>&1 | head -n1; git --version; docker --version; pwd; ls -la ~ | head' \
+    'java -version 2>&1 | head -n1; mvn -version 2>&1 | head -n1; node -v; npm -v; git --version; docker --version; pwd; ls -la ~ | head' \
     || {
       echo "[build-nodes] 提示: 未安装 sshpass 时跳过自动检测，请手动: ssh -p ${port} root@127.0.0.1" >&2
       return 0
