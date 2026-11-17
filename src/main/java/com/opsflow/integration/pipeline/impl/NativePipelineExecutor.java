@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 /**
  * 原生 Pipeline 执行器：按步骤顺序调度 {@link StepExecutor}，合并参数并处理超时与阶段回调。
  * <p>
- * 由 {@link com.opsflow.service.impl.PipelineRunServiceImpl} 注入调用；
+ * 由 {@link com.opsflow.service.impl.pipeline.PipelineJobRunner} 注入调用；
  * 阶段落库由上下文中的 {@link PipelineStageListener} 负责，本类仅维护内存级 executionStatusMap。
  * </p>
  */
@@ -58,7 +58,7 @@ public class NativePipelineExecutor implements PipelineExecutor {
      * <p><b>参数合并优先级</b>（后者覆盖前者）：</p>
      * <ol>
      *   <li>{@code step.parameters}（模板步骤级配置）；</li>
-     *   <li>{@code context.parameters}（{@link com.opsflow.service.impl.PipelineRunServiceImpl#buildContext} 写入的全局参数）；</li>
+     *   <li>{@code context.parameters}（{@code PipelineJobRunner#buildContext} 写入的全局参数）；</li>
      *   <li>{@code stepOutputs}（前置步骤 outputData，如 checkout 的 commitId、push_image 的 imageFullName、
      *       render_template 的 manifestDir/renderedManifests）。</li>
      * </ol>

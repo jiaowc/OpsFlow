@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  * </p>
  * <p>
  * 变量清单必须和 {@link PipelineTemplateRenderer#buildVariables} 以及
- * PipelineRunServiceImpl#buildContext 写入的参数保持一致，新增变量时两边一起改。
+ * PipelineJobRunner#buildContext 写入的参数保持一致，新增变量时两边一起改。
  * </p>
  */
 public final class PipelineTemplateVariableChecker {
