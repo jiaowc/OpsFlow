@@ -7,6 +7,7 @@ import com.opsflow.dao.mapper.DeployTaskMapper;
 import com.opsflow.dao.model.BuildJob;
 import com.opsflow.dao.model.DeployTask;
 import com.opsflow.service.PipelineRunService;
+import com.opsflow.service.impl.deploy.CdJobScheduler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -40,6 +41,11 @@ class DeployTaskCdServiceImplTest {
         ReflectionTestUtils.setField(service, "deployTaskMapper", deployTaskMapper);
         ReflectionTestUtils.setField(service, "buildJobMapper", buildJobMapper);
         ReflectionTestUtils.setField(service, "pipelineRunService", pipelineRunService);
+        // 拆分后挑选规则在 CdJobScheduler 里，这里装配真实对象，断言保持不变
+        CdJobScheduler scheduler = new CdJobScheduler();
+        ReflectionTestUtils.setField(scheduler, "buildJobMapper", buildJobMapper);
+        ReflectionTestUtils.setField(scheduler, "pipelineRunService", pipelineRunService);
+        ReflectionTestUtils.setField(service, "cdJobScheduler", scheduler);
     }
 
     @Test
