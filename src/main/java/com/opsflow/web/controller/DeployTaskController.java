@@ -33,6 +33,7 @@ import com.opsflow.service.DeployTaskEditService;
 import com.opsflow.service.PermissionService;
 import com.opsflow.service.ProjectAccessService;
 import com.opsflow.service.impl.ApprovalNotifyDispatchServiceImpl;
+import com.opsflow.service.impl.deploy.DeployModuleImageResolver;
 import com.opsflow.license.LicenseFeatures;
 import com.opsflow.service.LicenseService;
 import org.springframework.beans.BeanUtils;
@@ -116,6 +117,9 @@ public class DeployTaskController {
     @Autowired
     private ProjectMapper projectMapper;
 
+    @Autowired
+    private DeployModuleImageResolver deployModuleImageResolver;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -140,7 +144,7 @@ public class DeployTaskController {
      * 供 {@link com.opsflow.service.impl.DeployTaskCdServiceImpl#resolveEnv} 回退匹配使用。
      * </p>
      * <p>
-     * <b>模块规范化</b>：{@link #normalizeDeployModules} 将相对路径补全为
+     * <b>模块规范化</b>：{@link DeployModuleImageResolver#normalizeDeployModules} 将相对路径补全为
      * {@code registry/project/service:tag} 后再 JSON 序列化存入 deployModules，
      * 保证库内数据与 CD 执行、列表展示使用同一套完整镜像格式。
      * </p>
@@ -234,7 +238,7 @@ public class DeployTaskController {
             throw new BusinessException("请至少选择一种通知方式（站内信 / 飞书）");
         }
 
-        List<String> normalizedModules = normalizeDeployModules(request.getDeployModules());
+        List<String> normalizedModules = deployModuleImageResolver.normalizeDeployModules(request.getDeployModules());
         deployImageVerifyService.assertImagesExist(normalizedModules);
         Long userId = (Long) session.getAttribute("userId");
         List<DeployModuleItemDTO> moduleItems = DeployModuleJson.fromImages(normalizedModules, username, userId);
@@ -404,7 +408,7 @@ public class DeployTaskController {
         if (request.getDeployModuleItems() != null || request.getDeployModules() != null) {
             List<DeployModuleItemDTO> merged = deployTaskEditService.mergeModulesByOwnership(
                     task, request.getDeployModuleItems(), request.getDeployModules(), username, userId);
-            List<String> normalized = normalizeDeployModules(DeployModuleJson.toImageList(merged));
+            List<String> normalized = deployModuleImageResolver.normalizeDeployModules(DeployModuleJson.toImageList(merged));
             deployImageVerifyService.assertImagesExist(normalized);
             for (int i = 0; i < merged.size(); i++) {
                 merged.get(i).setImage(normalized.get(i));
@@ -527,7 +531,7 @@ public class DeployTaskController {
      * <p>
      * <b>主流程</b>：
      * <ol>
-     *   <li>拷贝基础字段，解析 deployModules → {@link #normalizeDeployModules} → {@link #buildDeployModuleDetails}</li>
+     *   <li>拷贝基础字段，解析 deployModules → {@link DeployModuleImageResolver#normalizeDeployModules} → {@link #buildDeployModuleDetails}</li>
      *   <li>解析 notifyChannels、deployEnvIds 并关联环境名</li>
      *   <li>关联审批流名、CD 模版名、集群名、关联 BuildJob ID 列表</li>
      *   <li>{@link ApprovalService#listByTask} 填充审批记录（含当前用户 actionable 标志）</li>
@@ -570,7 +574,7 @@ public class DeployTaskController {
                         item.setOwnerId(task.getCreatorId());
                     }
                 }
-                List<String> images = normalizeDeployModules(DeployModuleJson.toImageList(items));
+                List<String> images = deployModuleImageResolver.normalizeDeployModules(DeployModuleJson.toImageList(items));
                 for (int i = 0; i < items.size() && i < images.size(); i++) {
                     items.get(i).setImage(images.get(i));
                 }
@@ -681,61 +685,6 @@ public class DeployTaskController {
     }
 
     /**
-     * 将上线模块列表规范化为完整 Harbor 镜像地址，供入库与展示共用。
-     * <p>
-     * <b>规范化规则</b>（按条处理，跳过空串）：
-     * <ul>
-     *   <li>未配置 Registry → 原样返回（无法补全，交给下游 CD 服务报错）</li>
-     *   <li>已以 {@code registry/} 开头 → 不变</li>
-     *   <li>形如 {@code host-or-ip/.../service:tag}（首段含 {@code .} 或 {@code :}）→ 视为已含 registry，不变</li>
-     *   <li>其余相对路径（如 {@code project/service:tag}）→ 前缀拼接 {@code registry/}</li>
-     * </ul>
-     * </p>
-     * <p>
-     * <b>与 CD 侧关系</b>：createTask 入库前调用，保证 deployModules 字段持久化为完整地址；
-     * getTaskDTO 读库后再次调用，兼容旧数据中的相对路径。规则与
-     * {@link com.opsflow.service.impl.DeployTaskCdServiceImpl#resolveImageFullName} 语义一致。
-     * </p>
-     *
-     * @param modules 原始或已部分规范化的模块列表
-     * @return 规范化后的镜像地址列表（可能为空列表，不为 null）
-     */
-    private List<String> normalizeDeployModules(List<String> modules) {
-        if (modules == null || modules.isEmpty()) {
-            return modules;
-        }
-        String registry = harborCredentialService.getRegistryHost(null);
-        List<String> result = new java.util.ArrayList<>();
-        for (String module : modules) {
-            if (!StringUtils.hasText(module)) {
-                continue;
-            }
-            String text = module.trim();
-            if (!StringUtils.hasText(registry)) {
-                result.add(text);
-                continue;
-            }
-            String reg = registry.trim();
-            if (text.startsWith(reg + "/")) {
-                result.add(text);
-                continue;
-            }
-            // 已是 host/... 形态
-            int slash = text.indexOf('/');
-            int colon = text.lastIndexOf(':');
-            if (slash > 0 && colon > slash) {
-                String first = text.substring(0, slash);
-                if (first.contains(".") || first.contains(":")) {
-                    result.add(text);
-                    continue;
-                }
-            }
-            result.add(reg + "/" + text);
-        }
-        return result;
-    }
-
-    /**
      * 由规范化镜像列表构建模块详情 DTO，关联服务表补全展示字段。
      * <p>
      * <b>业务目的</b>：详情页除镜像字符串外，还需服务中文名、标准 code、容器端口等；
@@ -752,7 +701,7 @@ public class DeployTaskController {
      * 减少「页面显示 8080、实际部署另一端口」的困惑。
      * </p>
      *
-     * @param modules 经 {@link #normalizeDeployModules} 处理后的完整镜像列表
+     * @param modules 经 {@link DeployModuleImageResolver#normalizeDeployModules} 处理后的完整镜像列表
      * @return 与 modules 顺序一致的详情列表；modules 为 null 时返回空列表
      */
     private List<DeployModuleDetailDTO> buildDeployModuleDetails(List<DeployModuleItemDTO> items) {
@@ -769,17 +718,10 @@ public class DeployTaskController {
             detail.setVerifiedEnv(verifiedEnvs.get(module));
             detail.setOwnerName(item.getOwnerName());
             detail.setOwnerId(item.getOwnerId());
-            String serviceCode = extractServiceCode(module);
+            String serviceCode = deployModuleImageResolver.extractServiceCode(module);
             detail.setServiceCode(serviceCode);
             if (StringUtils.hasText(serviceCode)) {
-                com.opsflow.dao.model.Service service = serviceMapper.selectOne(
-                        new QueryWrapper<com.opsflow.dao.model.Service>()
-                                .eq("code", serviceCode.trim()).last("LIMIT 1"));
-                if (service == null) {
-                    service = serviceMapper.selectOne(
-                            new QueryWrapper<com.opsflow.dao.model.Service>()
-                                    .eq("name", serviceCode.trim()).last("LIMIT 1"));
-                }
+                com.opsflow.dao.model.Service service = deployModuleImageResolver.findServiceByCode(serviceCode);
                 if (service != null) {
                     detail.setServiceName(service.getName());
                     detail.setServiceCode(service.getCode() != null ? service.getCode() : serviceCode);
@@ -797,23 +739,4 @@ public class DeployTaskController {
         return details;
     }
 
-    /**
-     * 从镜像地址中提取服务标识（路径最后一段，不含 tag）。
-     *
-     * @param module 完整或相对镜像地址，如 {@code registry/proj/service:tag}
-     * @return 服务 code；无法解析时返回 {@code null}
-     */
-    private String extractServiceCode(String module) {
-        if (!StringUtils.hasText(module)) {
-            return null;
-        }
-        String text = module.trim();
-        int colon = text.lastIndexOf(':');
-        String left = colon > 0 ? text.substring(0, colon) : text;
-        int slash = left.lastIndexOf('/');
-        if (slash >= 0 && slash < left.length() - 1) {
-            return left.substring(slash + 1).trim();
-        }
-        return left.trim();
-    }
 }
