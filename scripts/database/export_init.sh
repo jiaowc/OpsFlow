@@ -36,6 +36,11 @@ MASTER_TABLES=(
   approval_flow build_node system_config
 )
 
+# 初始管理员：init.sql 只带这一个账号。初始口令为 admin（与用户名相同，属于弱口令，首次登录会被强制改密）
+# 下面是该初始口令的 BCrypt 哈希，由 PasswordHasher.hash("admin") 生成；不是任何真实环境的密码
+INIT_ADMIN_USER="admin"
+INIT_ADMIN_PASSWORD_HASH='$2a$10$SyILMi5aaEuNikAEkr3bEO/h3slK3Z24MZhCsHbV75n.4XWJyWQIO'
+
 echo "导出源: ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 echo "输出:   ${OUT_FILE}"
 
@@ -53,8 +58,40 @@ DUMP_COMMON=(
 mysqldump "${DUMP_COMMON[@]}" --routines --triggers --no-data \
   --skip-add-drop-table "$DB_NAME" > "${TMP_DIR}/schema.sql"
 
-mysqldump "${DUMP_COMMON[@]}" --complete-insert --skip-extended-insert \
-  --no-create-info "$DB_NAME" "${MASTER_TABLES[@]}" > "${TMP_DIR}/data.sql"
+# 按表导出配置数据；带账号/授权信息的表做裁剪，避免把当前环境的人员和许可证带进仓库：
+#   user          只保留初始管理员，密码重置为初始口令（首次登录强制修改）
+#   user_role     只保留初始管理员的角色
+#   user_feishu   不导出（个人飞书身份）
+#   system_config 不导出许可证（license），新环境自行导入
+: > "${TMP_DIR}/data.sql"
+PLAIN_TABLES=()
+for table in "${MASTER_TABLES[@]}"; do
+  case "$table" in
+    user|user_role|user_feishu|system_config) ;;
+    *) PLAIN_TABLES+=("$table") ;;
+  esac
+done
+
+dump_data() {
+  mysqldump "${DUMP_COMMON[@]}" --complete-insert --skip-extended-insert \
+    --no-create-info "$@" >> "${TMP_DIR}/data.sql"
+}
+
+dump_data "$DB_NAME" "${PLAIN_TABLES[@]}"
+dump_data --where="username='${INIT_ADMIN_USER}'" "$DB_NAME" user
+dump_data --where="user_id IN (SELECT id FROM \`user\` WHERE username='${INIT_ADMIN_USER}')" "$DB_NAME" user_role
+dump_data --where="config_type <> 'license'" "$DB_NAME" system_config
+
+# 初始管理员密码统一重置，不把当前环境的密码哈希带出去
+ADMIN_ROWS="$(grep -cE "^INSERT INTO \`user\` .* VALUES \([0-9]+,'${INIT_ADMIN_USER}'," "${TMP_DIR}/data.sql" || true)"
+if [ "$ADMIN_ROWS" != "1" ]; then
+  echo "导出失败：user 表中没有找到唯一的初始管理员 ${INIT_ADMIN_USER}（匹配 ${ADMIN_ROWS} 行）" >&2
+  exit 1
+fi
+sed -E "s|^(INSERT INTO \`user\` .* VALUES \([0-9]+,'${INIT_ADMIN_USER}',)'[^']*'|\\1'${INIT_ADMIN_PASSWORD_HASH}'|" \
+  "${TMP_DIR}/data.sql" > "${TMP_DIR}/data.admin.sql"
+mv "${TMP_DIR}/data.admin.sql" "${TMP_DIR}/data.sql"
+echo "已裁剪账号数据：仅保留 ${INIT_ADMIN_USER}（密码重置为初始口令），不含飞书绑定和许可证"
 
 # 加密存储的凭据（enc:v1:...）绑定本机主密钥，带到新环境也解不开：导出时一律置空，新环境重新录入
 ENC_COUNT="$(grep -oE "'enc:v1:[A-Za-z0-9+/=]+'" "${TMP_DIR}/data.sql" | wc -l | tr -d ' ')"
@@ -68,14 +105,15 @@ echo "已置空加密凭据字段: ${ENC_COUNT} 个"
 -- 生成时间: $(date '+%Y-%m-%d %H:%M:%S %z')
 -- 来源库: ${DB_HOST}:${DB_PORT}/${DB_NAME}
 --
--- 包含：用户/角色权限、环境/集群/服务、流水线/步骤/模版、组件/钥匙、节点、系统配置
--- 不含：构建历史、阶段日志、上线任务、审批记录、站内信
+-- 包含：角色权限、环境/集群/服务、流水线/步骤/模版、组件/钥匙、节点、系统配置
+-- 不含：构建历史、阶段日志、上线任务、审批记录、站内信、许可证、飞书绑定
+-- 账号：只有初始管理员 ${INIT_ADMIN_USER}，初始口令 admin，首次登录必须修改
 --
 -- 使用：
 --   mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS opsflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 --   mysql -u root -p opsflow < scripts/database/init.sql
 --
--- 注意：含当前环境的账号、组件地址与钥匙内容，仅用于受控环境初始化。
+-- 注意：含当前环境的组件地址、节点和服务配置（加密凭据已置空），用于受控环境初始化。
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
