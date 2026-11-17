@@ -22,14 +22,14 @@ build_project() {
     cd "${PROJECT_DIR}"
 
     check_command mvn
-    setup_java8
+    setup_java17
 
     # 所有环境共用同一个 jar，环境在启动时由 SPRING_PROFILES_ACTIVE 选择
     if mvn clean package -DskipTests; then
         print_success "编译成功"
     else
         print_error "编译失败，请检查错误信息"
-        print_info "若仍报 JCTree/Lombok 相关错误，确认 java -version 为 1.8"
+        print_info "若仍报 JCTree/Lombok 相关错误，确认 java -version 为 17"
         exit 1
     fi
 
@@ -72,7 +72,7 @@ start_local_app() {
     print_info "正在启动 ${APP_NAME} 应用（本地）..."
     cd "${PROJECT_DIR}"
 
-    setup_java8
+    setup_java17
 
     mkdir -p "$(dirname "${LOG_FILE}")"
     if [ -f "${LOG_FILE}" ]; then
@@ -214,7 +214,7 @@ main() {
     check_command mvn
     check_command curl
 
-    setup_java8
+    setup_java17
 
     # Docker 容器若占用端口也一并停掉
     if command -v docker >/dev/null 2>&1 && docker_container_running; then

@@ -1,0 +1,70 @@
+# OpsFlow CI：lint（shellcheck / hadolint）+ Maven 构建与测试
+# 构建必须用 JDK 17（pom.xml 中 maven-enforcer-plugin 限定 [17,22)）
+
+stages:
+  - lint
+  - build
+
+variables:
+  # .m2 放进项目目录，GitLab cache 只能缓存 $CI_PROJECT_DIR 下的路径
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Dfile.encoding=UTF-8"
+  MAVEN_CLI_OPTS: "-B -ntp"
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+shellcheck:
+  stage: lint
+  image:
+    name: koalaman/shellcheck-alpine:v0.10.0
+  script:
+    - shellcheck --version
+    # 先输出全部问题（含 warning/info 供参考），再仅以 error 级别作为门禁；
+    # 现有脚本还有少量 SC2034/SC2164 warning，清理后可把门禁收紧到 -S warning
+    - find scripts -name '*.sh' -not -path '*/.data/*' -print0 | xargs -0 shellcheck -f gcc || true
+    - find scripts -name '*.sh' -not -path '*/.data/*' -print0 | xargs -0 shellcheck -S error
+  rules:
+    - changes:
+        - scripts/**/*.sh
+        - .gitlab-ci.yml
+
+hadolint:
+  stage: lint
+  image:
+    name: hadolint/hadolint:v2.12.0-debian
+  script:
+    - hadolint --version
+    # 同上：完整输出，error 级别失败；现有 DL3008（apt 未锁版本）/DL3025 为 warning
+    - hadolint --failure-threshold error Dockerfile
+  rules:
+    - changes:
+        - Dockerfile
+        - .gitlab-ci.yml
+
+build:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17
+  needs: []
+  cache:
+    key:
+      files:
+        - pom.xml
+    paths:
+      - .m2/repository
+  script:
+    - mvn $MAVEN_CLI_OPTS -v
+    - mvn $MAVEN_CLI_OPTS clean package
+  artifacts:
+    name: "opsflow-$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA"
+    when: always
+    expire_in: 7 days
+    paths:
+      - target/opsflow.jar
+    reports:
+      junit:
+        - target/surefire-reports/TEST-*.xml

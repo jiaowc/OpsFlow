@@ -58,7 +58,7 @@ cp .env.example .env
 
 ### 传统方式：环境要求
 
-- JDK 1.8+
+- JDK 17（构建限定 JDK 17~21，见「编译打包」）
 - Maven 3.6+
 - MySQL 5.7+
 - 构建节点（SSH，用于 Pipeline 执行）
@@ -97,7 +97,14 @@ vim config/application-local.yml   # 填写 DB_PASSWORD（本机私有，不入�
 
 ### 4. 编译打包
 
+构建必须使用 **JDK 17**（pom.xml 中 maven-enforcer-plugin 限定 `[17,22)`，JDK 22 及以上 Lombok 会失效）。
+`mvn -v` 显示的不是 17 时（如系统默认是 JDK 8，或 Homebrew 装的新版 JDK），先指定 `JAVA_HOME`：
+
 ```bash
+# macOS：brew install openjdk@17 后用下面的路径；也可用 /usr/libexec/java_home -v 17 查（需已注册到系统）
+# Linux 填 JDK 17 安装目录，如 /usr/lib/jvm/java-17-openjdk
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+mvn -v                                              # 确认 Java version: 17.x
 mvn clean package -DskipTests   # 所有环境共用同一个 jar
 ```
 

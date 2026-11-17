@@ -53,7 +53,7 @@ fi
 
 # ---------- 本地模式 ----------
 check_command java
-setup_java8
+setup_java17
 
 if [ ! -f "${JAR_PATH}" ]; then
     print_error "JAR 文件不存在: ${JAR_PATH}"

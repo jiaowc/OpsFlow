@@ -3,7 +3,7 @@
 #   或：docker build -t opsflow:1.0.0 .
 
 # ---------- build ----------
-FROM maven:3.9.9-eclipse-temurin-8 AS build
+FROM maven:3.9.9-eclipse-temurin-17 AS build
 WORKDIR /build
 
 COPY pom.xml .
@@ -15,7 +15,7 @@ RUN mvn -B -q -DskipTests package \
     && test -f target/opsflow.jar
 
 # ---------- runtime ----------
-FROM eclipse-temurin:8-jre-jammy
+FROM eclipse-temurin:17-jre-jammy
 LABEL maintainer="OpsFlow" \
       app="opsflow" \
       description="DevOps 构建发布平台"

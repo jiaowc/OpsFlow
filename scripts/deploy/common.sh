@@ -17,43 +17,42 @@ DOCKER_IMAGE="${OPSFLOW_DOCKER_IMAGE:-opsflow:1.0.0}"
 DOCKER_CONTAINER="${OPSFLOW_DOCKER_CONTAINER:-opsflow}"
 DOCKER_NETWORK="${OPSFLOW_DOCKER_NETWORK:-}"
 
-# Java（本地编译/运行必须用 JDK 8；不要直接沿用环境里的 JAVA_HOME，可能是 17/21）
-JAVA_8_HOME=""
+# Java（本地编译/运行必须用 JDK 17；不要直接沿用环境里的 JAVA_HOME，可能是 8 或 22+）
+JAVA_17_HOME=""
 
-is_jdk8_home() {
+is_jdk17_home() {
     local home="$1"
     [ -n "${home}" ] \
         && [ -x "${home}/bin/java" ] \
         && [ -x "${home}/bin/javac" ] \
-        && "${home}/bin/java" -version 2>&1 | grep -Eq 'version "1\.8|version "8'
+        && "${home}/bin/java" -version 2>&1 | grep -Eq 'version "17[."]'
 }
 
-collect_java8_candidates() {
+collect_java17_candidates() {
     local candidate
     if [ -n "${OPSFLOW_JAVA_HOME:-}" ]; then
         echo "${OPSFLOW_JAVA_HOME}"
     fi
     for candidate in \
-        /Library/Java/JavaVirtualMachines/jdk1.8.0_341.jdk/Contents/Home \
-        /Library/Java/JavaVirtualMachines/jdk8u472/Contents/Home \
-        /Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home \
-        /Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home; do
+        /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+        /usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+        /Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home \
+        /Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home \
+        /usr/lib/jvm/java-17-openjdk \
+        /usr/lib/jvm/java-17-openjdk-amd64 \
+        /usr/lib/jvm/temurin-17-jdk; do
         echo "${candidate}"
     done
-    for candidate in /Library/Java/JavaVirtualMachines/*/Contents/Home; do
+    for candidate in /Library/Java/JavaVirtualMachines/*/Contents/Home /usr/lib/jvm/*; do
         [ -d "${candidate}" ] || continue
         echo "${candidate}"
     done
-    if command -v /usr/libexec/java_home >/dev/null 2>&1; then
-        /usr/libexec/java_home -V 2>&1 \
-            | awk -F'"' '/Java SE 8|1\.8\.0/ {print $2}' \
-            | while IFS= read -r candidate; do
-                [ -n "${candidate}" ] && echo "${candidate}"
-            done
+    if [ -x /usr/libexec/java_home ]; then
+        /usr/libexec/java_home -v 17 2>/dev/null || true
     fi
 }
 
-resolve_java8_home() {
+resolve_java17_home() {
     local candidate seen=""
     while IFS= read -r candidate; do
         [ -n "${candidate}" ] || continue
@@ -61,24 +60,24 @@ resolve_java8_home() {
             *" ${candidate} "*) continue ;;
         esac
         seen="${seen} ${candidate}"
-        if is_jdk8_home "${candidate}"; then
-            JAVA_8_HOME="${candidate}"
+        if is_jdk17_home "${candidate}"; then
+            JAVA_17_HOME="${candidate}"
             return 0
         fi
-    done < <(collect_java8_candidates)
+    done < <(collect_java17_candidates)
     return 1
 }
 
-setup_java8() {
-    if ! resolve_java8_home; then
-        print_error "未找到 JDK 8，无法编译（当前 Lombok 与 JDK 17/21 不兼容）"
-        print_info "请安装 JDK 8，或设置: export OPSFLOW_JAVA_HOME=/path/to/jdk8"
-        print_info "常见路径: /Library/Java/JavaVirtualMachines/jdk8u472/Contents/Home"
+setup_java17() {
+    if ! resolve_java17_home; then
+        print_error "未找到 JDK 17，无法编译（pom.xml 限定 JDK 17~21）"
+        print_info "请安装 JDK 17（macOS: brew install openjdk@17），或设置: export OPSFLOW_JAVA_HOME=/path/to/jdk17"
+        print_info "常见路径: /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
         exit 1
     fi
-    export JAVA_HOME="${JAVA_8_HOME}"
+    export JAVA_HOME="${JAVA_17_HOME}"
     export PATH="${JAVA_HOME}/bin:${PATH}"
-    print_info "使用 JDK 8: ${JAVA_HOME}"
+    print_info "使用 JDK 17: ${JAVA_HOME}"
     print_info "Java 版本: $(java -version 2>&1 | head -1)"
 }
 

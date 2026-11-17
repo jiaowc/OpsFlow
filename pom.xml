@@ -20,7 +20,7 @@
     <description>DevOps构建发布平台</description>
 
     <properties>
-        <java.version>1.8</java.version>
+        <java.version>17</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <mybatis-plus.version>3.5.3.1</mybatis-plus.version>
         <kubernetes-client.version>18.0.0</kubernetes-client.version>
@@ -80,6 +80,31 @@
     <build>
         <finalName>opsflow</finalName>
         <plugins>
+            <!-- 构建环境约束：在 validate 阶段就失败并给出明确提示，
+                 限定 JDK 17~21：低于 17 不满足 java.version；JDK 22+（如 Homebrew 的 JDK 26）下 Lombok 1.18.30 失效、报一堆「找不到符号」 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-build-env</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[17,22)</version>
+                                    <message>OpsFlow 需要用 JDK 17 构建（允许范围 [17,22)），当前 Maven 使用的 JDK 位于 ${java.home}。JDK 22 及以上 Lombok 1.18.30 会失效，报大量「找不到符号」。请指定 JAVA_HOME 后重试，例如 macOS（Homebrew openjdk@17）：JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn clean package（详见 README「编译打包」）</message>
+                                </requireJavaVersion>
+                                <requireMavenVersion>
+                                    <version>[3.6.3,)</version>
+                                </requireMavenVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

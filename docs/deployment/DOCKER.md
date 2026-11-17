@@ -124,7 +124,7 @@ tar czf opsflow-data-$(date +%Y%m%d).tar.gz data/
 
 ## 相关文件
 
-- `Dockerfile` — 多阶段构建（JDK8 编译 + JRE 运行）
+- `Dockerfile` — 多阶段构建（JDK 17 编译 + JRE 17 运行）
 - `docker-compose.yml` — 一键全栈
 - `docker-compose.app.yml` — 仅应用 / 外部库
 - `.env.example` — 环境变量模板

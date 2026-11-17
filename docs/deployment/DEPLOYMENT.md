@@ -22,7 +22,7 @@ cp .env.example .env
 
 ### 1. 环境要求
 
-- JDK 1.8+
+- JDK 17（构建和运行都需要）
 - Maven 3.6+
 - MySQL 5.7+
 - 构建节点（SSH，跑流水线时需要）
