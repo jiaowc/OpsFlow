@@ -35,6 +35,7 @@ import com.opsflow.service.impl.ApprovalNotifyDispatchServiceImpl;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -331,11 +332,15 @@ public class DeployTaskCommandService {
     }
 
     /**
-     * 删除上线任务及其关联审批记录。
+     * 删除上线任务及其关联的 CD Job、阶段、审批记录。
+     * <p>
+     * 整个删除在一个事务里：任何一步失败都整体回滚，不会留下「Job 删了、任务还在」的半删数据。
+     * </p>
      *
      * @param id 任务 ID
      * @return 是否删除成功
      */
+    @Transactional(rollbackFor = Exception.class)
     public boolean delete(Long id) {
         DeployTask task = deployTaskMapper.selectById(id);
         if (task == null) {

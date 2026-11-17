@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -409,6 +410,13 @@ class DeployTaskCommandServiceTest {
                     () -> service.delete(5L)).getMessage());
         }
         verify(deployTaskMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void deleteRunsInOneTransactionThatRollsBackOnAnyFailure() throws Exception {
+        Transactional tx = DeployTaskCommandService.class.getMethod("delete", Long.class).getAnnotation(Transactional.class);
+        assertNotNull(tx, "删除涉及 4 张表，必须在同一个事务里");
+        assertEquals(Collections.singletonList(Exception.class), Arrays.asList(tx.rollbackFor()));
     }
 
     @Test
