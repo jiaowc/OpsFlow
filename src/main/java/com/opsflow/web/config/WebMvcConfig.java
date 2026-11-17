@@ -4,6 +4,7 @@ import com.opsflow.web.audit.AuditLogInterceptor;
 import com.opsflow.web.interceptor.AuthInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.CacheControl;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -45,8 +46,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
     
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // no-cache：浏览器仍缓存，但每次使用前用 Last-Modified 向服务端校验（未变返回 304），
+        // 避免 JS/CSS 改了却忘记升 ?v= 时浏览器继续用旧文件
         registry.addResourceHandler("/**")
-                .addResourceLocations("classpath:/static/");
+                .addResourceLocations("classpath:/static/")
+                .setCacheControl(CacheControl.noCache());
     }
 }
 
