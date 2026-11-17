@@ -107,5 +107,11 @@ document.addEventListener('click', function () {
 
 document.addEventListener('DOMContentLoaded', function () {
     refreshInboxBadge();
-    setInterval(refreshInboxBadge, 60000);
+    setInterval(() => {
+        if (document.hidden) return;
+        refreshInboxBadge();
+    }, 60000);
+    if (typeof window.onPageVisible === 'function') {
+        window.onPageVisible(refreshInboxBadge);
+    }
 });

@@ -202,6 +202,23 @@ function formatStatus(status) {
 }
 
 // 防抖函数
+/**
+ * 页面重新可见（切回标签页、窗口恢复）时回调。
+ * 轮询的回调里统一用 document.hidden 跳过不可见期间的请求，再用这个函数在切回来时立刻补刷一次，
+ * 不用等下一个周期。
+ */
+function onPageVisible(callback) {
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            try {
+                callback();
+            } catch (e) {
+                console.warn('onPageVisible callback failed', e);
+            }
+        }
+    });
+}
+
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -240,5 +257,6 @@ window.handleApiError = handleApiError;
 window.escapeHtml = escapeHtml;
 window.formatDate = formatDate;
 window.formatStatus = formatStatus;
+window.onPageVisible = onPageVisible;
 window.debounce = debounce;
 window.throttle = throttle;

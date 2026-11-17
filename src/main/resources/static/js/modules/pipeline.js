@@ -4,6 +4,7 @@
 
 let currentPipelineJobId = null;
 let pipelinePollTimer = null;
+let pipelinePollTick = null;
 let pipelineStageViewPage = 1;
 /** 用于丢弃过期的列表/阶段视图渲染，避免轮询把详情页盖回列表 */
 let pipelineListRenderToken = 0;
@@ -1209,6 +1210,7 @@ function patchPipelineJobsTable(pageData, container) {
 }
 
 let pipelineListPollTimer = null;
+let pipelineListPollTick = null;
 let pipelineListForcePollingJobId = null;
 let pipelineListForcePollingJobStarted = false;
 let pipelineListForcePollingStartAt = 0;
@@ -1221,6 +1223,8 @@ function startPipelineListPolling() {
     }
     const intervalMs = pipelineListForcePollingJobId ? 1000 : 3000;
     const tick = async () => {
+        // 页面不可见时不请求，切回来由 onPageVisible 立刻补刷
+        if (document.hidden) return;
         if (currentPipelineJobId) return;
         const container = document.getElementById('pipelineJobsView');
         if (!container) {
@@ -1264,6 +1268,7 @@ function startPipelineListPolling() {
         }
     };
     tick();
+    pipelineListPollTick = tick;
     pipelineListPollTimer = setInterval(tick, intervalMs);
 }
 
@@ -1566,6 +1571,7 @@ async function refreshPipelineStageLog(forceScroll) {
 function startPipelineStageLogPolling() {
     stopPipelineStageLogPolling();
     window.__pipelineStageLogTimer = setInterval(() => {
+        if (document.hidden) return;
         refreshPipelineStageLog(false);
     }, 1000);
 }
@@ -1577,6 +1583,15 @@ function stopPipelineStageLogPolling() {
     }
 }
 
+// 切回页面时，正在进行的轮询立刻补刷一次
+if (typeof window.onPageVisible === 'function') {
+    window.onPageVisible(() => {
+        if (pipelineListPollTimer && pipelineListPollTick) pipelineListPollTick();
+        if (pipelinePollTimer && pipelinePollTick) pipelinePollTick();
+        if (window.__pipelineStageLogTimer) refreshPipelineStageLog(false);
+    });
+}
+
 window.showPipelineStageLog = showPipelineStageLog;
 window.stopPipelineStageLogPolling = stopPipelineStageLogPolling;
 
@@ -1584,6 +1599,7 @@ function startPipelinePolling() {
     stopPipelinePolling();
     // 先立即刷一次，再按 1s 轮询，保证步骤状态接近实时
     const tick = async () => {
+        if (document.hidden) return;
         if (!currentPipelineJobId) return;
         try {
             const view = await loadPipelineStageView(currentPipelineJobId, pipelineStageViewPage, { fromPoll: true });
@@ -1598,6 +1614,7 @@ function startPipelinePolling() {
         }
     };
     tick();
+    pipelinePollTick = tick;
     pipelinePollTimer = setInterval(tick, 1000);
 }
 
