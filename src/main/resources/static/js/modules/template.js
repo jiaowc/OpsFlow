@@ -138,11 +138,6 @@ spec:
     # Pod 容器端口
     targetPort: \${servicePort}`;
 
-function escTemplateHtml(text) {
-    if (text == null) return '';
-    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 async function fetchTemplates(type) {
     const response = await fetch(`/api/pipeline-template/list?type=${encodeURIComponent(type)}`);
     if (!response.ok) {
@@ -169,18 +164,20 @@ async function loadDockerfileTemplates() {
         }
         list.innerHTML = templates.map(t => `
             <tr>
-                <td>${escTemplateHtml(t.name)}</td>
-                <td>${escTemplateHtml(t.description || '-')}</td>
-                <td>${escTemplateHtml(t.baseImage || '-')}</td>
+                <td class="template-col-name"><span class="template-name">${escapeHtml(t.name)}</span></td>
+                <td>${escapeHtml(t.description || '-')}</td>
+                <td class="template-col-nowrap">${escapeHtml(t.baseImage || '-')}</td>
                 <td>${renderStatusCell(t.status)}</td>
                 <td>
-                    <button class="btn-edit" onclick="editPipelineTemplate('dockerfile', ${t.id})">修改</button>
-                    <button class="btn-danger" onclick="deletePipelineTemplate(${t.id}, 'dockerfile')">删除</button>
+                    <div class="table-actions">
+                        <button class="btn-edit" onclick="editPipelineTemplate('dockerfile', ${t.id})">修改</button>
+                        <button class="btn-danger" onclick="deletePipelineTemplate(${t.id}, 'dockerfile')">删除</button>
+                    </div>
                 </td>
             </tr>
         `).join('');
     } catch (e) {
-        list.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:#dc2626;">加载失败: ${escTemplateHtml(e.message)}</td></tr>`;
+        list.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:#dc2626;">加载失败: ${escapeHtml(e.message)}</td></tr>`;
     }
 }
 window.loadDockerfileTemplates = loadDockerfileTemplates;
@@ -197,17 +194,19 @@ async function loadDeploymentTemplates() {
         }
         list.innerHTML = templates.map(t => `
             <tr>
-                <td>${escTemplateHtml(t.name)}</td>
-                <td>${escTemplateHtml(t.description || '-')}</td>
+                <td class="template-col-name"><span class="template-name">${escapeHtml(t.name)}</span></td>
+                <td>${escapeHtml(t.description || '-')}</td>
                 <td>${renderStatusCell(t.status)}</td>
                 <td>
-                    <button class="btn-edit" onclick="editPipelineTemplate('deployment', ${t.id})">修改</button>
-                    <button class="btn-danger" onclick="deletePipelineTemplate(${t.id}, 'deployment')">删除</button>
+                    <div class="table-actions">
+                        <button class="btn-edit" onclick="editPipelineTemplate('deployment', ${t.id})">修改</button>
+                        <button class="btn-danger" onclick="deletePipelineTemplate(${t.id}, 'deployment')">删除</button>
+                    </div>
                 </td>
             </tr>
         `).join('');
     } catch (e) {
-        list.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:40px;color:#dc2626;">加载失败: ${escTemplateHtml(e.message)}</td></tr>`;
+        list.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:40px;color:#dc2626;">加载失败: ${escapeHtml(e.message)}</td></tr>`;
     }
 }
 window.loadDeploymentTemplates = loadDeploymentTemplates;
@@ -224,18 +223,20 @@ async function loadServiceTemplates() {
         }
         list.innerHTML = templates.map(t => `
             <tr>
-                <td>${escTemplateHtml(t.name)}</td>
-                <td>${escTemplateHtml(t.description || '-')}</td>
-                <td>${escTemplateHtml(t.serviceType || '-')}</td>
+                <td class="template-col-name"><span class="template-name">${escapeHtml(t.name)}</span></td>
+                <td>${escapeHtml(t.description || '-')}</td>
+                <td class="template-col-nowrap">${escapeHtml(t.serviceType || '-')}</td>
                 <td>${renderStatusCell(t.status)}</td>
                 <td>
-                    <button class="btn-edit" onclick="editPipelineTemplate('service', ${t.id})">修改</button>
-                    <button class="btn-danger" onclick="deletePipelineTemplate(${t.id}, 'service')">删除</button>
+                    <div class="table-actions">
+                        <button class="btn-edit" onclick="editPipelineTemplate('service', ${t.id})">修改</button>
+                        <button class="btn-danger" onclick="deletePipelineTemplate(${t.id}, 'service')">删除</button>
+                    </div>
                 </td>
             </tr>
         `).join('');
     } catch (e) {
-        list.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:#dc2626;">加载失败: ${escTemplateHtml(e.message)}</td></tr>`;
+        list.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:#dc2626;">加载失败: ${escapeHtml(e.message)}</td></tr>`;
     }
 }
 window.loadServiceTemplates = loadServiceTemplates;
@@ -254,7 +255,7 @@ function buildTemplateVarCheckHtml(options) {
     const type = options.type || '';
     const textareaName = options.textareaName || 'content';
     return `
-    <div class="tpl-var-check-unit" data-tpl-type="${escTemplateHtml(type)}" data-textarea-name="${escTemplateHtml(textareaName)}">
+    <div class="tpl-var-check-unit" data-tpl-type="${escapeHtml(type)}" data-textarea-name="${escapeHtml(textareaName)}">
         <div class="tpl-var-check-bar">
             <button type="button" class="btn-secondary btn-sm" data-role="tplVarCheckBtn">检查变量</button>
             <span class="tpl-var-check-tip">检查内容里的 \${变量} 平台能否替换；点「确认」保存时也会自动检查</span>
@@ -276,7 +277,7 @@ async function requestTemplateVarCheck(type, content) {
 }
 
 function templateVarCode(name) {
-    return `<code>\${${escTemplateHtml(name)}}</code>`;
+    return `<code>\${${escapeHtml(name)}}</code>`;
 }
 
 function formatTemplateVarLines(lines) {
@@ -296,9 +297,9 @@ function renderTemplateVarCheck(panel, result, blocking) {
         parts.push(`<div class="tpl-var-check-title">有 ${issues.length} 处变量写法渲染时不会被替换</div>`);
         parts.push('<ul class="tpl-var-check-issues">' + issues.map(issue => `
             <li>
-                <button type="button" class="tpl-var-locate" data-locate="${escTemplateHtml(issue.placeholder)}" title="在内容中定位">${escTemplateHtml(issue.placeholder)}</button>
+                <button type="button" class="tpl-var-locate" data-locate="${escapeHtml(issue.placeholder)}" title="在内容中定位">${escapeHtml(issue.placeholder)}</button>
                 <span class="tpl-var-lines">${formatTemplateVarLines(issue.lines)}</span>
-                <span>${escTemplateHtml(issue.message)}${issue.suggestion ? `，可改为 ${templateVarCode(issue.suggestion)}` : ''}</span>
+                <span>${escapeHtml(issue.message)}${issue.suggestion ? `，可改为 ${templateVarCode(issue.suggestion)}` : ''}</span>
             </li>`).join('') + '</ul>');
         if (blocking) {
             parts.push('<div class="tpl-var-check-note">还没有保存。改好后再点「确认」；如果这些写法是有意保留的（shell 变量、构建时传入的自定义参数等），再点一次「确认」会按当前内容保存。</div>');
@@ -318,15 +319,15 @@ function renderTemplateVarCheck(panel, result, blocking) {
         const conditions = Object.keys(byCondition);
         if (conditions.length) {
             parts.push(`<div class="tpl-var-check-row"><span class="tpl-var-check-label">前提</span><span>${conditions.map(c =>
-                `${byCondition[c].map(templateVarCode).join(' ')} ${escTemplateHtml(c)}`).join('；')}</span></div>`);
+                `${byCondition[c].map(templateVarCode).join(' ')} ${escapeHtml(c)}`).join('；')}</span></div>`);
         }
     }
     if (passthrough.length) {
-        parts.push(`<div class="tpl-var-check-row"><span class="tpl-var-check-label">原样保留</span><span>${passthrough.map(p => `<code>${escTemplateHtml(p)}</code>`).join(' ')} <span class="tpl-var-check-muted">按 shell / Docker 自己的变量处理，平台不替换</span></span></div>`);
+        parts.push(`<div class="tpl-var-check-row"><span class="tpl-var-check-label">原样保留</span><span>${passthrough.map(p => `<code>${escapeHtml(p)}</code>`).join(' ')} <span class="tpl-var-check-muted">按 shell / Docker 自己的变量处理，平台不替换</span></span></div>`);
     }
     if (supported.length) {
         parts.push(`<details class="tpl-var-supported"><summary>全部可用变量（${supported.length} 个）</summary><ul>${supported.map(v =>
-            `<li>${templateVarCode(v.name)}<span>${escTemplateHtml(v.description || '')}${v.condition ? `（${escTemplateHtml(v.condition)}）` : ''}</span></li>`).join('')}</ul></details>`);
+            `<li>${templateVarCode(v.name)}<span>${escapeHtml(v.description || '')}${v.condition ? `（${escapeHtml(v.condition)}）` : ''}</span></li>`).join('')}</ul></details>`);
     }
 
     panel.className = 'tpl-var-check ' + (issues.length ? 'is-warn' : 'is-ok');
@@ -337,7 +338,7 @@ function renderTemplateVarCheck(panel, result, blocking) {
 function renderTemplateVarCheckError(panel, error, blocking) {
     const message = (error && error.message) || '未知错误';
     panel.className = 'tpl-var-check is-error';
-    panel.innerHTML = `<div class="tpl-var-check-title">变量检查没有完成：${escTemplateHtml(message)}</div>`
+    panel.innerHTML = `<div class="tpl-var-check-title">变量检查没有完成：${escapeHtml(message)}</div>`
         + (blocking ? '<div class="tpl-var-check-note">还没有保存。再点一次「确认」会跳过检查直接保存。</div>' : '');
     panel.hidden = false;
 }
@@ -474,11 +475,11 @@ function buildTemplateFormHtml(type, data) {
     const commonFields = `
         <div class="form-item">
             <label>模版名称 *</label>
-            <input type="text" name="name" value="${escTemplateHtml(data.name || '')}" placeholder="例如: Java 标准构建" required>
+            <input type="text" name="name" value="${escapeHtml(data.name || '')}" placeholder="例如: Java 标准构建" required>
         </div>
         <div class="form-item">
             <label>描述</label>
-            <textarea name="description" rows="2" placeholder="模版用途说明">${escTemplateHtml(data.description || '')}</textarea>
+            <textarea name="description" rows="2" placeholder="模版用途说明">${escapeHtml(data.description || '')}</textarea>
         </div>
         <div class="form-item">
             <label>状态</label>
@@ -493,11 +494,11 @@ function buildTemplateFormHtml(type, data) {
         return commonFields + `
             <div class="form-item">
                 <label>基础镜像 *</label>
-                <input type="text" name="baseImage" value="${escTemplateHtml(data.baseImage || 'openjdk:8-jre-slim')}" placeholder="openjdk:8-jre-slim" required>
+                <input type="text" name="baseImage" value="${escapeHtml(data.baseImage || 'openjdk:8-jre-slim')}" placeholder="openjdk:8-jre-slim" required>
             </div>
             <div class="form-item">
                 <label>Dockerfile 内容 *</label>
-                <textarea name="content" rows="14" required placeholder="FROM ...">${escTemplateHtml(data.content || DEFAULT_DOCKERFILE_CONTENT)}</textarea>
+                <textarea name="content" rows="14" required placeholder="FROM ...">${escapeHtml(data.content || DEFAULT_DOCKERFILE_CONTENT)}</textarea>
                 <small style="color:var(--text-3);">支持变量：\${servicePort}（取自服务管理「对外端口」）、\${serviceName} 等</small>
                 ${buildTemplateVarCheckHtml({ type: 'dockerfile', textareaName: 'content' })}
             </div>
@@ -508,7 +509,7 @@ function buildTemplateFormHtml(type, data) {
         return commonFields + `
             <div class="form-item">
                 <label>Deployment YAML *</label>
-                <textarea name="content" rows="16" required placeholder="apiVersion: apps/v1...">${escTemplateHtml(data.content || DEFAULT_DEPLOYMENT_CONTENT)}</textarea>
+                <textarea name="content" rows="16" required placeholder="apiVersion: apps/v1...">${escapeHtml(data.content || DEFAULT_DEPLOYMENT_CONTENT)}</textarea>
                 <small style="color:var(--text-3);">支持变量：\${deployment}、\${namespace}、\${serviceName}、\${image}、\${servicePort} 等。在步骤管理中由「渲染模版」步骤关联引用。</small>
                 ${buildTemplateVarCheckHtml({ type: 'deployment', textareaName: 'content' })}
             </div>
@@ -530,7 +531,7 @@ function buildTemplateFormHtml(type, data) {
         </div>
         <div class="form-item">
             <label>Service YAML *</label>
-            <textarea name="content" rows="14" required placeholder="apiVersion: v1...">${escTemplateHtml(data.content || DEFAULT_SERVICE_CONTENT)}</textarea>
+            <textarea name="content" rows="14" required placeholder="apiVersion: v1...">${escapeHtml(data.content || DEFAULT_SERVICE_CONTENT)}</textarea>
             <small style="color:var(--text-3);">支持变量：\${serviceName}、\${namespace}、\${servicePort}、\${serviceType} 等。在步骤管理中由「渲染模版」步骤关联引用。</small>
             ${buildTemplateVarCheckHtml({ type: 'service', textareaName: 'content' })}
         </div>

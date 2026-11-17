@@ -2172,6 +2172,17 @@ td .btn-success {
     white-space: nowrap;
 }
 
+/* 模版管理：名称不太长时保持一行，超过约 22 个汉字宽再换行 */
+.data-table .template-col-name .template-name {
+    display: inline-block;
+    width: max-content;
+    max-width: 22em;
+}
+
+.data-table .template-col-nowrap {
+    white-space: nowrap;
+}
+
 .pipeline-jobs-table .pipeline-job-actions {
     justify-content: flex-start;
     gap: 2px;
