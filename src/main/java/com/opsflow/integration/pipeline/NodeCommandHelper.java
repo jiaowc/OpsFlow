@@ -10,9 +10,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.InputStreamReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.function.Consumer;
 
 /**
@@ -38,6 +40,11 @@ public class NodeCommandHelper {
      * 输出已逐行写入阶段日志时，错误信息最多保留的字符数（错误信息会写入数据库的 TEXT 字段）
      */
     static final int STREAMED_ERROR_MAX_CHARS = 4000;
+
+    /**
+     * 本机执行时单行输出的最大字节数，超过即强制切分（与 SSH 执行的上限一致）
+     */
+    static final int MAX_LINE_BYTES = 64 * 1024;
 
     @Autowired
     private BuildNodeMapper buildNodeMapper;
@@ -224,9 +231,8 @@ public class NodeCommandHelper {
             BoundedOutputBuffer output = new BoundedOutputBuffer(keepHeadBytes, keepTailBytes);
             Process finalProcess = process;
             outputReader = new Thread(() -> {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(finalProcess.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
+                try (InputStream in = finalProcess.getInputStream()) {
+                    readLines(in, MAX_LINE_BYTES, line -> {
                         output.appendLine(line);
                         if (lineListener != null) {
                             try {
@@ -235,7 +241,7 @@ public class NodeCommandHelper {
                                 // ignore listener errors
                             }
                         }
-                    }
+                    });
                 } catch (Exception ignored) {
                     // ignore read interruption on timeout
                 }
@@ -271,6 +277,68 @@ public class NodeCommandHelper {
             result.setErrorMessage("本地命令执行失败: " + e.getMessage());
         }
         return result;
+    }
+
+    /**
+     * 按行读取命令输出（\n、\r、\r\n 都算换行，与 BufferedReader.readLine 一致），每行按 UTF-8 解码。
+     * <p>
+     * 单行超过 maxLineBytes 时强制切成多行：一直不换行的输出（如二进制内容）不会让行缓冲无限增长。
+     * 切分点落在字符边界上，不会把多字节字符切成乱码。
+     * </p>
+     */
+    static void readLines(InputStream in, int maxLineBytes, Consumer<String> onLine) throws IOException {
+        byte[] line = new byte[Math.min(maxLineBytes, 8192)];
+        int length = 0;
+        boolean afterCarriageReturn = false;
+        byte[] chunk = new byte[8192];
+        int n;
+        while ((n = in.read(chunk)) != -1) {
+            for (int i = 0; i < n; i++) {
+                byte b = chunk[i];
+                if (b == '\n') {
+                    // \r\n 里的 \n：这一行已经在 \r 处输出过了
+                    if (!afterCarriageReturn) {
+                        onLine.accept(new String(line, 0, length, StandardCharsets.UTF_8));
+                        length = 0;
+                    }
+                    afterCarriageReturn = false;
+                    continue;
+                }
+                afterCarriageReturn = b == '\r';
+                if (afterCarriageReturn) {
+                    onLine.accept(new String(line, 0, length, StandardCharsets.UTF_8));
+                    length = 0;
+                    continue;
+                }
+                if (length == line.length) {
+                    if (length < maxLineBytes) {
+                        line = Arrays.copyOf(line, (int) Math.min(maxLineBytes, length * 2L));
+                    } else {
+                        // 到上限：输出到最后一个完整字符为止，没输出的半个字符留给下一行
+                        int cut = completeUtf8Length(line, length);
+                        onLine.accept(new String(line, 0, cut, StandardCharsets.UTF_8));
+                        System.arraycopy(line, cut, line, 0, length - cut);
+                        length -= cut;
+                    }
+                }
+                line[length++] = b;
+            }
+        }
+        if (length > 0) {
+            onLine.accept(new String(line, 0, length, StandardCharsets.UTF_8));
+        }
+    }
+
+    /** 去掉末尾不完整的 UTF-8 字符后的长度；整段都凑不出一个完整字符时原样返回 */
+    private static int completeUtf8Length(byte[] bytes, int length) {
+        int lead = length - 1;
+        while (lead > 0 && length - lead < 4 && (bytes[lead] & 0xC0) == 0x80) {
+            lead--;
+        }
+        int first = bytes[lead] & 0xFF;
+        int expected = first >= 0xF0 ? 4 : first >= 0xE0 ? 3 : first >= 0xC0 ? 2 : 1;
+        boolean incomplete = first >= 0xC0 && length - lead < expected;
+        return incomplete && lead > 0 ? lead : length;
     }
 
     private Consumer<String> lineListenerOf(PipelineExecutionContext context) {

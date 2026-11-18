@@ -169,4 +169,88 @@ class NodeCommandHelperTest {
         assertTrue(shortened.endsWith("第 1999 行\n"));
         assertTrue(shortened.length() <= NodeCommandHelper.STREAMED_ERROR_MAX_CHARS + 30);
     }
+
+    // ---------- 本机执行按行读取 ----------
+
+    private static List<String> linesOf(byte[] bytes, int maxLineBytes) throws Exception {
+        List<String> lines = new ArrayList<>();
+        // 每次只给 7 个字节，覆盖换行符、多字节字符跨读取边界的情况
+        java.io.InputStream in = new java.io.ByteArrayInputStream(bytes) {
+            @Override
+            public synchronized int read(byte[] b, int off, int len) {
+                return super.read(b, off, Math.min(len, 7));
+            }
+        };
+        NodeCommandHelper.readLines(in, maxLineBytes, lines::add);
+        return lines;
+    }
+
+    private static List<String> readLineReference(String text) throws Exception {
+        List<String> lines = new ArrayList<>();
+        java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.StringReader(text));
+        for (String line = reader.readLine(); line != null; line = reader.readLine()) {
+            lines.add(line);
+        }
+        return lines;
+    }
+
+    @Test
+    void readLinesSplitsLikeBufferedReaderAndDecodesUtf8() throws Exception {
+        String[] samples = {
+            "", "one", "one\n", "one\ntwo", "\n\none\n\n", "a\r\nb\r\n", "进度 10%\r进度 100%\r\n完成\n",
+            "a\r", "a\r\rb", "a\n\rb", "构建成功 \uD83D\uDE80\n第二行 é\r\n尾巴"
+        };
+        for (String sample : samples) {
+            assertEquals(readLineReference(sample),
+                    linesOf(sample.getBytes(java.nio.charset.StandardCharsets.UTF_8), 64 * 1024),
+                    "输入: " + sample.replace("\r", "\\r").replace("\n", "\\n"));
+        }
+    }
+
+    @Test
+    void readLinesForcesASplitWhenALineExceedsTheLimitWithoutBreakingCharacters() throws Exception {
+        // 上限 10 字节：「中」占 3 字节，10 字节处正好切在第 4 个字的中间
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < 40; i++) {
+            text.append('中');
+        }
+        text.append("\uD83D\uDE80ab\n短行\n");
+        List<String> lines = linesOf(text.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), 10);
+
+        assertEquals("短行", lines.get(lines.size() - 1));
+        StringBuilder joined = new StringBuilder();
+        for (String line : lines.subList(0, lines.size() - 1)) {
+            assertTrue(line.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 10, line);
+            assertFalse(line.contains("\uFFFD"), "不应出现被切坏的字符: " + line);
+            joined.append(line);
+        }
+        assertEquals(text.substring(0, text.indexOf("\n")), joined.toString());
+    }
+
+    @Test
+    void runLocalDoesNotBufferAnEndlessLine() {
+        // 300KB 不带换行的输出：按 64KB 切成多行交给监听器，而不是攒成一整行
+        List<String> lines = new ArrayList<>();
+        NodeCommandHelper.CommandResult result = new NodeCommandHelper()
+                .runLocal("head -c 300000 /dev/zero | tr '\\0' 'x'", null, 10000, lines::add);
+
+        assertTrue(result.isSuccess(), result.getErrorMessage());
+        assertEquals(5, lines.size());
+        int total = 0;
+        for (String line : lines) {
+            assertTrue(line.length() <= NodeCommandHelper.MAX_LINE_BYTES);
+            total += line.length();
+        }
+        assertEquals(300000, total);
+    }
+
+    @Test
+    void runLocalDecodesOutputAsUtf8() {
+        List<String> lines = new ArrayList<>();
+        NodeCommandHelper.CommandResult result = new NodeCommandHelper()
+                .runLocal("printf '\\346\\236\\204\\345\\273\\272\\346\\210\\220\\345\\212\\237\\n'", null, 10000, lines::add);
+
+        assertEquals(Arrays.asList("构建成功"), lines);
+        assertEquals("构建成功\n", result.getOutput());
+    }
 }
