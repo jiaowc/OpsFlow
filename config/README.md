@@ -25,7 +25,7 @@ config/
 
 | 变量 | 说明 |
 |------|------|
-| `DB_URL` | JDBC 地址，dev/test 有默认值，prod 必填 |
+| `DB_URL` | JDBC 地址，prod 必填；dev/test 的默认值指向占位主机名 `mysql-dev` / `mysql-test`（仓库里不写真实地址），请用 `DB_URL` 覆盖为实际地址，或让该主机名能解析 |
 | `DB_USERNAME` | 用户名，默认 `root`（test/prod 默认 `opsflow`） |
 | `DB_PASSWORD` | 密码，必填 |
 

@@ -12,7 +12,7 @@
 #   OPSFLOW_PROFILE=dev bash scripts/database/legacy/run_migrations.sh
 #
 # 也可直接覆盖（优先级最高）：
-#   DB_HOST=172.16.50.183 DB_USER=root DB_PASS='xxx' DB_NAME=opsflow bash scripts/database/legacy/run_migrations.sh
+#   DB_HOST=mysql-dev DB_USER=root DB_PASS='xxx' DB_NAME=opsflow bash scripts/database/legacy/run_migrations.sh
 
 set -e
 
