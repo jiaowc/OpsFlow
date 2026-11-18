@@ -101,4 +101,50 @@ class BoundedOutputBufferTest {
         assertThrows(IllegalArgumentException.class, () -> new BoundedOutputBuffer(1, 0));
         assertThrows(IllegalArgumentException.class, () -> new BoundedOutputBuffer(-1, 1));
     }
+
+    /** 按最直白的方式算出期望结果：保留开头 headLimit 字节和结尾 tailLimit 字节，切口处补齐字符边界 */
+    private static String expected(byte[] all, int headLimit, int tailLimit) {
+        if (all.length <= headLimit + tailLimit) {
+            return new String(all, StandardCharsets.UTF_8);
+        }
+        int headEnd = headLimit;
+        while (headEnd > 0 && (all[headEnd] & 0xC0) == 0x80) {
+            headEnd--;
+        }
+        int tailBegin = all.length - tailLimit;
+        while (tailBegin < all.length && (all[tailBegin] & 0xC0) == 0x80) {
+            tailBegin++;
+        }
+        long dropped = all.length - headLimit - tailLimit;
+        return new String(all, 0, headEnd, StandardCharsets.UTF_8)
+            + "\n...... [输出过长，已省略中间约 " + dropped + " 字节] ......\n"
+            + new String(all, tailBegin, all.length - tailBegin, StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void randomChunkedWritesMatchStraightforwardResult() {
+        java.util.Random random = new java.util.Random(20261118L);
+        String[] pieces = {"a", "build ok\n", "中", "构建成功\n", "\uD83D\uDE80", "é", "\r\n"};
+        for (int round = 0; round < 300; round++) {
+            StringBuilder text = new StringBuilder();
+            int count = random.nextInt(60);
+            for (int i = 0; i < count; i++) {
+                text.append(pieces[random.nextInt(pieces.length)]);
+            }
+            byte[] all = text.toString().getBytes(StandardCharsets.UTF_8);
+            int headLimit = random.nextInt(20);
+            int tailLimit = 1 + random.nextInt(30);
+            BoundedOutputBuffer buffer = new BoundedOutputBuffer(headLimit, tailLimit);
+            int offset = 0;
+            while (offset < all.length) {
+                int n = Math.min(all.length - offset, 1 + random.nextInt(40));
+                buffer.write(all, offset, n);
+                offset += n;
+            }
+            String message = "round=" + round + " head=" + headLimit + " tail=" + tailLimit + " bytes=" + all.length;
+            assertEquals(expected(all, headLimit, tailLimit), buffer.toString(), message);
+            assertEquals(Math.min(all.length, headLimit + tailLimit), buffer.size(), message);
+            assertEquals(Math.max(0, all.length - headLimit - tailLimit), buffer.droppedBytes(), message);
+        }
+    }
 }

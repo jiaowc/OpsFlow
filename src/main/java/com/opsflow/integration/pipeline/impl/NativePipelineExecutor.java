@@ -47,7 +47,7 @@ public class NativePipelineExecutor implements PipelineExecutor {
     });
     
     /**
-     * 执行状态存储（实际应该使用Redis或数据库）
+     * 运行中任务的执行状态；任务结束后移除
      */
     private Map<String, PipelineExecutionStatus> executionStatusMap = new ConcurrentHashMap<>();
     
@@ -231,7 +231,8 @@ public class NativePipelineExecutor implements PipelineExecutor {
             status.setStatus("FAILED");
         } finally {
             status.setEndTime(System.currentTimeMillis());
-            executionStatusMap.put(executionId, status);
+            // 执行结束即移除：终态已由调用方落库，这里只保留运行中的任务，否则每跑一次任务就多一条永不释放的记录
+            executionStatusMap.remove(executionId);
         }
         
         return result;

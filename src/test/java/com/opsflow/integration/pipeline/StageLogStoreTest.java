@@ -243,4 +243,34 @@ class StageLogStoreTest {
         assertFalse(Files.exists(store.getBaseDir().resolve("1")));
         assertTrue(store.exists("5/6.log"));
     }
+
+    // ---------- 整段覆盖写 ----------
+
+    @Test
+    void writeFullOverwritesWithUtf8ContentAndTruncatesOldContent() throws Exception {
+        String path = store.relativePath(7L, 8L);
+        store.writeFull(path, "旧内容比较长，后面会被覆盖掉 0123456789\n");
+
+        // 含 4 字节字符，长度超过写缓冲，验证流式编码与一次性编码结果一致
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 5000; i++) {
+            sb.append("第 ").append(i).append(" 行 构建成功 \uD83D\uDE80\n");
+        }
+        String content = sb.toString();
+        store.writeFull(path, content);
+        assertEquals(content, new String(Files.readAllBytes(store.absolutePath(path)), StandardCharsets.UTF_8));
+
+        // 4 字节字符（一对代理字符）正好跨在写入分块的边界上
+        char[] filler = new char[8191];
+        java.util.Arrays.fill(filler, 'a');
+        String straddling = new String(filler) + "\uD83D\uDE80 尾部";
+        store.writeFull(path, straddling);
+        assertEquals(straddling, new String(Files.readAllBytes(store.absolutePath(path)), StandardCharsets.UTF_8));
+
+        store.writeFull(path, "短");
+        assertEquals("短", new String(Files.readAllBytes(store.absolutePath(path)), StandardCharsets.UTF_8));
+
+        store.writeFull(path, null);
+        assertEquals(0L, store.size(path));
+    }
 }

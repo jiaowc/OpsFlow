@@ -7,7 +7,9 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.RandomAccessFile;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +25,7 @@ public class StageLogStore {
 
     public static final int DEFAULT_PREVIEW_CHARS = 4096;
     public static final int DEFAULT_READ_CHUNK_BYTES = 128 * 1024;
+    private static final int WRITE_CHUNK_CHARS = 8192;
 
     @Value("${opsflow.pipeline.log-dir:./data/pipeline-logs}")
     private String logDir;
@@ -69,8 +72,18 @@ public class StageLogStore {
         try {
             ensureParent(relativePath);
             Path path = absolutePath(relativePath);
-            byte[] bytes = content == null ? new byte[0] : content.getBytes(StandardCharsets.UTF_8);
-            Files.write(path, bytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            // 分块编码写入：不把整段日志再转成一份字节数组或字符数组（完整日志可达 20MB）
+            try (Writer writer = new OutputStreamWriter(Files.newOutputStream(path,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE),
+                    StandardCharsets.UTF_8)) {
+                int length = content == null ? 0 : content.length();
+                char[] chunk = new char[Math.min(length, WRITE_CHUNK_CHARS)];
+                for (int offset = 0; offset < length; offset += chunk.length) {
+                    int end = Math.min(length, offset + chunk.length);
+                    content.getChars(offset, end, chunk, 0);
+                    writer.write(chunk, 0, end - offset);
+                }
+            }
         } catch (Exception e) {
             log.warn("写入阶段日志失败: {} - {}", relativePath, e.getMessage());
         }

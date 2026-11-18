@@ -1,6 +1,5 @@
 package com.opsflow.integration.ssh;
 
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -17,7 +16,9 @@ public class BoundedOutputBuffer {
 
     private final int headLimit;
     private final int tailLimit;
-    private final ByteArrayOutputStream head = new ByteArrayOutputStream();
+    /** 开头部分；容量按需增长到 headLimit */
+    private byte[] head = new byte[0];
+    private int headLength;
 
     /** 结尾部分的环形缓冲；容量按需增长到 tailLimit，增长阶段 tailStart 恒为 0 */
     private byte[] tail = new byte[0];
@@ -41,10 +42,15 @@ public class BoundedOutputBuffer {
         if (data == null || length <= 0) {
             return;
         }
-        int headRoom = headLimit - head.size();
+        int headRoom = headLimit - headLength;
         if (headRoom > 0) {
             int take = Math.min(headRoom, length);
-            head.write(data, offset, take);
+            if (headLength + take > head.length) {
+                int newCapacity = (int) Math.min(headLimit, Math.max((long) headLength + take, head.length * 2L));
+                head = java.util.Arrays.copyOf(head, newCapacity);
+            }
+            System.arraycopy(data, offset, head, headLength, take);
+            headLength += take;
             offset += take;
             length -= take;
             if (length == 0) {
@@ -101,49 +107,61 @@ public class BoundedOutputBuffer {
 
     /** 当前保留的字节数 */
     public synchronized int size() {
-        return head.size() + tailLength;
+        return headLength + tailLength;
     }
 
+    /**
+     * 尽量直接从内部缓冲解码，不为开头、结尾各建一份副本（20MB 输出时能少分配约 20MB）。
+     */
     @Override
     public synchronized String toString() {
-        byte[] headBytes = head.toByteArray();
-        byte[] tailBytes = tailBytes();
         if (droppedBytes == 0) {
-            byte[] all = new byte[headBytes.length + tailBytes.length];
-            System.arraycopy(headBytes, 0, all, 0, headBytes.length);
-            System.arraycopy(tailBytes, 0, all, headBytes.length, tailBytes.length);
+            // 没有丢弃时结尾部分从未回绕（tailStart 为 0）；开头和结尾可能共用一个多字节字符，要拼起来一起解码
+            byte[] all = new byte[headLength + tailLength];
+            System.arraycopy(head, 0, all, 0, headLength);
+            System.arraycopy(tail, tailStart, all, headLength, tailLength);
             return new String(all, StandardCharsets.UTF_8);
         }
-        int headEnd = completeUtf8Length(headBytes);
+        linearizeTail();
+        int headEnd = completeUtf8Length(head, headLength);
         int tailBegin = 0;
-        while (tailBegin < tailBytes.length && isContinuation(tailBytes[tailBegin])) {
+        while (tailBegin < tailLength && isContinuation(tail[tailBegin])) {
             tailBegin++;
         }
-        return new String(headBytes, 0, headEnd, StandardCharsets.UTF_8)
+        return new String(head, 0, headEnd, StandardCharsets.UTF_8)
             + "\n...... [输出过长，已省略中间约 " + droppedBytes + " 字节] ......\n"
-            + new String(tailBytes, tailBegin, tailBytes.length - tailBegin, StandardCharsets.UTF_8);
+            + new String(tail, tailBegin, tailLength - tailBegin, StandardCharsets.UTF_8);
     }
 
-    private byte[] tailBytes() {
-        byte[] out = new byte[tailLength];
-        int firstPart = Math.min(tailLength, tail.length - tailStart);
-        System.arraycopy(tail, tailStart, out, 0, firstPart);
-        if (firstPart < tailLength) {
-            System.arraycopy(tail, 0, out, firstPart, tailLength - firstPart);
+    /** 把环形缓冲原地转成从下标 0 开始的顺序排列（三次反转，不额外分配），之后可直接按区间解码 */
+    private void linearizeTail() {
+        if (tailStart == 0) {
+            return;
         }
-        return out;
+        reverse(tail, 0, tailStart);
+        reverse(tail, tailStart, tail.length);
+        reverse(tail, 0, tail.length);
+        tailStart = 0;
+    }
+
+    private static void reverse(byte[] bytes, int from, int to) {
+        for (int i = from, j = to - 1; i < j; i++, j--) {
+            byte tmp = bytes[i];
+            bytes[i] = bytes[j];
+            bytes[j] = tmp;
+        }
     }
 
     /** 去掉末尾不完整的 UTF-8 字符后的长度 */
-    private static int completeUtf8Length(byte[] bytes) {
-        int i = bytes.length - 1;
+    private static int completeUtf8Length(byte[] bytes, int length) {
+        int i = length - 1;
         int back = 0;
         while (i >= 0 && back < 3 && isContinuation(bytes[i])) {
             i--;
             back++;
         }
         if (i < 0) {
-            return bytes.length;
+            return length;
         }
         int lead = bytes[i] & 0xFF;
         int expected;
@@ -156,9 +174,9 @@ public class BoundedOutputBuffer {
         } else if ((lead & 0xF8) == 0xF0) {
             expected = 4;
         } else {
-            return bytes.length;
+            return length;
         }
-        return i + expected > bytes.length ? i : bytes.length;
+        return i + expected > length ? i : length;
     }
 
     private static boolean isContinuation(byte b) {

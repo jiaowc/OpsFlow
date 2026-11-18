@@ -115,7 +115,8 @@ public class StatisticsServiceImpl implements StatisticsService {
         LocalDateTime dayEnd = LocalDate.now().atTime(LocalTime.MAX);
 
         QueryWrapper<BuildJob> todayWrapper = new QueryWrapper<>();
-        todayWrapper.ge("create_time", dayStart).le("create_time", dayEnd);
+        // 只统计状态，不必把构建参数、错误信息等大字段一起查出来
+        todayWrapper.select("id", "status").ge("create_time", dayStart).le("create_time", dayEnd);
         applyEnvFilter(todayWrapper, allowedEnvIds);
         List<BuildJob> todayJobs = buildJobMapper.selectList(todayWrapper);
         long todaySuccess = 0;
@@ -161,7 +162,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         LocalDate today = LocalDate.now();
         LocalDate start = today.minusDays(6);
         QueryWrapper<BuildJob> wrapper = new QueryWrapper<>();
-        wrapper.ge("create_time", start.atStartOfDay());
+        wrapper.select("id", "status", "create_time").ge("create_time", start.atStartOfDay());
         applyEnvFilter(wrapper, allowedEnvIds);
         List<BuildJob> jobs = buildJobMapper.selectList(wrapper);
 
