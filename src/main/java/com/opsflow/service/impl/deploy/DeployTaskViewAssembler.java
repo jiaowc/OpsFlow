@@ -162,7 +162,9 @@ public class DeployTaskViewAssembler {
         }
         if (!taskIds.isEmpty()) {
             taskIds.forEach(id -> related.jobIdsByTask.put(id, new java.util.ArrayList<>()));
+            // 只用到任务与构建记录的对应关系，不查构建参数、错误信息等大字段
             List<BuildJob> jobs = buildJobMapper.selectList(new QueryWrapper<BuildJob>()
+                    .select("id", "deploy_task_id")
                     .in("deploy_task_id", taskIds).orderByAsc("id"));
             for (BuildJob job : jobs) {
                 List<Long> ids = related.jobIdsByTask.get(job.getDeployTaskId());
@@ -386,7 +388,8 @@ public class DeployTaskViewAssembler {
         List<Long> buildJobIds(Long taskId) {
             if (!jobIdsByTask.containsKey(taskId)) {
                 List<BuildJob> jobs = buildJobMapper.selectList(
-                        new QueryWrapper<BuildJob>().eq("deploy_task_id", taskId).orderByAsc("id"));
+                        new QueryWrapper<BuildJob>().select("id", "deploy_task_id")
+                                .eq("deploy_task_id", taskId).orderByAsc("id"));
                 jobIdsByTask.put(taskId, jobs == null ? new java.util.ArrayList<>()
                         : jobs.stream().map(BuildJob::getId).collect(Collectors.toList()));
             }

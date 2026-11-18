@@ -31,7 +31,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -334,9 +336,15 @@ public class BuildServiceImpl implements BuildService {
             wrapper.in("service_id", serviceIds);
         }
         wrapper.orderByDesc("create_time");
-        
+        // 只查列表用到的列：构建参数、错误信息（可能很长）不参与返回
+        wrapper.select("id", "job_number", "task_name", "service_id", "env_id", "branch", "status",
+            "build_number", "create_time", "update_time", "start_time", "end_time");
+
         List<BuildJob> jobs = buildJobMapper.selectList(wrapper);
-        
+        // 同一个服务、环境在列表里反复出现，名称各查一次
+        Map<Long, String> serviceNames = new HashMap<>();
+        Map<Long, String> envNames = new HashMap<>();
+
         return jobs.stream().map(job -> {
             BuildJobDTO dto = new BuildJobDTO();
             dto.setId(job.getId());
@@ -354,17 +362,23 @@ public class BuildServiceImpl implements BuildService {
             
             // 填充服务名称
             if (job.getServiceId() != null) {
-                com.opsflow.dao.model.Service service = serviceMapper.selectById(job.getServiceId());
-                if (service != null) {
-                    dto.setServiceName(service.getName());
+                if (!serviceNames.containsKey(job.getServiceId())) {
+                    com.opsflow.dao.model.Service service = serviceMapper.selectById(job.getServiceId());
+                    serviceNames.put(job.getServiceId(), service != null ? service.getName() : null);
+                }
+                if (serviceNames.get(job.getServiceId()) != null) {
+                    dto.setServiceName(serviceNames.get(job.getServiceId()));
                 }
             }
-            
+
             // 填充环境名称
             if (job.getEnvId() != null) {
-                Env env = envMapper.selectById(job.getEnvId());
-                if (env != null) {
-                    dto.setEnvName(env.getName());
+                if (!envNames.containsKey(job.getEnvId())) {
+                    Env env = envMapper.selectById(job.getEnvId());
+                    envNames.put(job.getEnvId(), env != null ? env.getName() : null);
+                }
+                if (envNames.get(job.getEnvId()) != null) {
+                    dto.setEnvName(envNames.get(job.getEnvId()));
                 }
             }
             
