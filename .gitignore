@@ -1,56 +1,3 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Django
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-/staticfiles/
-/media/
-
-# Environment
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Kubernetes
-*.kubeconfig
-
 # 编译输出
 target/
 *.jar
@@ -66,8 +13,14 @@ logs/
 data/
 uploads/
 
+# 环境变量文件（含密码）
+.env
+
 # 应用配置统一在 config/；只有每台机器自己的覆盖配置（数据库密码等）不入库
 config/application-local.yml
+
+# Kubernetes
+*.kubeconfig
 
 # IDE
 .idea/
@@ -85,17 +38,6 @@ Thumbs.db
 *.tmp
 *.bak
 *.cache
-
-
-
-
-
-
-
-
-
-
-
 
 # License 私钥不得进入产品仓库（签发在独立 License 项目）
 *.private.pem

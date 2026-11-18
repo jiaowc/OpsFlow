@@ -14,8 +14,7 @@ scripts/database/
 ├── export_sample_data.sh     # 从当前库导出本地演示数据
 ├── sample/sample-data.sql    # 可选的演示数据，默认不导入
 ├── db_env.sh                 # 共用：按与应用一致的规则解析数据库连接
-├── legacy/                   # 引入 Flyway 之前的迁移脚本，仅用于把很早的旧库追平
-└── migrate/                  # 历史/特殊迁移工具脚本
+└── legacy/                   # 引入 Flyway 之前的迁移脚本，仅用于把很早的旧库追平
 ```
 
 ## 新环境
