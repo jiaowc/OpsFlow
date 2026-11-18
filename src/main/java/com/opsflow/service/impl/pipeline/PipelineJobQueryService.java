@@ -236,8 +236,9 @@ public class PipelineJobQueryService {
         view.setPipelineTemplateName(anchorView.getPipelineTemplateName());
         view.setBuildNodeDisplay(anchorView.getBuildNodeDisplay());
         view.setDeployNodeDisplay(anchorView.getDeployNodeDisplay());
-        if (highlightJob.getBranch() != null) {
-            view.setBranch(highlightJob.getBranch());
+        String configuredBranch = support.configuredBranch(highlightJob);
+        if (configuredBranch != null) {
+            view.setBranch(configuredBranch);
         }
 
         return view;
@@ -251,8 +252,9 @@ public class PipelineJobQueryService {
         dto.setLatestBuildId(latestBuild.getId());
         dto.setJobNumber(latestBuild.getJobNumber());
         dto.setTaskName(displayJob.getTaskName());
-        dto.setBranch(latestBuild.getBranch());
-        dto.setGitType(support.resolveJobGitType(displayJob));
+        // 任务行展示的是「当前配置」，编辑过分支但还没重新构建时取 next_*，不去改历史行
+        dto.setBranch(support.configuredBranch(latestBuild));
+        dto.setGitType(support.configuredGitType(latestBuild));
         dto.setStatus(latestBuild.getStatus());
         dto.setQueuePosition(pipelineJobDispatcher.queuePosition(latestBuild.getId()));
         dto.setQueued(dto.getQueuePosition() > 0);

@@ -44,6 +44,12 @@ public class BuildJob {
      */
     private String gitType;
 
+    /** 下次构建使用的分支/Tag：编辑任务时只写组内最新一行，历史行的 branch 不改。为空表示沿用 branch */
+    private String nextBranch;
+
+    /** 下次构建使用的 Git 类型（branch/tag）。为空表示沿用 gitType */
+    private String nextGitType;
+
     private Integer buildNumber;
 
     /** 镜像 tag */

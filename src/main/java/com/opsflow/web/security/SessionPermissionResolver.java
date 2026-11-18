@@ -18,7 +18,7 @@ public class SessionPermissionResolver {
     public static final String ATTR_PERMISSIONS = "permissions";
     private static final String ATTR_LOADED_AT = "permissionsLoadedAt";
 
-    private static final long REFRESH_MILLIS = 60 * 1000L;
+    private static final long REFRESH_MILLIS = 5 * 1000L;
 
     @Autowired
     private PermissionService permissionService;

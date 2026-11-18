@@ -77,10 +77,6 @@ public class HarborClient {
                 throw new RuntimeException("Harbor组件配置中URL不能为空");
             }
             
-            if (component.getAuthConfig() == null || component.getAuthConfig().trim().isEmpty()) {
-                throw new RuntimeException("Harbor组件配置中认证信息不能为空");
-            }
-            
             harborUrl = component.getUrl();
 
             ResolvedAuth resolvedAuth = componentAuthResolver.resolve(component);

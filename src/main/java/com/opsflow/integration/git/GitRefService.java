@@ -113,13 +113,13 @@ public class GitRefService {
             return listFromGitRemote(gitRepo, type, componentId);
         }
         if (isGitLabRepo(gitRepo)) {
-            List<String> refs = listFromGitLabApi(gitRepo, type, componentId);
+            List<String> refs = listFromGitLabApiQuietly(gitRepo, type, componentId);
             if (!refs.isEmpty()) {
                 return refs;
             }
             return listFromGitRemote(gitRepo, type, componentId);
         }
-        List<String> refs = listFromGitLabApi(gitRepo, type, componentId);
+        List<String> refs = listFromGitLabApiQuietly(gitRepo, type, componentId);
         if (!refs.isEmpty()) {
             return refs;
         }
@@ -171,6 +171,17 @@ public class GitRefService {
         }
     }
 
+    /** GitLab API 不可用（连接失败、4xx/5xx）时返回空列表，由调用方继续用 git ls-remote 兜底。 */
+    private List<String> listFromGitLabApiQuietly(String gitRepo, String type, Long componentId) {
+        try {
+            return listFromGitLabApi(gitRepo, type, componentId);
+        } catch (Exception e) {
+            log.warn("GitLab API 获取{}失败，改用 git ls-remote: repo={}, error={}",
+                    "tag".equals(type) ? "Tag" : "分支", gitRepo, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
     private List<String> listFromGitLabApi(String gitRepo, String type, Long componentId) {
         GitLabContext ctx = resolveGitLabContext(gitRepo, componentId);
         if (ctx == null) {
@@ -178,7 +189,7 @@ public class GitRefService {
         }
         String encodedProject;
         try {
-            encodedProject = URLEncoder.encode(ctx.projectPath, StandardCharsets.UTF_8.name());
+            encodedProject = URLEncoder.encode(ctx.projectPath, StandardCharsets.UTF_8.name()).replace("+", "%20");
         } catch (java.io.UnsupportedEncodingException e) {
             throw new RuntimeException("URL 编码失败", e);
         }
@@ -187,7 +198,8 @@ public class GitRefService {
 
         HttpHeaders headers = buildGitLabHeaders(ctx);
         HttpEntity<String> entity = new HttpEntity<>(headers);
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+        // 项目路径已编码（/ → %2F），必须用 URI 传入；传 String 会被 RestTemplate 再编码成 %252F
+        ResponseEntity<String> response = restTemplate.exchange(URI.create(url), HttpMethod.GET, entity, String.class);
         if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
             return Collections.emptyList();
         }
@@ -341,8 +353,8 @@ public class GitRefService {
                     projectPath = ssh.group(2);
                 }
                 Matcher https = GITLAB_HTTPS.matcher(gitRepo);
-                if (projectPath == null && https.find() && componentHost != null && componentHost.equalsIgnoreCase(https.group(1))) {
-                    projectPath = https.group(2);
+                if (projectPath == null && https.find() && sameAuthority(componentUri, https.group(1))) {
+                    projectPath = stripContextPath(componentUri.getPath(), https.group(2));
                 }
             } catch (Exception e) {
                 log.debug("解析 GitLab 地址失败", e);
@@ -357,7 +369,9 @@ public class GitRefService {
             } else {
                 Matcher https = GITLAB_HTTPS.matcher(gitRepo);
                 if (https.find() && !https.group(1).equalsIgnoreCase("github.com")) {
-                    apiBase = "https://" + https.group(1);
+                    // 沿用仓库地址自身的协议，自建 GitLab 常见 http
+                    String scheme = gitRepo.regionMatches(true, 0, "http://", 0, 7) ? "http://" : "https://";
+                    apiBase = scheme + https.group(1);
                     projectPath = https.group(2);
                 }
             }
@@ -371,6 +385,53 @@ public class GitRefService {
         ctx.projectPath = projectPath;
         populateGitLabAuth(gitlab, ctx);
         return ctx;
+    }
+
+    /**
+     * 组件地址与仓库地址的 host[:port] 是否指向同一处；仓库地址可能带 user@ 前缀，
+     * 未写端口时按各自协议的默认端口比较。
+     */
+    static boolean sameAuthority(URI componentUri, String repoAuthority) {
+        if (componentUri == null || componentUri.getHost() == null || repoAuthority == null) {
+            return false;
+        }
+        String authority = repoAuthority.substring(repoAuthority.lastIndexOf('@') + 1);
+        String repoHost = authority;
+        int repoPort = -1;
+        int colon = authority.lastIndexOf(':');
+        if (colon > 0 && authority.indexOf(']') < colon) {
+            try {
+                repoPort = Integer.parseInt(authority.substring(colon + 1));
+                repoHost = authority.substring(0, colon);
+            } catch (NumberFormatException ignored) {
+                // 不是端口，按整体当主机名
+            }
+        }
+        if (!componentUri.getHost().equalsIgnoreCase(repoHost)) {
+            return false;
+        }
+        int componentPort = componentUri.getPort();
+        if (componentPort == repoPort) {
+            return true;
+        }
+        int defaultPort = "http".equalsIgnoreCase(componentUri.getScheme()) ? 80 : 443;
+        // 一边省略端口时，只有另一边是默认端口（80/443）才算同一地址
+        if (componentPort == -1) {
+            return repoPort == 80 || repoPort == 443;
+        }
+        return repoPort == -1 && componentPort == defaultPort;
+    }
+
+    /** GitLab 部署在子路径（如 https://host/gitlab）时，从仓库路径里去掉这段前缀。 */
+    static String stripContextPath(String contextPath, String repoPath) {
+        if (contextPath == null || repoPath == null) {
+            return repoPath;
+        }
+        String prefix = contextPath.replaceAll("^/+|/+$", "");
+        if (!prefix.isEmpty() && repoPath.startsWith(prefix + "/")) {
+            return repoPath.substring(prefix.length() + 1);
+        }
+        return repoPath;
     }
 
     private void populateGitLabAuth(com.opsflow.dao.model.Component gitlab, GitLabContext ctx) {

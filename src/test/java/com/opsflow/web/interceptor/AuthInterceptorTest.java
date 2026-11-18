@@ -1,6 +1,8 @@
 package com.opsflow.web.interceptor;
 
+import com.opsflow.dao.mapper.UserMapper;
 import com.opsflow.dao.mapper.UserRoleMapper;
+import com.opsflow.dao.model.User;
 import com.opsflow.service.impl.PermissionServiceImpl;
 import com.opsflow.web.controller.AuthController;
 import com.opsflow.web.security.RequiresPermission;
@@ -49,6 +51,7 @@ class AuthInterceptorTest {
 
     private AuthInterceptor interceptor;
     private UserRoleMapper userRoleMapper;
+    private UserMapper userMapper;
 
     @BeforeEach
     void setUp() {
@@ -60,6 +63,34 @@ class AuthInterceptorTest {
         interceptor = new AuthInterceptor();
         ReflectionTestUtils.setField(interceptor, "permissionService", permissionService);
         ReflectionTestUtils.setField(interceptor, "sessionPermissionResolver", resolver);
+        userMapper = mock(UserMapper.class);
+        ReflectionTestUtils.setField(interceptor, "userMapper", userMapper);
+        when(userMapper.selectById(7L)).thenReturn(user(1));
+    }
+
+    private static User user(Integer status) {
+        User user = new User();
+        user.setId(7L);
+        user.setStatus(status);
+        return user;
+    }
+
+    @Test
+    void 登录后被禁用的账号旧会话立即失效() throws Exception {
+        MockHttpServletRequest request = loggedIn("/api/service/list");
+        when(userMapper.selectById(7L)).thenReturn(user(0));
+
+        assertEquals(401, status(request, handler(MethodLevel.class, "open")));
+        assertNull(request.getSession(false), "会话应被销毁");
+    }
+
+    @Test
+    void 登录后被删除的账号旧会话立即失效() throws Exception {
+        MockHttpServletRequest request = loggedIn("/api/service/list");
+        when(userMapper.selectById(7L)).thenReturn(null);
+
+        assertEquals(401, status(request, handler(MethodLevel.class, "open")));
+        assertNull(request.getSession(false), "会话应被销毁");
     }
 
     private static HandlerMethod handler(Class<?> type, String method) throws Exception {

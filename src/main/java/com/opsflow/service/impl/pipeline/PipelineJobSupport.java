@@ -287,6 +287,19 @@ public class PipelineJobSupport {
         return "tag".equalsIgnoreCase(gitType) ? "tag" : "branch";
     }
 
+    /** 任务当前配置的分支/Tag：编辑过则取 nextBranch，否则就是这次构建的 branch。传入组内最新一行。 */
+    public String configuredBranch(BuildJob latest) {
+        return firstNonEmpty(latest.getNextBranch(), latest.getBranch());
+    }
+
+    /** 任务当前配置的 Git 类型，规则同 {@link #configuredBranch}。 */
+    public String configuredGitType(BuildJob latest) {
+        if (latest.getNextGitType() != null && !latest.getNextGitType().trim().isEmpty()) {
+            return normalizeGitType(latest.getNextGitType());
+        }
+        return resolveJobGitType(latest);
+    }
+
     public String resolveJobGitType(BuildJob job) {
         if (job.getGitType() != null && !job.getGitType().trim().isEmpty()) {
             return normalizeGitType(job.getGitType());

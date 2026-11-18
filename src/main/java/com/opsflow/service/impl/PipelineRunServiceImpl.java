@@ -261,13 +261,19 @@ public class PipelineRunServiceImpl implements PipelineRunService {
         buildJob.setUpdateTime(LocalDateTime.now());
 
         Long anchorJobId = support.resolveAnchorJob(buildJob).getId();
+        // 必须在改分组字段之前取：改完后同一事务里再按分组条件查也能查到，但这里直接复用
+        Long latestJobId = support.resolveLatestJobInGroup(buildJob).getId();
         List<BuildJob> groupJobs = support.listJobsInGroup(buildJob);
         for (BuildJob job : groupJobs) {
+            // 任务名/服务/环境/模板是分组键，整组一起改才不会把历史拆散；
+            // 分支/Tag 是每次构建的事实，历史行不动，只在最新一行记下「下次构建用什么」
             job.setTaskName(taskName);
             job.setServiceId(request.getServiceId());
             job.setEnvId(request.getEnvId());
-            job.setBranch(request.getBranch());
-            job.setGitType(support.normalizeGitType(request.getGitType()));
+            if (job.getId().equals(latestJobId)) {
+                job.setNextBranch(request.getBranch());
+                job.setNextGitType(support.normalizeGitType(request.getGitType()));
+            }
             job.setPipelineTemplateId(request.getPipelineTemplateId());
             job.setUpdateTime(LocalDateTime.now());
             buildJobMapper.updateById(job);

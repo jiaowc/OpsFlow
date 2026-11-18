@@ -41,6 +41,15 @@ public class UserController {
     @Autowired
     private FeishuUserResolveService feishuUserResolveService;
 
+    @Autowired
+    private com.opsflow.web.security.AdminGuard adminGuard;
+
+    @Autowired
+    private ProjectMemberMapper projectMemberMapper;
+
+    @Autowired
+    private ProjectMapper projectMapper;
+
     /**
      * 获取用户列表
      */
@@ -144,6 +153,17 @@ public class UserController {
             }
         }
         
+        boolean disabling = request.getStatus() != null && request.getStatus() != 1
+                && (user.getStatus() == null || user.getStatus() == 1);
+        boolean losingAdminRole = request.getRoleIds() != null
+                && adminGuard.isActiveAdmin(id) && !adminGuard.containsAdminRole(request.getRoleIds());
+        if (disabling || losingAdminRole) {
+            if (id.equals(currentUserId())) {
+                throw new BusinessException(disabling ? "不能禁用自己的账号" : "不能移除自己的管理员角色");
+            }
+            adminGuard.assertNotLastActiveAdmin(id, disabling ? "禁用" : "移除");
+        }
+
         BeanUtils.copyProperties(request, user, "id", "password", "roles", "roleIds", "feishuUserId", "source");
         
         // 如果提供了新密码，则更新
@@ -179,12 +199,33 @@ public class UserController {
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
+        if (id.equals(currentUserId())) {
+            throw new BusinessException("不能删除自己的账号");
+        }
+        adminGuard.assertNotLastActiveAdmin(id, "删除");
+
+        // 清理项目成员与项目负责人引用，避免留下悬空的用户 ID
+        projectMemberMapper.delete(new QueryWrapper<ProjectMember>().eq("user_id", id));
+        projectMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Project>()
+                .eq("owner_user_id", id).set("owner_user_id", null));
         
         // 删除用户角色关联
         userRoleMapper.deleteByUserId(id);
         
         // 删除用户
         userMapper.deleteById(id);
+    }
+
+    private Long currentUserId() {
+        org.springframework.web.context.request.RequestAttributes attrs =
+                org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        if (!(attrs instanceof org.springframework.web.context.request.ServletRequestAttributes)) {
+            return null;
+        }
+        javax.servlet.http.HttpSession session =
+                ((org.springframework.web.context.request.ServletRequestAttributes) attrs).getRequest().getSession(false);
+        Object userId = session != null ? session.getAttribute("userId") : null;
+        return userId instanceof Long ? (Long) userId : null;
     }
 
     /**

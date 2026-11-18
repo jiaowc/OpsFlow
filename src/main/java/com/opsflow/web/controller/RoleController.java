@@ -34,6 +34,9 @@ public class RoleController {
     @Autowired
     private UserRoleMapper userRoleMapper;
 
+    @Autowired
+    private com.opsflow.web.security.AdminGuard adminGuard;
+
     /**
      * 获取角色列表
      */
@@ -111,6 +114,10 @@ public class RoleController {
             }
         }
         
+        if (adminGuard.isAdminRole(role)) {
+            assertAdminRoleStaysUsable(role, request);
+        }
+
         BeanUtils.copyProperties(request, role, "id", "permissions", "permissionIds");
         
         role.setUpdateTime(LocalDateTime.now());
@@ -137,6 +144,13 @@ public class RoleController {
         if (role == null) {
             throw new BusinessException("角色不存在");
         }
+        if (adminGuard.isAdminRole(role)) {
+            throw new BusinessException("内置管理员角色不能删除");
+        }
+        long userCount = userRoleMapper.selectCount(new QueryWrapper<UserRole>().eq("role_id", id));
+        if (userCount > 0) {
+            throw new BusinessException("该角色仍有 " + userCount + " 个用户在使用，请先为这些用户调整角色后再删除");
+        }
         
         // 删除角色权限关联
         rolePermissionMapper.deleteByRoleId(id);
@@ -146,6 +160,25 @@ public class RoleController {
         
         // 删除角色
         roleMapper.deleteById(id);
+    }
+
+    /**
+     * 内置 ADMIN 角色不能改代码、不能禁用，也不能去掉「全部权限」，否则系统会失去管理员。
+     */
+    private void assertAdminRoleStaysUsable(Role role, RoleDTO request) {
+        if (request.getCode() != null && !request.getCode().equals(role.getCode())) {
+            throw new BusinessException("内置管理员角色的代码不能修改");
+        }
+        if (request.getStatus() != null && request.getStatus() != 1) {
+            throw new BusinessException("内置管理员角色不能禁用");
+        }
+        if (request.getPermissionIds() != null) {
+            Permission wildcard = permissionMapper.selectOne(new QueryWrapper<Permission>()
+                    .eq("code", com.opsflow.service.PermissionService.WILDCARD).last("LIMIT 1"));
+            if (wildcard != null && !request.getPermissionIds().contains(wildcard.getId())) {
+                throw new BusinessException("内置管理员角色必须保留「全部权限」");
+            }
+        }
     }
 
     /**

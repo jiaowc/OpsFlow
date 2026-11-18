@@ -69,7 +69,7 @@ public class PipelineWebhookTriggerService {
             if (env != null && env.isProdEnv()) {
                 throw new BusinessException("生产环境不支持推送自动构建，请通过上线任务发布");
             }
-            if ("tag".equals(support.normalizeGitType(support.resolveLatestJobInGroup(anchor).getGitType()))) {
+            if ("tag".equals(support.configuredGitType(support.resolveLatestJobInGroup(anchor)))) {
                 throw new BusinessException("按 Tag 构建的任务不支持推送自动构建，请改为分支");
             }
         }
@@ -107,8 +107,9 @@ public class PipelineWebhookTriggerService {
                 continue;
             }
             BuildJob latest = support.resolveLatestJobInGroup(anchor);
-            if (!"branch".equals(support.normalizeGitType(latest.getGitType()))
-                    || !branch.equals(latest.getBranch() != null ? latest.getBranch().trim() : null)) {
+            String configuredBranch = support.configuredBranch(latest);
+            if (!"branch".equals(support.configuredGitType(latest))
+                    || !branch.equals(configuredBranch != null ? configuredBranch.trim() : null)) {
                 continue;
             }
             com.opsflow.dao.model.Service service = latest.getServiceId() != null

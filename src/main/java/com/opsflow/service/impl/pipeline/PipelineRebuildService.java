@@ -92,8 +92,8 @@ public class PipelineRebuildService {
         newJob.setTaskName(configSource.getTaskName());
         newJob.setServiceId(configSource.getServiceId());
         newJob.setEnvId(configSource.getEnvId());
-        newJob.setBranch(configSource.getBranch());
-        newJob.setGitType(support.normalizeGitType(configSource.getGitType()));
+        newJob.setBranch(support.configuredBranch(configSource));
+        newJob.setGitType(support.configuredGitType(configSource));
         newJob.setPipelineTemplateId(configSource.getPipelineTemplateId());
         // Run 必须跑完整 CI+CD：若上次是回滚，buildParameters 会残留 rollback=true，需剔除
         newJob.setBuildParameters(copyParamsForFullRebuild(configSource.getBuildParameters()));

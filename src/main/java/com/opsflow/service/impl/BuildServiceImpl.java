@@ -255,31 +255,18 @@ public class BuildServiceImpl implements BuildService {
             throw new BusinessException("服务不存在");
         }
         if (service.getGitRepo() == null || service.getGitRepo().trim().isEmpty()) {
-            return fallbackRefs(null);
+            throw new BusinessException("服务未配置 Git 仓库地址，无法获取分支/Tag");
         }
 
         String refType = normalizeGitType(type);
         try {
-            List<String> refs = gitRefService.listRefs(service.getGitRepo(), refType, service.getComponentId());
-            if (refs.isEmpty()) {
-                return fallbackRefs(null);
-            }
-            return new java.util.ArrayList<>(refs);
+            // 不再用 develop/master/main 冒充结果：拉取失败要让用户看到原因，仓库没有 Tag 时就是空列表
+            return new java.util.ArrayList<>(gitRefService.listRefs(service.getGitRepo(), refType, service.getComponentId()));
         } catch (Exception e) {
             log.warn("获取服务 Git 引用失败: serviceId={}, type={}, error={}", serviceId, refType, e.getMessage());
-            return fallbackRefs(null);
+            throw new BusinessException("获取 Git " + ("tag".equals(refType) ? "Tag " : "分支")
+                    + "列表失败，请检查仓库地址、网络和 Git 组件认证配置");
         }
-    }
-
-    private List<String> fallbackRefs(String defaultRef) {
-        java.util.LinkedHashSet<String> refs = new java.util.LinkedHashSet<>();
-        if (defaultRef != null && !defaultRef.trim().isEmpty()) {
-            refs.add(defaultRef.trim());
-        }
-        refs.add("develop");
-        refs.add("master");
-        refs.add("main");
-        return new java.util.ArrayList<>(refs);
     }
 
     @Override

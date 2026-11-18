@@ -56,7 +56,11 @@ async function fetchPipelineListGitRefs(serviceId, gitType) {
     }
     const type = normalizePipelineGitType(gitType);
     const response = await fetch(`/api/build/service/${serviceId}/branches?type=${encodeURIComponent(type)}`);
-    let refs = response.ok ? await response.json() : [];
+    if (!response.ok) {
+        // 拉取失败不缓存，下次展开时重试
+        return [];
+    }
+    let refs = await response.json();
     if (!Array.isArray(refs)) {
         refs = [];
     }
@@ -1989,7 +1993,17 @@ async function loadServiceBranches(serviceId, selectedBranch, options = {}) {
 
     try {
         const response = await fetch(`/api/build/service/${serviceId}/branches?type=${encodeURIComponent(gitType)}`);
-        let branches = response.ok ? await response.json() : [];
+        if (!response.ok) {
+            let message = `HTTP ${response.status}`;
+            try {
+                const body = await response.json();
+                message = body.message || body.error || message;
+            } catch (e) {
+                // 响应体不是 JSON，保留状态码
+            }
+            throw new Error(message);
+        }
+        let branches = await response.json();
         if (!Array.isArray(branches)) {
             branches = [];
         }
@@ -2010,8 +2024,12 @@ async function loadServiceBranches(serviceId, selectedBranch, options = {}) {
         return true;
     } catch (error) {
         console.error('Load git refs error:', error);
-        branchSelect.innerHTML = '<option value="">加载失败</option>';
+        // 编辑已有任务时保留原来的分支/Tag，避免列表拉不到就无法保存其他改动
+        branchSelect.innerHTML = selectedBranch
+            ? `<option value="${escapeHtml(selectedBranch)}" selected>${escapeHtml(selectedBranch)}（列表加载失败）</option>`
+            : '<option value="">加载失败</option>';
         branchSelect.disabled = false;
+        if (hintEl) hintEl.textContent = `加载${refLabel}失败：${error.message}`;
         if (showAlertOnError) {
             notify(`加载 Git ${refLabel} 失败: ` + error.message);
         }

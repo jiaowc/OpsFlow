@@ -34,6 +34,9 @@ public class AuthInterceptor implements HandlerInterceptor {
     @Autowired
     private SessionPermissionResolver sessionPermissionResolver;
 
+    @Autowired
+    private com.opsflow.dao.mapper.UserMapper userMapper;
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         if (DEV_DISABLE_LOGIN_CHECK) {
@@ -69,6 +72,12 @@ public class AuthInterceptor implements HandlerInterceptor {
                 writeJson(response, HttpServletResponse.SC_UNAUTHORIZED, "未登录，请先登录");
                 return false;
             }
+            if (!isAccountUsable(session.getAttribute("userId"))) {
+                // 账号在登录之后被禁用或删除：旧会话立即作废，而不是等它自己过期
+                session.invalidate();
+                writeJson(response, HttpServletResponse.SC_UNAUTHORIZED, "账号已被禁用或删除，请重新登录");
+                return false;
+            }
             if (Boolean.TRUE.equals(session.getAttribute(AuthController.MUST_CHANGE_PASSWORD_KEY))
                     && !path.startsWith("/api/auth/")) {
                 writeJson(response, HttpServletResponse.SC_FORBIDDEN, "请先修改初始密码");
@@ -80,6 +89,15 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
 
         return true;
+    }
+
+    /** 每次请求按主键查一次用户状态（主键查询，开销可忽略），保证禁用/删除对已登录会话即时生效。 */
+    private boolean isAccountUsable(Object userId) {
+        if (!(userId instanceof Long)) {
+            return false;
+        }
+        com.opsflow.dao.model.User user = userMapper.selectById((Long) userId);
+        return user != null && (user.getStatus() == null || user.getStatus() == 1);
     }
 
     private boolean checkPermission(Object handler, HttpSession session, HttpServletResponse response) throws Exception {
