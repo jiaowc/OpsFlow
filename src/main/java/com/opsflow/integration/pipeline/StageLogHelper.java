@@ -54,6 +54,40 @@ public final class StageLogHelper {
         emitLine(context, line);
     }
 
+    /**
+     * 追加一段步骤自己的说明文字：日志实时落盘时直接写入阶段日志，否则攒在 sb 里随步骤结果返回。
+     */
+    public static void append(StringBuilder sb, PipelineExecutionContext context, String text) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        if (context != null && context.isLogStreaming()) {
+            context.emitLog(text);
+        } else if (sb != null) {
+            sb.append(text);
+        }
+    }
+
+    /**
+     * 追加命令输出：日志实时落盘时输出已逐行写入阶段日志，不再往内存里攒第二份。
+     */
+    public static void appendCommandOutput(StringBuilder sb, PipelineExecutionContext context, String output) {
+        if (sb == null || output == null || (context != null && context.isLogStreaming())) {
+            return;
+        }
+        sb.append(output);
+    }
+
+    /**
+     * 步骤结果里的完整日志：日志实时落盘时返回 null（阶段日志文件已是完整内容，不需要再整段覆盖）。
+     */
+    public static String finalLog(PipelineExecutionContext context, CharSequence log) {
+        if (log == null || (context != null && context.isLogStreaming())) {
+            return null;
+        }
+        return log.toString();
+    }
+
     public static void appendOutput(StringBuilder sb, String output) {
         if (sb == null) {
             return;
@@ -77,7 +111,12 @@ public final class StageLogHelper {
             return;
         }
         // 输出已在执行过程中流式 emit，这里补最终摘要，避免终态日志缺失
-        appendOutput(sb, cmdResult.getOutput());
+        boolean streaming = context != null && context.isLogStreaming();
+        if (!streaming) {
+            appendOutput(sb, cmdResult.getOutput());
+        } else if (cmdResult.getOutput() == null || cmdResult.getOutput().trim().isEmpty()) {
+            emitLine(context, "(无输出)");
+        }
         String summary = "退出码: " + cmdResult.getExitCode()
             + (cmdResult.isSuccess() ? " (成功)" : " (失败)");
         appendLine(sb, summary);
@@ -86,7 +125,10 @@ public final class StageLogHelper {
             && !cmdResult.getErrorMessage().trim().isEmpty()) {
             String err = "错误: " + cmdResult.getErrorMessage().trim();
             appendLine(sb, err);
-            emitLine(context, err);
+            // 日志实时落盘时，阶段结束会统一在日志末尾追加错误信息，这里不重复写
+            if (!streaming) {
+                emitLine(context, err);
+            }
         }
     }
 }

@@ -19,6 +19,7 @@ import static com.opsflow.integration.pipeline.step.impl.StepTestSupport.ok;
 import static com.opsflow.integration.pipeline.step.impl.StepTestSupport.params;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -56,11 +57,14 @@ class PushImageStepExecutorTest {
         results = new HashMap<>();
 
         when(nodeCommandHelper.describeBuildNode(any())).thenReturn("build-1");
-        when(nodeCommandHelper.runOnBuildNode(any(), anyString(), eq(WORKSPACE))).thenAnswer(invocation -> {
+        org.mockito.stubbing.Answer<NodeCommandHelper.CommandResult> nodeAnswer = invocation -> {
             commands.add(invocation.getArgument(1));
             NodeCommandHelper.CommandResult configured = results.get(commands.size() - 1);
             return configured != null ? configured : ok("");
-        });
+        };
+        when(nodeCommandHelper.runOnBuildNode(any(), anyString(), eq(WORKSPACE))).thenAnswer(nodeAnswer);
+        // 需要先处理再记录的输出（login 脱敏、镜像信息）走 captureOnBuildNode，不直接写阶段日志
+        when(nodeCommandHelper.captureOnBuildNode(any(), anyString(), eq(WORKSPACE))).thenAnswer(nodeAnswer);
         when(harborCredentialService.buildDockerLoginPrefix("harbor.local", null)).thenReturn(LOGIN_PREFIX);
     }
 
@@ -207,5 +211,29 @@ class PushImageStepExecutorTest {
         assertTrue(executor.supports("PUSH_IMAGE"));
         assertFalse(executor.supports("docker-build"));
         assertFalse(executor.supports(null));
+    }
+
+    // ---------- 日志实时落盘 ----------
+
+    @Test
+    void streamingModeWritesStepTextToStageLogAndReturnsNoLog() {
+        // 实际运行时命令输出由 NodeCommandHelper 逐行写入阶段日志；步骤只补自己的说明文字，不再返回整段日志
+        StringBuilder stageLog = StepTestSupport.streamInto(context);
+        results.put(0, ok("WARNING! Your password will be stored unencrypted\nLogin Succeeded\n"));
+        results.put(1, ok("v1: digest: sha256:abc size: 1234\n"));
+
+        StepExecutionResult result = executor.execute("push_image", params("imageFullName", IMAGE), context);
+
+        assertTrue(result.getSuccess());
+        assertNull(result.getLog());
+        String text = stageLog.toString();
+        assertTrue(text.contains("======== [1/3] 待上传镜像 ========"));
+        assertTrue(text.contains("$ docker login harbor.local (凭据已注入，密码不落日志)"));
+        assertTrue(text.contains("WARNING! Your password=*** will be stored unencrypted"), text);
+        assertTrue(text.contains("======== [3/3] docker push ========"));
+        assertTrue(text.contains("已推送镜像: " + IMAGE));
+        assertFalse(text.contains("S3cret-Value"));
+        assertFalse(text.contains("sha256:abc"), "push 的输出由命令执行层逐行落盘，步骤不应再写一遍");
+        assertEquals(1, StepTestSupport.count(text, "======== [2/3] docker login ========"));
     }
 }

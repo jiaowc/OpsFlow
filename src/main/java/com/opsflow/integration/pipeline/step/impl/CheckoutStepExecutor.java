@@ -98,7 +98,7 @@ public class CheckoutStepExecutor implements StepExecutor {
 
             NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnBuildNode(context, command);
             StageLogHelper.appendCommandResult(logBuilder, context, cmdResult);
-            result.setLog(logBuilder.toString());
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
 
             if (!cmdResult.isSuccess()) {
                 result.setErrorMessage(cmdResult.getErrorMessage() != null
@@ -109,7 +109,7 @@ public class CheckoutStepExecutor implements StepExecutor {
 
             String commitId = extractCommitId(cmdResult.getOutput(), commitMarker);
             StageLogHelper.appendKv(logBuilder, context, "Commit ID", commitId);
-            result.setLog(logBuilder.toString());
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
             result.getOutputData().put("commitId", commitId);
             result.getOutputData().put("workspace", workspace);
 

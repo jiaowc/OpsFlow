@@ -67,6 +67,17 @@ public class SshClient {
      */
     public SshCommandResult execute(BuildNode node, String command, int commandTimeoutMs,
                                     Consumer<String> lineListener) {
+        return execute(node, command, commandTimeoutMs, lineListener,
+            BoundedOutputBuffer.DEFAULT_HEAD_BYTES, BoundedOutputBuffer.DEFAULT_TAIL_BYTES);
+    }
+
+    /**
+     * @param lineListener    按行回调 stdout/stderr（可为 null）
+     * @param keepHeadBytes   返回结果里保留的输出开头字节数
+     * @param keepTailBytes   返回结果里保留的输出结尾字节数；调用方已通过 lineListener 逐行落盘时可以给得很小
+     */
+    public SshCommandResult execute(BuildNode node, String command, int commandTimeoutMs,
+                                    Consumer<String> lineListener, int keepHeadBytes, int keepTailBytes) {
         Session session = null;
         ChannelExec channel = null;
         TofuHostKeyRepository hostKeys = null;
@@ -122,8 +133,8 @@ public class SshClient {
             channel.connect(CONNECT_TIMEOUT_MS);
 
             // 输出留在内存里的部分有上限，失控的大输出只保留开头和结尾
-            BoundedOutputBuffer outBuf = new BoundedOutputBuffer();
-            BoundedOutputBuffer errBuf = new BoundedOutputBuffer();
+            BoundedOutputBuffer outBuf = new BoundedOutputBuffer(keepHeadBytes, keepTailBytes);
+            BoundedOutputBuffer errBuf = new BoundedOutputBuffer(keepHeadBytes, keepTailBytes);
             ByteArrayOutputStream outLine = new ByteArrayOutputStream();
             ByteArrayOutputStream errLine = new ByteArrayOutputStream();
 

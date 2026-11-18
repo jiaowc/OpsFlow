@@ -410,6 +410,8 @@ public class PipelineJobRunner {
     private PipelineStageListener buildStageListener(Map<Integer, BuildJobStage> stageByOrder) {
         return new PipelineStageListener() {
             private volatile long lastFlushMs = 0L;
+            /** 已提示过「日志超限」的步骤序号 */
+            private int truncatedNoticeOrder = -1;
             private static final long FLUSH_INTERVAL_MS = 500L;
 
             @Override
@@ -449,8 +451,12 @@ public class PipelineJobRunner {
                         path = stageLogStore.relativePath(stage.getBuildJobId(), stage.getId());
                         stage.setLogPath(path);
                     }
-                    // 单文件保护约 20MB
+                    // 单文件保护约 20MB；超出后只提示一次，后面的输出不再记录（失败原因仍会在阶段结束时追加）
                     if (stageLogStore.size(path) > 20L * 1024 * 1024) {
+                        if (truncatedNoticeOrder != stepOrder) {
+                            truncatedNoticeOrder = stepOrder;
+                            stageLogStore.append(path, "\n...... [日志超过 20MB，后续输出不再记录] ......\n");
+                        }
                         return;
                     }
                     stageLogStore.append(path, chunk);
@@ -497,7 +503,8 @@ public class PipelineJobRunner {
 
                     long fileSize = stageLogStore.size(path);
                     if (log != null && !log.trim().isEmpty()) {
-                        // 步骤返回完整日志：覆盖写入，保证终态内容清晰
+                        // 步骤返回了整段日志（未实时落盘的情况）：覆盖写入。
+                        // 正常运行时日志是实时追加的，步骤不再返回整段日志，文件内容保持不动
                         stageLogStore.writeFull(path, log);
                     } else if (!success && errorMessage != null && !errorMessage.trim().isEmpty()) {
                         if (fileSize <= 0) {

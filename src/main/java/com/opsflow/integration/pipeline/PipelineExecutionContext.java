@@ -61,6 +61,14 @@ public class PipelineExecutionContext {
     private Integer currentStepOrder;
 
     /**
+     * 当前步骤的日志是否在实时写入阶段日志文件。
+     * 为 true 时命令输出已经逐行落盘，步骤不必再在内存里保留一份完整输出。
+     */
+    public boolean isLogStreaming() {
+        return stageListener != null && currentStepOrder != null;
+    }
+
+    /**
      * 向当前阶段追加实时日志
      */
     public void emitLog(String chunk) {

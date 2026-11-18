@@ -3,6 +3,7 @@ package com.opsflow.integration.pipeline.step.impl;
 import com.opsflow.integration.k8s.K8sClient;
 import com.opsflow.integration.k8s.K8sCredentialService;
 import com.opsflow.integration.pipeline.NodeCommandHelper;
+import com.opsflow.integration.pipeline.StageLogHelper;
 import com.opsflow.integration.pipeline.PipelineExecutionContext;
 import com.opsflow.integration.pipeline.WorkspacePathHelper;
 import com.opsflow.integration.pipeline.step.StepExecutor;
@@ -99,7 +100,7 @@ public class DeployStepExecutor implements StepExecutor {
             if (applyLog != null) {
                 logBuilder.append(applyLog);
             } else {
-                logBuilder.append("未找到渲染产物（manifestDir/renderedManifests），跳过 apply，仅更新镜像\n");
+                StageLogHelper.append(logBuilder, context, "未找到渲染产物（manifestDir/renderedManifests），跳过 apply，仅更新镜像\n");
             }
 
             log.info("开始部署到K8s: namespace={}, deployment={}, image={}, container={}",
@@ -113,16 +114,17 @@ public class DeployStepExecutor implements StepExecutor {
                         + " set image " + NodeCommandHelper.shellQuote("deployment/" + deployment)
                         + " " + NodeCommandHelper.shellQuote(containerName + "=" + imageFullName);
                 NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnDeployNode(context, command);
-                appendCmdOutput(logBuilder, cmdResult);
+                appendCmdOutput(logBuilder, context, cmdResult);
                 if (!cmdResult.isSuccess()) {
-                    result.setLog(logBuilder.toString());
+                    result.setLog(StageLogHelper.finalLog(context, logBuilder));
                     result.setErrorMessage(buildKubectlFailureMessage(
                             "更新镜像失败", namespace, cmdResult));
                     return result;
                 }
             } else {
                 k8sClient.updateDeploymentImage(namespace, deployment, containerName, imageFullName);
-                logBuilder.append(String.format("已触发部署: %s/%s -> %s\n", namespace, deployment, imageFullName));
+                StageLogHelper.append(logBuilder, context,
+                        String.format("已触发部署: %s/%s -> %s\n", namespace, deployment, imageFullName));
             }
 
             String deployScript = stepParams.get("deployScript");
@@ -131,22 +133,22 @@ public class DeployStepExecutor implements StepExecutor {
                 String kubeSetup = k8sCredentialService.buildRemoteKubeconfigSetup(context.getExecutionId(),
                         context.getEnvironment() != null ? context.getEnvironment().getClusterId() : null, null);
                 NodeCommandHelper.CommandResult scriptResult = nodeCommandHelper.runOnDeployNode(context, kubeSetup + deployScript);
-                appendCmdOutput(logBuilder, scriptResult);
+                appendCmdOutput(logBuilder, context, scriptResult);
                 if (!scriptResult.isSuccess()) {
-                    result.setLog(logBuilder.toString());
+                    result.setLog(StageLogHelper.finalLog(context, logBuilder));
                     result.setErrorMessage(buildKubectlFailureMessage(
                             "额外部署脚本执行失败", namespace, scriptResult));
                     return result;
                 }
             }
 
-            result.setLog(logBuilder.toString());
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
             result.setSuccess(true);
             log.info("部署指令已下发");
         } catch (Exception e) {
             log.error("部署失败", e);
             if (logBuilder.length() > 0) {
-                result.setLog(logBuilder.toString());
+                result.setLog(StageLogHelper.finalLog(context, logBuilder));
             }
             String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             result.setErrorMessage(enrichNamespaceHint("部署失败: " + msg, context));
@@ -166,7 +168,7 @@ public class DeployStepExecutor implements StepExecutor {
         }
 
         StringBuilder logBuilder = new StringBuilder();
-        logBuilder.append("应用渲染产物: ").append(String.join(", ", files)).append('\n');
+        StageLogHelper.append(logBuilder, context, "应用渲染产物: " + String.join(", ", files) + "\n");
 
         if (nodeCommandHelper.resolveDeployNodeId(context) != null) {
             String kubeSetup = k8sCredentialService.buildRemoteKubeconfigSetup(context.getExecutionId(),
@@ -178,7 +180,7 @@ public class DeployStepExecutor implements StepExecutor {
                         "kubectl -n " + NodeCommandHelper.shellQuote(namespace) + " apply -f -", yaml)).append('\n');
             }
             NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnDeployNode(context, applyCmd.toString());
-            appendCmdOutput(logBuilder, cmdResult);
+            appendCmdOutput(logBuilder, context, cmdResult);
             if (!cmdResult.isSuccess()) {
                 throw new IllegalStateException(buildKubectlFailureMessage(
                         "kubectl apply 渲染产物失败", namespace, cmdResult));
@@ -193,7 +195,7 @@ public class DeployStepExecutor implements StepExecutor {
                     pb.redirectErrorStream(true);
                     Process process = pb.start();
                     String output = readStream(process.getInputStream());
-                    logBuilder.append(output);
+                    StageLogHelper.append(logBuilder, context, output);
                     int code = process.waitFor();
                     if (code != 0) {
                         throw new IllegalStateException("kubectl apply 失败 [" + namespace + "]: " + trimOutput(output));
@@ -206,8 +208,10 @@ public class DeployStepExecutor implements StepExecutor {
         return logBuilder.toString();
     }
 
-    private void appendCmdOutput(StringBuilder logBuilder, NodeCommandHelper.CommandResult cmdResult) {
-        if (cmdResult == null) {
+    private void appendCmdOutput(StringBuilder logBuilder, PipelineExecutionContext context,
+                                 NodeCommandHelper.CommandResult cmdResult) {
+        // 日志实时落盘时命令输出已逐行写入阶段日志，失败原因由阶段结束时统一追加
+        if (cmdResult == null || (context != null && context.isLogStreaming())) {
             return;
         }
         if (cmdResult.getOutput() != null && !cmdResult.getOutput().trim().isEmpty()) {
@@ -304,8 +308,8 @@ public class DeployStepExecutor implements StepExecutor {
         }
         if (nodeCommandHelper.resolveBuildNodeId(context) != null) {
             String remoteDir = WorkspacePathHelper.toRemoteShellPath(manifestDir.trim());
-            NodeCommandHelper.CommandResult listResult = nodeCommandHelper.runOnBuildNode(
-                    context, "ls -1 " + remoteDir + "/*.yaml " + remoteDir + "/*.yml 2>/dev/null || true");
+            NodeCommandHelper.CommandResult listResult = nodeCommandHelper.captureOnBuildNode(
+                    context, "ls -1 " + remoteDir + "/*.yaml " + remoteDir + "/*.yml 2>/dev/null || true", null);
             if (listResult.isSuccess() && listResult.getOutput() != null) {
                 for (String line : listResult.getOutput().split("\n")) {
                     String trimmed = line.trim();
@@ -330,7 +334,8 @@ public class DeployStepExecutor implements StepExecutor {
             String remotePath = path.startsWith("/")
                     ? NodeCommandHelper.shellQuote(path)
                     : WorkspacePathHelper.toRemoteShellPath(path);
-            NodeCommandHelper.CommandResult result = nodeCommandHelper.runOnBuildNode(context, "cat " + remotePath);
+            // 要拿到文件的完整内容，且内容不必再写一遍阶段日志（渲染步骤已记录）
+            NodeCommandHelper.CommandResult result = nodeCommandHelper.captureOnBuildNode(context, "cat " + remotePath, null);
             if (result.isSuccess() && result.getOutput() != null && !result.getOutput().trim().isEmpty()) {
                 return result.getOutput();
             }

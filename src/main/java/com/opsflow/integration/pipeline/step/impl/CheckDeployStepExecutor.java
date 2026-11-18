@@ -74,7 +74,6 @@ public class CheckDeployStepExecutor implements StepExecutor {
             }
             context.emitLog(logBuilder.toString());
 
-            String logText;
             if (nodeCommandHelper.resolveDeployNodeId(context) != null) {
                 String kubeSetup = k8sCredentialService.buildRemoteKubeconfigSetup(context.getExecutionId(),
                         context.getEnvironment() != null ? context.getEnvironment().getClusterId() : null, null);
@@ -93,11 +92,10 @@ public class CheckDeployStepExecutor implements StepExecutor {
                         + " --timeout=" + timeoutSeconds + "s");
                 context.emitLog("---- 命令输出 ----\n");
                 NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnDeployNode(context, command);
-                logBuilder.append(cmdResult.getOutput() == null ? "" : cmdResult.getOutput());
-                logBuilder.append("\n退出码: ").append(cmdResult.getExitCode())
-                    .append(cmdResult.isSuccess() ? " (成功)\n" : " (失败)\n");
-                logText = logBuilder.toString();
-                result.setLog(logText);
+                StageLogHelper.appendCommandOutput(logBuilder, context, cmdResult.getOutput());
+                StageLogHelper.append(logBuilder, context, "\n退出码: " + cmdResult.getExitCode()
+                    + (cmdResult.isSuccess() ? " (成功)\n" : " (失败)\n"));
+                result.setLog(StageLogHelper.finalLog(context, logBuilder));
                 if (!cmdResult.isSuccess()) {
                     result.setErrorMessage("部署未在 " + timeoutSeconds + " 秒内就绪: " + namespace + "/" + deployment
                         + "，Pod 状态和容器日志见本步骤日志");
@@ -106,9 +104,8 @@ public class CheckDeployStepExecutor implements StepExecutor {
             } else {
                 context.emitLog("使用本机 K8s 客户端等待 rollout...\n");
                 k8sClient.waitForDeploymentRollout(namespace, deployment, timeoutSeconds);
-                logText = String.format("%s部署 rollout 完成: %s/%s\n", logBuilder, namespace, deployment);
-                result.setLog(logText);
-                context.emitLog("部署 rollout 完成: " + namespace + "/" + deployment + "\n");
+                StageLogHelper.append(logBuilder, context, "部署 rollout 完成: " + namespace + "/" + deployment + "\n");
+                result.setLog(StageLogHelper.finalLog(context, logBuilder));
             }
             result.setSuccess(true);
         } catch (Exception e) {

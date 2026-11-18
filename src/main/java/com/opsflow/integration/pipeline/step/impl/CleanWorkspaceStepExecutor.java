@@ -55,7 +55,7 @@ public class CleanWorkspaceStepExecutor implements StepExecutor {
             log.info("清理构建工作目录: {}", workspacePath);
             NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnBuildNode(context, command.toString());
             StageLogHelper.appendCommandResult(logBuilder, context, cmdResult);
-            result.setLog(logBuilder.toString());
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
 
             if (!cmdResult.isSuccess()) {
                 result.setErrorMessage(cmdResult.getErrorMessage() != null

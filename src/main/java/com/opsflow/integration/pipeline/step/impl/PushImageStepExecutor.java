@@ -2,6 +2,7 @@ package com.opsflow.integration.pipeline.step.impl;
 
 import com.opsflow.integration.harbor.HarborCredentialService;
 import com.opsflow.integration.pipeline.NodeCommandHelper;
+import com.opsflow.integration.pipeline.StageLogHelper;
 import com.opsflow.integration.pipeline.PipelineExecutionContext;
 import com.opsflow.integration.pipeline.step.StepExecutor;
 import com.opsflow.integration.pipeline.step.StepExecutionResult;
@@ -45,7 +46,7 @@ public class PushImageStepExecutor implements StepExecutor {
             context.emitLog(logBuilder.toString());
 
             if (imageFullName == null || imageFullName.isEmpty()) {
-                result.setLog(logBuilder.toString());
+                result.setLog(StageLogHelper.finalLog(context, logBuilder));
                 result.setErrorMessage("镜像名称不能为空，请先执行镜像制作步骤（需输出 imageFullName）");
                 return result;
             }
@@ -60,35 +61,36 @@ public class PushImageStepExecutor implements StepExecutor {
                     + "镜像全名: " + imageFullName + "\n"
                     + "镜像标签: " + (imageTag != null ? imageTag : "-") + "\n"
                     + "Harbor 地址: " + (registry != null ? registry : "-") + "\n";
-            logBuilder.append(section1)
-                    .append("harbor: ").append(nullToDash(stepParams.get("harbor"))).append('\n')
-                    .append("namespace: ").append(nullToDash(stepParams.get("namespace"))).append('\n')
-                    .append("serviceName: ").append(nullToDash(firstNonEmpty(
-                            stepParams.get("serviceName"), stepParams.get("serviceCode")))).append('\n');
-            context.emitLog(section1);
+            StageLogHelper.append(logBuilder, context, section1
+                    + "harbor: " + nullToDash(stepParams.get("harbor")) + "\n"
+                    + "namespace: " + nullToDash(stepParams.get("namespace")) + "\n"
+                    + "serviceName: " + nullToDash(firstNonEmpty(
+                            stepParams.get("serviceName"), stepParams.get("serviceCode"))) + "\n");
 
             // ---- 2) docker login ----
-            logBuilder.append("\n======== [2/3] docker login ========\n");
-            context.emitLog("\n======== [2/3] docker login ========\n");
+            StageLogHelper.append(logBuilder, context, "\n======== [2/3] docker login ========\n");
             String loginPrefix = harborCredentialService.buildDockerLoginPrefix(registry, null);
             if (loginPrefix == null || loginPrefix.trim().isEmpty()) {
-                logBuilder.append("警告: 未配置 Harbor 登录凭据，将直接尝试 docker push（可能因未登录失败）\n");
+                StageLogHelper.append(logBuilder, context,
+                        "警告: 未配置 Harbor 登录凭据，将直接尝试 docker push（可能因未登录失败）\n");
                 log.warn("Harbor 登录凭据为空，registry={}", registry);
             } else {
-                logBuilder.append("$ docker login ").append(registry != null ? registry : "").append(" (凭据已注入，密码不落日志)\n");
+                StageLogHelper.append(logBuilder, context,
+                        "$ docker login " + (registry != null ? registry : "") + " (凭据已注入，密码不落日志)\n");
                 // 单独执行 login，便于在日志中区分登录失败 / 推送失败
                 String loginOnly = loginPrefix.endsWith(" && ")
                         ? loginPrefix.substring(0, loginPrefix.length() - 4)
                         : loginPrefix;
                 loginOnly = loginOnly + " && echo 'docker login 成功: " + registry + "'";
+                // login 的输出不直接写入阶段日志，取回脱敏后再记录
                 NodeCommandHelper.CommandResult loginResult =
-                        nodeCommandHelper.runOnBuildNode(context, loginOnly, workspace);
+                        nodeCommandHelper.captureOnBuildNode(context, loginOnly, workspace);
                 String loginOut = sanitizeLoginOutput(loginResult.getOutput());
                 if (loginOut != null && !loginOut.isEmpty()) {
-                    logBuilder.append(loginOut).append('\n');
+                    StageLogHelper.append(logBuilder, context, loginOut + "\n");
                 }
                 if (!loginResult.isSuccess()) {
-                    result.setLog(logBuilder.toString());
+                    result.setLog(StageLogHelper.finalLog(context, logBuilder));
                     result.setErrorMessage(loginResult.getErrorMessage() != null
                             ? "docker login 失败: " + loginResult.getErrorMessage()
                             : "docker login 失败，退出码: " + loginResult.getExitCode());
@@ -98,27 +100,24 @@ public class PushImageStepExecutor implements StepExecutor {
 
             // ---- 3) docker push ----
             String pushCommand = resolveDockerPushCommand(stepParams, imageFullName);
-            logBuilder.append("\n======== [3/3] docker push ========\n")
-                    .append("$ ").append(pushCommand).append('\n');
-            context.emitLog("\n======== [3/3] docker push ========\n$ " + pushCommand + "\n");
+            StageLogHelper.append(logBuilder, context,
+                    "\n======== [3/3] docker push ========\n$ " + pushCommand + "\n");
             log.info("上传镜像: {}", imageFullName);
 
             NodeCommandHelper.CommandResult pushResult =
                     nodeCommandHelper.runOnBuildNode(context, pushCommand, workspace);
-            if (pushResult.getOutput() != null) {
-                logBuilder.append(pushResult.getOutput());
-            }
+            StageLogHelper.appendCommandOutput(logBuilder, context, pushResult.getOutput());
             if (!pushResult.isSuccess()) {
-                result.setLog(logBuilder.toString());
+                result.setLog(StageLogHelper.finalLog(context, logBuilder));
                 result.setErrorMessage(pushResult.getErrorMessage() != null
                         ? pushResult.getErrorMessage()
                         : "docker push 失败，退出码: " + pushResult.getExitCode());
                 return result;
             }
 
-            logBuilder.append("\n-------- docker push 完成 --------\n")
-                    .append("已推送镜像: ").append(imageFullName).append('\n')
-                    .append("Harbor: ").append(registry != null ? registry : "-").append('\n');
+            StageLogHelper.append(logBuilder, context, "\n-------- docker push 完成 --------\n"
+                    + "已推送镜像: " + imageFullName + "\n"
+                    + "Harbor: " + (registry != null ? registry : "-") + "\n");
 
             result.getOutputData().put("imageFullName", imageFullName);
             result.getOutputData().put("image", imageFullName);
@@ -126,7 +125,7 @@ public class PushImageStepExecutor implements StepExecutor {
                 result.getOutputData().put("imageTag", imageTag);
                 result.getOutputData().put("tag", imageTag);
             }
-            result.setLog(logBuilder.toString());
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
             result.setSuccess(true);
             log.info("镜像上传成功: {}", imageFullName);
         } catch (Exception e) {

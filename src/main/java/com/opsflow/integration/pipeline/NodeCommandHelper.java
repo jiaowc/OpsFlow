@@ -27,6 +27,18 @@ public class NodeCommandHelper {
      */
     private static final int REMOTE_TIMEOUT_GRACE_MS = 15000;
 
+    /**
+     * 输出已逐行写入阶段日志时，返回结果里只保留开头和结尾各一小段（够解析结果、拼错误信息），
+     * 不再把整份输出（最多 20MB）留在内存里
+     */
+    static final int STREAMED_HEAD_BYTES = 16 * 1024;
+    static final int STREAMED_TAIL_BYTES = 64 * 1024;
+
+    /**
+     * 输出已逐行写入阶段日志时，错误信息最多保留的字符数（错误信息会写入数据库的 TEXT 字段）
+     */
+    static final int STREAMED_ERROR_MAX_CHARS = 4000;
+
     @Autowired
     private BuildNodeMapper buildNodeMapper;
 
@@ -38,22 +50,60 @@ public class NodeCommandHelper {
     }
 
     public CommandResult runOnBuildNode(PipelineExecutionContext context, String command, String workDir) {
-        Long nodeId = resolveBuildNodeId(context);
+        return runForStep(context, resolveBuildNodeId(context), "构建", command, workDir, true);
+    }
+
+    /**
+     * 在构建节点执行命令并取回完整输出，输出不写入阶段日志。
+     * 用于需要读取输出内容的场景（读文件、列目录、输出要先脱敏再记录）。
+     */
+    public CommandResult captureOnBuildNode(PipelineExecutionContext context, String command, String workDir) {
+        return runForStep(context, resolveBuildNodeId(context), "构建", command, workDir, false);
+    }
+
+    private CommandResult runForStep(PipelineExecutionContext context, Long nodeId, String nodeKind,
+                                     String command, String workDir, boolean streamToStageLog) {
         int commandTimeoutMs = resolveCommandTimeoutMs(context);
-        Consumer<String> lineListener = lineListenerOf(context);
+        Consumer<String> lineListener = streamToStageLog ? lineListenerOf(context) : null;
+        // 输出正在逐行落盘时，内存里只留开头和结尾
+        boolean streamed = streamToStageLog && context != null && context.isLogStreaming();
+        int keepHead = streamed ? STREAMED_HEAD_BYTES : BoundedOutputBuffer.DEFAULT_HEAD_BYTES;
+        int keepTail = streamed ? STREAMED_TAIL_BYTES : BoundedOutputBuffer.DEFAULT_TAIL_BYTES;
+        CommandResult result = null;
         if (nodeId != null) {
             BuildNode node = buildNodeMapper.selectById(nodeId);
             if (node != null) {
-                log.info("在构建节点 {}@{} 执行命令", node.getUsername(), node.getHost());
-                SshCommandResult result = executeRemote(node, wrapCommandWithWorkDir(command, workDir, true),
-                    commandTimeoutMs, lineListener);
-                return CommandResult.fromSsh(result);
+                log.info("在{}节点 {}@{} 执行命令", nodeKind, node.getUsername(), node.getHost());
+                long timeoutSeconds = Math.max(1, commandTimeoutMs / 1000);
+                String remoteCommand = SshClient.wrapWithRemoteTimeout(
+                    wrapCommandWithWorkDir(command, workDir, true), timeoutSeconds);
+                result = CommandResult.fromSsh(sshClient.execute(node, remoteCommand,
+                    commandTimeoutMs + REMOTE_TIMEOUT_GRACE_MS, lineListener, keepHead, keepTail));
+            } else {
+                log.warn("{}节点不存在: {}", nodeKind, nodeId);
             }
-            log.warn("构建节点不存在: {}", nodeId);
         }
+        if (result == null) {
+            log.info("未配置{}节点，在本地执行命令", nodeKind);
+            result = runLocal(command, WorkspacePathHelper.toLocalPath(workDir), commandTimeoutMs, lineListener,
+                keepHead, keepTail);
+        }
+        if (streamed) {
+            result.setErrorMessage(abbreviateError(result.getErrorMessage()));
+        }
+        return result;
+    }
 
-        log.info("未配置构建节点，在本地执行命令");
-        return runLocal(command, WorkspacePathHelper.toLocalPath(workDir), commandTimeoutMs, lineListener);
+    /** 完整输出已在阶段日志里，错误信息只留结尾一段 */
+    static String abbreviateError(String errorMessage) {
+        if (errorMessage == null || errorMessage.length() <= STREAMED_ERROR_MAX_CHARS) {
+            return errorMessage;
+        }
+        int start = errorMessage.length() - STREAMED_ERROR_MAX_CHARS;
+        if (Character.isLowSurrogate(errorMessage.charAt(start))) {
+            start++;
+        }
+        return "......（前面的输出见阶段日志）\n" + errorMessage.substring(start);
     }
 
     public CommandResult runOnDeployNode(PipelineExecutionContext context, String command) {
@@ -61,32 +111,7 @@ public class NodeCommandHelper {
     }
 
     public CommandResult runOnDeployNode(PipelineExecutionContext context, String command, String workDir) {
-        Long nodeId = resolveDeployNodeId(context);
-        int commandTimeoutMs = resolveCommandTimeoutMs(context);
-        Consumer<String> lineListener = lineListenerOf(context);
-        if (nodeId != null) {
-            BuildNode node = buildNodeMapper.selectById(nodeId);
-            if (node != null) {
-                log.info("在部署节点 {}@{} 执行命令", node.getUsername(), node.getHost());
-                SshCommandResult result = executeRemote(node, wrapCommandWithWorkDir(command, workDir, true),
-                    commandTimeoutMs, lineListener);
-                return CommandResult.fromSsh(result);
-            }
-            log.warn("部署节点不存在: {}", nodeId);
-        }
-
-        log.info("未配置部署节点，在本地执行命令");
-        return runLocal(command, WorkspacePathHelper.toLocalPath(workDir), commandTimeoutMs, lineListener);
-    }
-
-    /**
-     * 流水线命令在节点上执行：远端 timeout 负责到点终止进程，本地等待时间多留一点余量以拿到远端的超时退出码
-     */
-    private SshCommandResult executeRemote(BuildNode node, String command, int commandTimeoutMs,
-                                           Consumer<String> lineListener) {
-        long timeoutSeconds = Math.max(1, commandTimeoutMs / 1000);
-        return sshClient.execute(node, SshClient.wrapWithRemoteTimeout(command, timeoutSeconds),
-            commandTimeoutMs + REMOTE_TIMEOUT_GRACE_MS, lineListener);
+        return runForStep(context, resolveDeployNodeId(context), "部署", command, workDir, true);
     }
 
     public Long resolveBuildNodeId(PipelineExecutionContext context) {
@@ -178,6 +203,12 @@ public class NodeCommandHelper {
 
     public CommandResult runLocal(String command, String workDir, int commandTimeoutMs,
                                   Consumer<String> lineListener) {
+        return runLocal(command, workDir, commandTimeoutMs, lineListener,
+            BoundedOutputBuffer.DEFAULT_HEAD_BYTES, BoundedOutputBuffer.DEFAULT_TAIL_BYTES);
+    }
+
+    private CommandResult runLocal(String command, String workDir, int commandTimeoutMs,
+                                   Consumer<String> lineListener, int keepHeadBytes, int keepTailBytes) {
         CommandResult result = new CommandResult();
         Process process = null;
         Thread outputReader = null;
@@ -190,7 +221,7 @@ public class NodeCommandHelper {
             process = processBuilder.start();
 
             // 输出留在内存里的部分有上限，失控的大输出只保留开头和结尾
-            BoundedOutputBuffer output = new BoundedOutputBuffer();
+            BoundedOutputBuffer output = new BoundedOutputBuffer(keepHeadBytes, keepTailBytes);
             Process finalProcess = process;
             outputReader = new Thread(() -> {
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(finalProcess.getInputStream()))) {

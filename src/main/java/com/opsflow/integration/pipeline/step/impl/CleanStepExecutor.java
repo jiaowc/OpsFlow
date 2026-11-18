@@ -54,7 +54,7 @@ public class CleanStepExecutor implements StepExecutor {
 
             NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnBuildNode(context, cleanCommand, workspace);
             StageLogHelper.appendCommandResult(logBuilder, context, cmdResult);
-            result.setLog(logBuilder.toString());
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
 
             if (!cmdResult.isSuccess()) {
                 result.setErrorMessage(cmdResult.getErrorMessage() != null

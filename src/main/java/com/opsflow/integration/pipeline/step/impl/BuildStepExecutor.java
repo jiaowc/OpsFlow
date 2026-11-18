@@ -62,7 +62,7 @@ public class BuildStepExecutor implements StepExecutor {
 
             NodeCommandHelper.CommandResult cmdResult = nodeCommandHelper.runOnBuildNode(context, buildCommand, workspace);
             StageLogHelper.appendCommandResult(logBuilder, context, cmdResult);
-            result.setLog(logBuilder.toString());
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
 
             if (!cmdResult.isSuccess()) {
                 result.setErrorMessage(cmdResult.getErrorMessage() != null

@@ -1,6 +1,7 @@
 package com.opsflow.integration.pipeline.step.impl;
 
 import com.opsflow.integration.pipeline.NodeCommandHelper;
+import com.opsflow.integration.pipeline.StageLogHelper;
 import com.opsflow.integration.pipeline.PipelineExecutionContext;
 import com.opsflow.integration.pipeline.PipelineTemplateRenderer;
 import com.opsflow.integration.pipeline.WorkspacePathHelper;
@@ -94,7 +95,7 @@ public class RenderTemplateStepExecutor implements StepExecutor {
                 NodeCommandHelper.CommandResult mkdirResult =
                         nodeCommandHelper.runOnBuildNode(context, mkdirCmd, workspace);
                 if (!mkdirResult.isSuccess()) {
-                    result.setLog(logBuilder.toString());
+                    result.setLog(StageLogHelper.finalLog(context, logBuilder));
                     result.setErrorMessage(mkdirResult.getErrorMessage() != null
                             ? mkdirResult.getErrorMessage()
                             : "无法在构建节点创建输出目录: " + manifestDir);
@@ -109,7 +110,7 @@ public class RenderTemplateStepExecutor implements StepExecutor {
                     NodeCommandHelper.CommandResult writeResult =
                             nodeCommandHelper.runOnBuildNode(context, writeCmd, workspace);
                     if (!writeResult.isSuccess()) {
-                        result.setLog(logBuilder.toString());
+                        result.setLog(StageLogHelper.finalLog(context, logBuilder));
                         result.setErrorMessage(writeResult.getErrorMessage() != null
                                 ? writeResult.getErrorMessage()
                                 : "写入 deployment.yaml 失败");
@@ -127,7 +128,7 @@ public class RenderTemplateStepExecutor implements StepExecutor {
                     NodeCommandHelper.CommandResult writeResult =
                             nodeCommandHelper.runOnBuildNode(context, writeCmd, workspace);
                     if (!writeResult.isSuccess()) {
-                        result.setLog(logBuilder.toString());
+                        result.setLog(StageLogHelper.finalLog(context, logBuilder));
                         result.setErrorMessage(writeResult.getErrorMessage() != null
                                 ? writeResult.getErrorMessage()
                                 : "写入 service.yaml 失败");
@@ -166,7 +167,7 @@ public class RenderTemplateStepExecutor implements StepExecutor {
 
             result.getOutputData().put("manifestDir", manifestDir);
             result.getOutputData().put("renderedManifests", String.join(",", renderedFiles));
-            result.setLog(logBuilder.toString());
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
             result.setSuccess(true);
             log.info("模版渲染完成，输出目录: {}，节点: {}", manifestDir, nodeDesc);
         } catch (Exception e) {

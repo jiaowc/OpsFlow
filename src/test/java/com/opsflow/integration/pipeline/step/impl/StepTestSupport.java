@@ -2,6 +2,7 @@ package com.opsflow.integration.pipeline.step.impl;
 
 import com.opsflow.integration.pipeline.NodeCommandHelper;
 import com.opsflow.integration.pipeline.PipelineExecutionContext;
+import com.opsflow.integration.pipeline.PipelineStageListener;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -65,5 +66,36 @@ final class StepTestSupport {
         result.setOutput(output);
         result.setErrorMessage(errorMessage);
         return result;
+    }
+
+    /**
+     * 让上下文进入「日志实时落盘」状态（正式运行时的状态），返回收到的阶段日志内容。
+     */
+    static StringBuilder streamInto(PipelineExecutionContext context) {
+        StringBuilder stageLog = new StringBuilder();
+        context.setStageListener(new PipelineStageListener() {
+            @Override
+            public void onStageStart(int stepOrder, String stepType, String stepName) {
+            }
+
+            @Override
+            public void onStageLog(int stepOrder, String chunk) {
+                stageLog.append(chunk);
+            }
+
+            @Override
+            public void onStageComplete(int stepOrder, boolean success, String log, String errorMessage, long durationMs) {
+            }
+        });
+        context.setCurrentStepOrder(1);
+        return stageLog;
+    }
+
+    static int count(String text, String part) {
+        int count = 0;
+        for (int i = text.indexOf(part); i >= 0; i = text.indexOf(part, i + part.length())) {
+            count++;
+        }
+        return count;
     }
 }

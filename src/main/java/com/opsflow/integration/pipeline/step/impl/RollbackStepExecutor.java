@@ -3,6 +3,7 @@ package com.opsflow.integration.pipeline.step.impl;
 import com.opsflow.integration.k8s.K8sClient;
 import com.opsflow.integration.k8s.K8sCredentialService;
 import com.opsflow.integration.pipeline.NodeCommandHelper;
+import com.opsflow.integration.pipeline.StageLogHelper;
 import com.opsflow.integration.pipeline.PipelineExecutionContext;
 import com.opsflow.integration.pipeline.step.StepExecutor;
 import com.opsflow.integration.pipeline.step.StepExecutionResult;
@@ -63,7 +64,8 @@ public class RollbackStepExecutor implements StepExecutor {
             String nodeDesc = nodeCommandHelper.describeDeployNode(context);
 
             log.info("回滚 Deployment: {}/{}, revision={}", namespace, deployment, toRevision);
-            String rollbackLog;
+            StringBuilder logBuilder = new StringBuilder();
+            StageLogHelper.append(logBuilder, context, "执行节点: " + nodeDesc + "\n");
             if (nodeCommandHelper.resolveDeployNodeId(context) != null) {
                 String kubeSetup = k8sCredentialService.buildRemoteKubeconfigSetup(context.getExecutionId(),
                         context.getEnvironment() != null ? context.getEnvironment().getClusterId() : null, null);
@@ -75,7 +77,7 @@ public class RollbackStepExecutor implements StepExecutor {
                     command.append(" --to-revision=").append(toRevision);
                 }
                 NodeCommandHelper.CommandResult rollbackResult = nodeCommandHelper.runOnDeployNode(context, command.toString());
-                rollbackLog = "执行节点: " + nodeDesc + "\n" + (rollbackResult.getOutput() == null ? "" : rollbackResult.getOutput());
+                StageLogHelper.appendCommandOutput(logBuilder, context, rollbackResult.getOutput());
                 if (!rollbackResult.isSuccess()) {
                     result.setErrorMessage(rollbackResult.getErrorMessage() != null ? rollbackResult.getErrorMessage() : "回滚失败");
                     return result;
@@ -86,21 +88,22 @@ public class RollbackStepExecutor implements StepExecutor {
                         + " rollout status " + NodeCommandHelper.shellQuote("deployment/" + deployment)
                         + " --timeout=" + timeoutSeconds + "s";
                     NodeCommandHelper.CommandResult rolloutResult = nodeCommandHelper.runOnDeployNode(context, rolloutCommand);
-                    rollbackLog += "\n" + (rolloutResult.getOutput() == null ? "" : rolloutResult.getOutput());
+                    StageLogHelper.appendCommandOutput(logBuilder, context, "\n");
+                    StageLogHelper.appendCommandOutput(logBuilder, context, rolloutResult.getOutput());
                     if (!rolloutResult.isSuccess()) {
                         result.setErrorMessage(rolloutResult.getErrorMessage() != null ? rolloutResult.getErrorMessage() : "回滚后检查失败");
                         return result;
                     }
                 }
             } else {
-                rollbackLog = "执行节点: " + nodeDesc + "\n" + k8sClient.rollbackDeployment(namespace, deployment, toRevision);
+                StageLogHelper.append(logBuilder, context, k8sClient.rollbackDeployment(namespace, deployment, toRevision));
                 if (waitRollout) {
                     k8sClient.waitForDeploymentRollout(namespace, deployment, timeoutSeconds);
-                    rollbackLog += "\nDeployment 回滚后滚动更新已完成";
+                    StageLogHelper.append(logBuilder, context, "\nDeployment 回滚后滚动更新已完成");
                 }
             }
 
-            result.setLog(rollbackLog);
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
             result.setSuccess(true);
             log.info("Deployment 回滚成功: {}/{}", namespace, deployment);
         } catch (NumberFormatException e) {

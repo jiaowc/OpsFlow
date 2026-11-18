@@ -19,6 +19,7 @@ import static com.opsflow.integration.pipeline.step.impl.StepTestSupport.ok;
 import static com.opsflow.integration.pipeline.step.impl.StepTestSupport.params;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -57,11 +58,14 @@ class DockerBuildStepExecutorTest {
         results = new java.util.HashMap<>();
 
         when(nodeCommandHelper.describeBuildNode(any())).thenReturn("build-1");
-        when(nodeCommandHelper.runOnBuildNode(any(), anyString(), eq(WORKSPACE))).thenAnswer(invocation -> {
+        org.mockito.stubbing.Answer<NodeCommandHelper.CommandResult> nodeAnswer = invocation -> {
             commands.add(invocation.getArgument(1));
             NodeCommandHelper.CommandResult configured = results.get(commands.size() - 1);
             return configured != null ? configured : ok("");
-        });
+        };
+        when(nodeCommandHelper.runOnBuildNode(any(), anyString(), eq(WORKSPACE))).thenAnswer(nodeAnswer);
+        // 需要先处理再记录的输出（login 脱敏、镜像信息）走 captureOnBuildNode，不直接写阶段日志
+        when(nodeCommandHelper.captureOnBuildNode(any(), anyString(), eq(WORKSPACE))).thenAnswer(nodeAnswer);
         when(harborCredentialService.buildDockerLoginPrefix("harbor.local", null)).thenReturn("LOGIN && ");
     }
 
@@ -289,5 +293,26 @@ class DockerBuildStepExecutorTest {
         assertFalse(executor.supports("push_image"));
         assertFalse(executor.supports(null));
         verifyNoMoreInteractions(harborCredentialService);
+    }
+
+    // ---------- 日志实时落盘 ----------
+
+    @Test
+    void streamingModeWritesStepTextToStageLogAndReturnsNoLog() {
+        StringBuilder stageLog = StepTestSupport.streamInto(context);
+        results.put(0, ok("Step 1/5 : FROM eclipse-temurin:17\nSuccessfully built abc\n"));
+        results.put(1, ok("harbor.local/dev/ruoyi-vue:v1  abc  210MB  1 second ago\n"));
+
+        StepExecutionResult result = executor.execute("docker_build", params("tag", "v1"), context);
+
+        assertTrue(result.getSuccess());
+        assertNull(result.getLog());
+        String text = stageLog.toString();
+        assertTrue(text.contains("执行节点: build-1"));
+        assertTrue(text.contains("======== [2/2] docker build ========"));
+        assertTrue(text.contains("-------- docker build 完成 --------"));
+        assertTrue(text.contains("本地镜像:\nharbor.local/dev/ruoyi-vue:v1  abc  210MB  1 second ago\n"));
+        assertFalse(text.contains("Successfully built"), "build 的输出由命令执行层逐行落盘，步骤不应再写一遍");
+        assertEquals(1, StepTestSupport.count(text, "======== [2/2] docker build ========"));
     }
 }

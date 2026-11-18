@@ -2,6 +2,7 @@ package com.opsflow.integration.pipeline.step.impl;
 
 import com.opsflow.integration.harbor.HarborCredentialService;
 import com.opsflow.integration.pipeline.NodeCommandHelper;
+import com.opsflow.integration.pipeline.StageLogHelper;
 import com.opsflow.integration.pipeline.PipelineExecutionContext;
 import com.opsflow.integration.pipeline.PipelineTemplateRenderer;
 import com.opsflow.integration.pipeline.WorkspacePathHelper;
@@ -86,63 +87,58 @@ public class DockerBuildStepExecutor implements StepExecutor {
                 String writeCmd = NodeCommandHelper.heredoc("cat > " + dockerfileShell, dockerfileContent) + "\n"
                         + "echo \"Dockerfile 已写入: " + dockerfileShell + "\"\n"
                         + "ls -la " + dockerfileShell;
-                logBuilder.append("\n======== [1/2] 写入 Dockerfile ========\n");
-                context.emitLog("\n======== [1/2] 写入 Dockerfile ========\n");
+                StageLogHelper.append(logBuilder, context, "\n======== [1/2] 写入 Dockerfile ========\n");
                 log.info("写入 Dockerfile: {}", dockerfileShell);
                 NodeCommandHelper.CommandResult writeResult =
                         nodeCommandHelper.runOnBuildNode(context, writeCmd, workspace);
-                if (writeResult.getOutput() != null) {
-                    logBuilder.append(writeResult.getOutput());
-                }
+                StageLogHelper.appendCommandOutput(logBuilder, context, writeResult.getOutput());
                 if (!writeResult.isSuccess()) {
-                    result.setLog(logBuilder.toString());
+                    result.setLog(StageLogHelper.finalLog(context, logBuilder));
                     result.setErrorMessage(writeResult.getErrorMessage() != null
                             ? writeResult.getErrorMessage()
                             : "写入 Dockerfile 失败，退出码: " + writeResult.getExitCode());
                     return result;
                 }
             } else {
-                logBuilder.append("\n======== [1/2] 写入 Dockerfile ========\n")
-                        .append("未配置模版内容，使用工作目录已有文件: ").append(dockerfilePath).append('\n');
+                StageLogHelper.append(logBuilder, context, "\n======== [1/2] 写入 Dockerfile ========\n"
+                        + "未配置模版内容，使用工作目录已有文件: " + dockerfilePath + "\n");
             }
 
             // ---- 2) docker build ----
             String dockerBuildCommand = resolveDockerBuildCommand(stepParams, buildVars);
-            logBuilder.append("\n======== [2/2] docker build ========\n")
-                    .append("$ ").append(dockerBuildCommand).append('\n');
-            context.emitLog("\n======== [2/2] docker build ========\n$ " + dockerBuildCommand + "\n");
+            StageLogHelper.append(logBuilder, context,
+                    "\n======== [2/2] docker build ========\n$ " + dockerBuildCommand + "\n");
             log.info("执行 docker build: {}", dockerBuildCommand);
 
             NodeCommandHelper.CommandResult buildResult =
                     nodeCommandHelper.runOnBuildNode(context, dockerBuildCommand, workspace);
-            if (buildResult.getOutput() != null) {
-                logBuilder.append(buildResult.getOutput());
-            }
+            StageLogHelper.appendCommandOutput(logBuilder, context, buildResult.getOutput());
             if (!buildResult.isSuccess()) {
-                result.setLog(logBuilder.toString());
+                result.setLog(StageLogHelper.finalLog(context, logBuilder));
                 result.setErrorMessage(buildResult.getErrorMessage() != null
                         ? buildResult.getErrorMessage()
                         : "docker build 失败，退出码: " + buildResult.getExitCode());
                 return result;
             }
 
-            logBuilder.append("\n-------- docker build 完成 --------\n")
-                    .append("镜像全名: ").append(imageFullName).append('\n')
-                    .append("harbor: ").append(harbor).append('\n')
-                    .append("namespace: ").append(namespace).append('\n')
-                    .append("serviceName: ").append(serviceName).append('\n')
-                    .append("tag: ").append(tag).append('\n')
-                    .append("Dockerfile: ").append(dockerfilePath).append('\n');
+            StageLogHelper.append(logBuilder, context, "\n-------- docker build 完成 --------\n"
+                    + "镜像全名: " + imageFullName + "\n"
+                    + "harbor: " + harbor + "\n"
+                    + "namespace: " + namespace + "\n"
+                    + "serviceName: " + serviceName + "\n"
+                    + "tag: " + tag + "\n"
+                    + "Dockerfile: " + dockerfilePath + "\n");
 
             String inspectCmd = "docker images --format 'table {{.Repository}}:{{.Tag}}\\t{{.ID}}\\t{{.Size}}\\t{{.CreatedSince}}' "
                     + NodeCommandHelper.shellQuote(imageFullName)
                     + " 2>/dev/null || docker images | grep -F "
                     + NodeCommandHelper.shellQuote(serviceName + ":" + tag)
                     + " || true";
+            // 输出只有几行，取回后加上标题再记录
             NodeCommandHelper.CommandResult inspectResult =
-                    nodeCommandHelper.runOnBuildNode(context, inspectCmd, workspace);
+                    nodeCommandHelper.captureOnBuildNode(context, inspectCmd, workspace);
             if (inspectResult.getOutput() != null && !inspectResult.getOutput().trim().isEmpty()) {
-                logBuilder.append("本地镜像:\n").append(inspectResult.getOutput().trim()).append('\n');
+                StageLogHelper.append(logBuilder, context, "本地镜像:\n" + inspectResult.getOutput().trim() + "\n");
             }
 
             result.getOutputData().put("imageTag", tag);
@@ -162,13 +158,13 @@ public class DockerBuildStepExecutor implements StepExecutor {
             ));
 
             if (!pushAfterBuild) {
-                result.setLog(logBuilder.toString());
+                result.setLog(StageLogHelper.finalLog(context, logBuilder));
                 result.setSuccess(true);
                 log.info("Docker 镜像构建成功: {}", imageFullName);
                 return result;
             }
 
-            logBuilder.append("\n======== 推送镜像 ========\n");
+            StageLogHelper.append(logBuilder, context, "\n======== 推送镜像 ========\n");
             log.info("Docker 镜像构建成功，开始推送到 Harbor: {}", imageFullName);
             String registry = HarborCredentialService.extractRegistryFromImage(imageFullName);
             String loginPrefix = harborCredentialService.buildDockerLoginPrefix(registry, null);
@@ -177,18 +173,16 @@ public class DockerBuildStepExecutor implements StepExecutor {
                     loginPrefix + "docker push " + NodeCommandHelper.shellQuote(imageFullName),
                     workspace
             );
-            if (pushResult.getOutput() != null) {
-                logBuilder.append(pushResult.getOutput());
-            }
+            StageLogHelper.appendCommandOutput(logBuilder, context, pushResult.getOutput());
             if (!pushResult.isSuccess()) {
-                result.setLog(logBuilder.toString());
+                result.setLog(StageLogHelper.finalLog(context, logBuilder));
                 result.setErrorMessage(pushResult.getErrorMessage() != null
                         ? pushResult.getErrorMessage()
                         : "Docker 镜像推送失败，退出码: " + pushResult.getExitCode());
                 return result;
             }
 
-            result.setLog(logBuilder.toString());
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
             result.setSuccess(true);
             log.info("Docker 镜像推送成功: {}", imageFullName);
         } catch (Exception e) {

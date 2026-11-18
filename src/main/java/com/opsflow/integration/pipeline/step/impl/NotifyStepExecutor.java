@@ -43,7 +43,7 @@ public class NotifyStepExecutor implements StepExecutor {
             StageLogHelper.emitLine(context, "说明: 当前为日志记录模式，尚未对接外部通知通道");
 
             log.info("执行通知步骤 [{}]: {}", notifyType, message);
-            result.setLog(logBuilder.toString());
+            result.setLog(StageLogHelper.finalLog(context, logBuilder));
             result.setSuccess(true);
 
         } catch (Exception e) {
