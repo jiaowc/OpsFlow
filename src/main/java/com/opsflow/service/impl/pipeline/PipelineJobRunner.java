@@ -1,6 +1,7 @@
 package com.opsflow.service.impl.pipeline;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.opsflow.api.dto.PipelineDTO;
 import com.opsflow.api.dto.PipelineStepDTO;
 import com.opsflow.common.constant.BuildStatus;
@@ -461,6 +462,23 @@ public class PipelineJobRunner {
                         buildJobStageMapper.updateById(stage);
                         lastFlushMs = now;
                     }
+                }
+            }
+
+            @Override
+            public void onStageHeartbeat(int stepOrder) {
+                BuildJobStage stage = stageByOrder.get(stepOrder);
+                if (stage == null || stage.getId() == null) {
+                    return;
+                }
+                synchronized (this) {
+                    // 只刷新更新时间：步骤长时间没有输出时，僵死任务检查仍能看到它在运行
+                    LocalDateTime now = LocalDateTime.now();
+                    stage.setUpdateTime(now);
+                    buildJobStageMapper.update(null, new UpdateWrapper<BuildJobStage>()
+                        .eq("id", stage.getId())
+                        .eq("status", "RUNNING")
+                        .set("update_time", now));
                 }
             }
 

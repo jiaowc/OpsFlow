@@ -12,6 +12,13 @@ public interface PipelineStageListener {
      */
     void onStageLog(int stepOrder, String chunk);
 
+    /**
+     * 步骤仍在执行时的周期性心跳（与是否有日志输出无关），
+     * 用于刷新阶段的更新时间，避免长时间无输出的步骤被误判为僵死任务
+     */
+    default void onStageHeartbeat(int stepOrder) {
+    }
+
     void onStageComplete(int stepOrder, boolean success, String log, String errorMessage, long durationMs);
 
     /**

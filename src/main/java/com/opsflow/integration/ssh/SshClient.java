@@ -37,6 +37,16 @@ public class SshClient {
     private static final int MAX_LINE_BYTES = 64 * 1024;
 
     /**
+     * 保活探测间隔：长任务期间连接上可能长时间没有数据，定期探测可防止被中间网络设备当作空闲连接断开
+     */
+    private static final int SERVER_ALIVE_INTERVAL_MS = 30000;
+
+    /**
+     * 连续多少次保活探测无应答后判定连接已断
+     */
+    private static final int SERVER_ALIVE_COUNT_MAX = 4;
+
+    /**
      * GNU timeout 超时退出码
      */
     public static final int TIMEOUT_EXIT_CODE = 124;
@@ -99,6 +109,8 @@ public class SshClient {
             config.put("server_host_key", JSch.getConfig("server_host_key") + ",ssh-rsa");
             config.put("PubkeyAcceptedAlgorithms", JSch.getConfig("PubkeyAcceptedAlgorithms") + ",ssh-rsa");
             session.setConfig(config);
+            session.setServerAliveInterval(SERVER_ALIVE_INTERVAL_MS);
+            session.setServerAliveCountMax(SERVER_ALIVE_COUNT_MAX);
             session.connect(CONNECT_TIMEOUT_MS);
             rememberHostKey(node, hostKeys);
 
@@ -109,8 +121,9 @@ public class SshClient {
             InputStream stderr = channel.getErrStream();
             channel.connect(CONNECT_TIMEOUT_MS);
 
-            ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
-            ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
+            // 输出留在内存里的部分有上限，失控的大输出只保留开头和结尾
+            BoundedOutputBuffer outBuf = new BoundedOutputBuffer();
+            BoundedOutputBuffer errBuf = new BoundedOutputBuffer();
             ByteArrayOutputStream outLine = new ByteArrayOutputStream();
             ByteArrayOutputStream errLine = new ByteArrayOutputStream();
 
@@ -146,9 +159,7 @@ public class SshClient {
                 timeout.setOutput(partial);
                 return timeout;
             }
-            String out = new String(outBuf.toByteArray(), StandardCharsets.UTF_8).trim();
-            String err = new String(errBuf.toByteArray(), StandardCharsets.UTF_8).trim();
-            String combined = combineText(out, err);
+            String combined = combineOutput(outBuf, errBuf);
 
             if (exitCode != 0) {
                 return SshCommandResult.of(exitCode, combined.isEmpty() ? "命令执行失败" : combined);
@@ -228,7 +239,7 @@ public class SshClient {
     /**
      * 按字节切分行，整行再按 UTF-8 解码，避免多字节字符被读缓冲边界截断成乱码
      */
-    private void drainStream(InputStream in, ByteArrayOutputStream sink,
+    private void drainStream(InputStream in, BoundedOutputBuffer sink,
                              ByteArrayOutputStream lineBuf, Consumer<String> lineListener) throws Exception {
         if (in == null) {
             return;
@@ -268,9 +279,9 @@ public class SshClient {
         lineBuf.reset();
     }
 
-    private String combineOutput(ByteArrayOutputStream outBuf, ByteArrayOutputStream errBuf) {
-        String out = new String(outBuf.toByteArray(), StandardCharsets.UTF_8).trim();
-        String err = new String(errBuf.toByteArray(), StandardCharsets.UTF_8).trim();
+    private String combineOutput(BoundedOutputBuffer outBuf, BoundedOutputBuffer errBuf) {
+        String out = outBuf.toString().trim();
+        String err = errBuf.toString().trim();
         return combineText(out, err);
     }
 

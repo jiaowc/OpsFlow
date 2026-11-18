@@ -2,6 +2,7 @@ package com.opsflow.integration.pipeline;
 
 import com.opsflow.dao.mapper.BuildNodeMapper;
 import com.opsflow.dao.model.BuildNode;
+import com.opsflow.integration.ssh.BoundedOutputBuffer;
 import com.opsflow.integration.ssh.SshClient;
 import com.opsflow.integration.ssh.SshCommandResult;
 import lombok.Data;
@@ -188,15 +189,14 @@ public class NodeCommandHelper {
             processBuilder.redirectErrorStream(true);
             process = processBuilder.start();
 
-            StringBuilder output = new StringBuilder();
+            // 输出留在内存里的部分有上限，失控的大输出只保留开头和结尾
+            BoundedOutputBuffer output = new BoundedOutputBuffer();
             Process finalProcess = process;
             outputReader = new Thread(() -> {
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(finalProcess.getInputStream()))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        synchronized (output) {
-                            output.append(line).append('\n');
-                        }
+                        output.appendLine(line);
                         if (lineListener != null) {
                             try {
                                 lineListener.accept(line);
@@ -221,18 +221,14 @@ public class NodeCommandHelper {
                 process.destroyForcibly();
                 result.setSuccess(false);
                 result.setExitCode(-1);
-                synchronized (output) {
-                    result.setOutput(output.toString());
-                }
+                result.setOutput(output.toString());
                 result.setErrorMessage("命令执行超时（" + (waitTimeoutMs / 1000) + "秒）");
                 return result;
             }
 
             outputReader.join(2000);
             int exitCode = process.exitValue();
-            synchronized (output) {
-                result.setOutput(output.toString());
-            }
+            result.setOutput(output.toString());
             result.setExitCode(exitCode);
             result.setSuccess(exitCode == 0);
             if (exitCode != 0) {

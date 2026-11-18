@@ -28,6 +28,11 @@ import java.util.stream.Collectors;
 public class NativePipelineExecutor implements PipelineExecutor {
 
     private static final int DEFAULT_STEP_TIMEOUT_SECONDS = 60;
+
+    /**
+     * 等待步骤结果期间发送阶段心跳的间隔，需远小于僵死任务的判定阈值（10 分钟）
+     */
+    static final long STAGE_HEARTBEAT_INTERVAL_MS = 30000;
     
     @Autowired
     private List<StepExecutor> stepExecutors;
@@ -283,6 +288,43 @@ public class NativePipelineExecutor implements PipelineExecutor {
     }
 
     /**
+     * 在 {@code timeoutSeconds} 内等待步骤结果；等待期间每隔 {@code heartbeatIntervalMs} 通知一次阶段监听器，
+     * 这样步骤即使长时间没有任何输出，阶段的更新时间也会持续刷新。
+     */
+    static StepExecutionResult awaitWithHeartbeat(Future<StepExecutionResult> future, int timeoutSeconds,
+            PipelineExecutionContext context, long heartbeatIntervalMs)
+            throws InterruptedException, ExecutionException, TimeoutException {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        while (true) {
+            long remainingNanos = deadlineNanos - System.nanoTime();
+            if (remainingNanos <= 0) {
+                throw new TimeoutException();
+            }
+            long waitNanos = Math.min(remainingNanos, TimeUnit.MILLISECONDS.toNanos(heartbeatIntervalMs));
+            try {
+                return future.get(waitNanos, TimeUnit.NANOSECONDS);
+            } catch (TimeoutException e) {
+                if (deadlineNanos - System.nanoTime() <= 0) {
+                    throw e;
+                }
+                emitHeartbeat(context);
+            }
+        }
+    }
+
+    private static void emitHeartbeat(PipelineExecutionContext context) {
+        if (context == null || context.getStageListener() == null || context.getCurrentStepOrder() == null) {
+            return;
+        }
+        try {
+            context.getStageListener().onStageHeartbeat(context.getCurrentStepOrder());
+        } catch (Exception e) {
+            // 心跳只是辅助，写库失败不影响步骤执行
+            log.warn("阶段心跳回调失败: {}", e.getMessage());
+        }
+    }
+
+    /**
      * 在独立线程中执行单步，并在 {@code timeoutSeconds} 内等待结果；超时则 cancel 并返回失败。
      */
     private StepExecutionResult executeStepWithTimeout(StepExecutor executor, PipelineStepDTO step,
@@ -290,7 +332,7 @@ public class NativePipelineExecutor implements PipelineExecutor {
         Future<StepExecutionResult> future = stepExecutorPool.submit(
             () -> executor.execute(step.getStepType(), stepParams, context));
         try {
-            return future.get(timeoutSeconds, TimeUnit.SECONDS);
+            return awaitWithHeartbeat(future, timeoutSeconds, context, STAGE_HEARTBEAT_INTERVAL_MS);
         } catch (TimeoutException e) {
             future.cancel(true);
             StepExecutionResult timeoutResult = new StepExecutionResult();
