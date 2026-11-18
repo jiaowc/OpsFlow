@@ -17,6 +17,29 @@ DOCKER_IMAGE="${OPSFLOW_DOCKER_IMAGE:-opsflow:1.0.0}"
 DOCKER_CONTAINER="${OPSFLOW_DOCKER_CONTAINER:-opsflow}"
 DOCKER_NETWORK="${OPSFLOW_DOCKER_NETWORK:-}"
 
+# 启动前轮转日志：把当前 app.log 改名为 app.log.<时间戳>.bak，只保留最近 N 个备份
+# N 默认 5，可用 OPSFLOW_LOG_BACKUP_KEEP 覆盖（0 表示不保留备份）
+rotate_app_log() {
+    local keep="${OPSFLOW_LOG_BACKUP_KEEP:-5}"
+    case "${keep}" in
+        ''|*[!0-9]*) keep=5 ;;
+    esac
+
+    mkdir -p "$(dirname "${LOG_FILE}")"
+    if [ -f "${LOG_FILE}" ]; then
+        mv "${LOG_FILE}" "${LOG_FILE}.$(date +%Y%m%d_%H%M%S).bak" 2>/dev/null || true
+    fi
+
+    # 文件名里的时间戳定长，通配符展开的字典序就是时间顺序（旧的在前）
+    local backups=("${LOG_FILE}".*.bak)
+    [ -e "${backups[0]}" ] || return 0
+    local excess=$(( ${#backups[@]} - keep ))
+    local i
+    for (( i = 0; i < excess; i++ )); do
+        rm -f -- "${backups[$i]}"
+    done
+}
+
 # Java（本地编译/运行必须用 JDK 17；不要直接沿用环境里的 JAVA_HOME，可能是 8 或 22+）
 JAVA_17_HOME=""
 

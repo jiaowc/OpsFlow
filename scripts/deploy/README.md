@@ -38,7 +38,7 @@ SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh
 - `restart.sh` 执行 `mvn clean package -DskipTests`，所有环境共用同一个 jar
 - 在项目根目录启动，配置全部从 `config/` 读取：按 `SPRING_PROFILES_ACTIVE` 选择 `config/application-<env>.yml`，并读取 `config/application-local.yml`（本机私有配置，如 `DB_PASSWORD`）
 - `OPSFLOW_MAVEN_PROFILE` 已废弃，设置时等同于 `SPRING_PROFILES_ACTIVE`
-- 日志：`logs/app.log`
+- 日志：`logs/app.log`；每次启动会把上一次的日志改名为 `app.log.<时间戳>.bak`，只保留最近 5 个（`OPSFLOW_LOG_BACKUP_KEEP` 可调）
 
 ## Docker 单容器模式（兼容旧脚本）
 

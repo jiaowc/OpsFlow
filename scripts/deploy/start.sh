@@ -68,14 +68,10 @@ if port_in_use; then
     exit 1
 fi
 
-mkdir -p "$(dirname "${LOG_FILE}")"
-
 # 数据库迁移由应用启动时自动执行（Flyway）。关闭自动迁移（OPSFLOW_DB_MIGRATE=false）的环境，
 # 请在启动前手动执行 scripts/database/migrate.sh
 
-if [ -f "${LOG_FILE}" ]; then
-    mv "${LOG_FILE}" "${LOG_FILE}.$(date +%Y%m%d_%H%M%S).bak" 2>/dev/null || true
-fi
+rotate_app_log
 
 cd "${PROJECT_DIR}"
 print_info "正在启动 ${APP_NAME}（本地模式）..."

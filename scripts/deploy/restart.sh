@@ -74,10 +74,7 @@ start_local_app() {
 
     setup_java17
 
-    mkdir -p "$(dirname "${LOG_FILE}")"
-    if [ -f "${LOG_FILE}" ]; then
-        mv "${LOG_FILE}" "${LOG_FILE}.$(date +%Y%m%d_%H%M%S).bak" 2>/dev/null || true
-    fi
+    rotate_app_log
 
     print_config_summary
     nohup java -jar "${JAR_PATH}" > "${LOG_FILE}" 2>&1 &
