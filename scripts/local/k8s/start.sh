@@ -64,7 +64,10 @@ for ns in ${K8S_NAMESPACES}; do
 done
 
 # 让 kind 节点能拉宿主机 Harbor 的 localhost 镜像
-bash "${SCRIPT_DIR}/harbor-bridge.sh"
+# 桥接失败（如宿主机 Harbor 未启动）只告警不中断，Harbor 起来后可单独重跑 harbor-bridge.sh
+if ! bash "${SCRIPT_DIR}/harbor-bridge.sh"; then
+  echo "[k8s] 警告：Harbor 桥接未成功，继续启动；Harbor 就绪后请执行 ./harbor-bridge.sh，否则 kind 节点拉不到 localhost 镜像" >&2
+fi
 
 echo "[k8s] 构建并启动部署节点容器 ..."
 export DEPLOY_NODE_IMAGE DEPLOY_NODE_PORT DEPLOY_NODE_SSH_PASSWORD DEPLOY_CONTAINER_NAME K8S_DATA_DIR
