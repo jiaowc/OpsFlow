@@ -86,7 +86,11 @@ public class DeployTaskController {
     @RequiresPermission("deploy:view")
     @GetMapping("/{id}")
     public DeployTaskDTO getTask(@PathVariable Long id, HttpSession session) {
-        return deployTaskService.getTask(id, operator(session));
+        DeployTaskDTO task = deployTaskService.getTask(id, operator(session));
+        if (task == null) {
+            throw new com.opsflow.common.exception.BusinessException("上线任务不存在");
+        }
+        return task;
     }
 
     /**

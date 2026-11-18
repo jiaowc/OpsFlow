@@ -47,6 +47,10 @@ public class CredentialServiceImpl implements CredentialService {
     @Autowired
     private com.opsflow.dao.mapper.ClusterMapper clusterMapper;
 
+    /** 与前端钥匙串类型下拉、ComponentAuthResolver#mapCredentialTypeToAuthType 保持一致 */
+    private static final List<String> CREDENTIAL_TYPES = java.util.Arrays.asList(
+            "username_password", "token", "api_key", "oauth", "kubeconfig", "ssh_password", "ssh_key");
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -129,6 +133,11 @@ public class CredentialServiceImpl implements CredentialService {
         }
         if (isCreate && (request.getCredentialType() == null || request.getCredentialType().trim().isEmpty())) {
             throw new BusinessException("凭证类型不能为空");
+        }
+        if (request.getCredentialType() != null && !request.getCredentialType().trim().isEmpty()
+                && !CREDENTIAL_TYPES.contains(request.getCredentialType().trim())) {
+            throw new BusinessException("不支持的凭证类型: " + request.getCredentialType().trim()
+                    + "，可选值: " + String.join(" / ", CREDENTIAL_TYPES));
         }
         if (isCreate && (request.getConfigData() == null || request.getConfigData().isEmpty())) {
             throw new BusinessException("凭证配置不能为空");

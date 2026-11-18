@@ -290,7 +290,8 @@ public class BuildServiceImpl implements BuildService {
     public List<BuildNodeDTO> getBuildNodes(Boolean random) {
         List<BuildNode> nodes = buildNodeMapper.selectList(
             new QueryWrapper<BuildNode>()
-                .eq("status", "ONLINE")
+                // 环境检测写入的是中文「在线」；ONLINE 兼容历史数据
+                .in("status", NodeServiceImpl.STATUS_ONLINE, "ONLINE")
         );
 
         if (Boolean.TRUE.equals(random) && !nodes.isEmpty()) {

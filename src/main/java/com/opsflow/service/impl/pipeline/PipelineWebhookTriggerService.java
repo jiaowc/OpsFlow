@@ -21,6 +21,10 @@ import java.util.*;
 @Slf4j
 @Component
 public class PipelineWebhookTriggerService {
+    /** 全局 Git Webhook 密钥；为空表示 /api/webhook/git 未启用 */
+    @org.springframework.beans.factory.annotation.Value("${opsflow.webhook.secret:}")
+    private String webhookSecret;
+
     @Autowired
     private BuildJobMapper buildJobMapper;
 
@@ -65,6 +69,9 @@ public class PipelineWebhookTriggerService {
         }
         BuildJob anchor = support.resolveAnchorJob(ref);
         if (enabled) {
+            if (webhookSecret == null || webhookSecret.trim().isEmpty()) {
+                throw new BusinessException("系统未配置 Webhook 密钥（OPSFLOW_WEBHOOK_SECRET），推送自动构建不会生效，请先联系管理员配置");
+            }
             Env env = anchor.getEnvId() != null ? envMapper.selectById(anchor.getEnvId()) : null;
             if (env != null && env.isProdEnv()) {
                 throw new BusinessException("生产环境不支持推送自动构建，请通过上线任务发布");

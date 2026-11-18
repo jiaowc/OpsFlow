@@ -86,7 +86,7 @@ public class UserController {
     public UserDTO getUser(@PathVariable Long id) {
         User user = userMapper.selectById(id);
         if (user == null) {
-            return null;
+            throw new BusinessException("用户不存在");
         }
         return getUserDTO(user);
     }

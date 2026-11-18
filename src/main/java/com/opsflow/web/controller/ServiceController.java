@@ -218,6 +218,12 @@ public class ServiceController {
         if (isCreate) {
             service.setGitType("branch");
         }
+        if (request.getDefaultBranch() != null && !request.getDefaultBranch().trim().isEmpty()) {
+            service.setDefaultBranch(request.getDefaultBranch().trim());
+        } else if (isCreate) {
+            // 与表字段默认值一致，写明后创建接口的返回值才不是 null
+            service.setDefaultBranch("master");
+        }
         if (request.getServiceType() != null && !request.getServiceType().trim().isEmpty()) {
             service.setServiceType(request.getServiceType().trim());
         } else if (isCreate) {

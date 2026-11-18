@@ -162,6 +162,9 @@ public class NodeController {
     @RequiresPermission("node:manage")
     @DeleteMapping("/{id}")
     public boolean deleteNode(@PathVariable Long id) {
+        if (buildNodeMapper.selectById(id) == null) {
+            throw new BusinessException("节点不存在");
+        }
         return buildNodeMapper.deleteById(id) > 0;
     }
 
