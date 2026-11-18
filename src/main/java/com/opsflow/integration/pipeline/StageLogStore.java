@@ -6,7 +6,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.RandomAccessFile;
 import java.io.Writer;
@@ -15,6 +17,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 流水线阶段日志文件存储（方案 B：完整日志落盘，DB 仅保留路径与预览）。
@@ -31,6 +36,23 @@ public class StageLogStore {
     private String logDir;
 
     private Path baseDir;
+
+    /**
+     * 正在追加写入的日志文件（相对路径 -> 已打开的文件）。
+     * 步骤运行期间每行输出都会追加一次，保持文件打开可以省掉每行一次的打开、关闭和查大小。
+     * 写入不经过用户态缓冲，每次追加后读取方立即可见。
+     */
+    private final Map<String, OpenLog> openLogs = new ConcurrentHashMap<>();
+
+    private static final class OpenLog {
+        private final OutputStream out;
+        private volatile long size;
+
+        private OpenLog(OutputStream out, long size) {
+            this.out = out;
+            this.size = size;
+        }
+    }
 
     @PostConstruct
     public void init() throws IOException {
@@ -68,7 +90,66 @@ public class StageLogStore {
         }
     }
 
+    /**
+     * 保持日志文件打开，供后续 {@link #append} 连续追加；用完必须 {@link #closeAppend}（或 {@link #closeJobLogs}）。
+     * 重复调用无影响；打开失败时不报错，append 会退回到每次单独打开文件的方式。
+     */
+    public synchronized void openForAppend(String relativePath) {
+        if (relativePath == null || relativePath.trim().isEmpty() || openLogs.containsKey(relativePath)) {
+            return;
+        }
+        try {
+            ensureParent(relativePath);
+            Path path = absolutePath(relativePath);
+            OutputStream out = Files.newOutputStream(path,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.WRITE);
+            openLogs.put(relativePath, new OpenLog(out, Files.size(path)));
+        } catch (Exception e) {
+            log.warn("打开阶段日志失败: {} - {}", relativePath, e.getMessage());
+        }
+    }
+
+    /** 关闭 {@link #openForAppend} 打开的文件；没有打开时无影响 */
+    public synchronized void closeAppend(String relativePath) {
+        OpenLog open = relativePath == null ? null : openLogs.remove(relativePath);
+        if (open == null) {
+            return;
+        }
+        try {
+            open.out.close();
+        } catch (IOException e) {
+            log.warn("关闭阶段日志失败: {} - {}", relativePath, e.getMessage());
+        }
+    }
+
+    /** 关闭某个任务下所有还开着的日志文件（任务结束时兜底，防止步骤异常中断后文件一直开着） */
+    public synchronized void closeJobLogs(Long jobId) {
+        if (jobId == null) {
+            return;
+        }
+        String prefix = jobId + "/";
+        for (String relativePath : new ArrayList<>(openLogs.keySet())) {
+            if (relativePath.startsWith(prefix)) {
+                closeAppend(relativePath);
+            }
+        }
+    }
+
+    @PreDestroy
+    public synchronized void closeAll() {
+        for (String relativePath : new ArrayList<>(openLogs.keySet())) {
+            closeAppend(relativePath);
+        }
+    }
+
+    /** 当前有多少个日志文件保持打开 */
+    public int openLogCount() {
+        return openLogs.size();
+    }
+
     public synchronized void writeFull(String relativePath, String content) {
+        // 整段覆盖前先关掉追加用的文件，覆盖后需要继续追加的由调用方重新打开
+        closeAppend(relativePath);
         try {
             ensureParent(relativePath);
             Path path = absolutePath(relativePath);
@@ -93,10 +174,23 @@ public class StageLogStore {
         if (chunk == null || chunk.isEmpty()) {
             return;
         }
+        byte[] bytes = chunk.getBytes(StandardCharsets.UTF_8);
+        OpenLog open = openLogs.get(relativePath);
+        if (open != null) {
+            try {
+                open.out.write(bytes);
+                open.size += bytes.length;
+                return;
+            } catch (IOException e) {
+                // 已打开的文件写不进去（如文件被删）：关掉它，退回到单独打开文件再写一次
+                log.warn("追加阶段日志失败，改为重新打开文件: {} - {}", relativePath, e.getMessage());
+                closeAppend(relativePath);
+            }
+        }
         try {
             ensureParent(relativePath);
             Path path = absolutePath(relativePath);
-            Files.write(path, chunk.getBytes(StandardCharsets.UTF_8),
+            Files.write(path, bytes,
                 StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.WRITE);
         } catch (Exception e) {
             log.warn("追加阶段日志失败: {} - {}", relativePath, e.getMessage());
@@ -112,6 +206,10 @@ public class StageLogStore {
     }
 
     public long size(String relativePath) {
+        OpenLog open = relativePath == null ? null : openLogs.get(relativePath);
+        if (open != null) {
+            return open.size;
+        }
         try {
             Path path = absolutePath(relativePath);
             if (path == null || !Files.isRegularFile(path)) {
@@ -248,6 +346,7 @@ public class StageLogStore {
         if (jobId == null) {
             return;
         }
+        closeJobLogs(jobId);
         try {
             Path dir = baseDir.resolve(String.valueOf(jobId));
             if (!Files.isDirectory(dir)) {

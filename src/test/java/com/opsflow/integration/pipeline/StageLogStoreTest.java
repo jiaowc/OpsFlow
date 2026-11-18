@@ -273,4 +273,74 @@ class StageLogStoreTest {
         store.writeFull(path, null);
         assertEquals(0L, store.size(path));
     }
+
+    // ---------- 保持文件打开连续追加 ----------
+
+    @Test
+    void appendsThroughAnOpenFileAreVisibleToReadersImmediately() {
+        String path = store.relativePath(9L, 1L);
+        store.writeFull(path, "开头\n");
+        store.openForAppend(path);
+        store.openForAppend(path);
+        assertEquals(1, store.openLogCount());
+
+        store.append(path, "第一行\n");
+        // 不关闭文件也能读到，页面轮询依赖这一点
+        assertEquals("开头\n第一行\n", store.readFromOffset(path, 0, 1024).getContent());
+        assertEquals("开头\n第一行\n".getBytes(StandardCharsets.UTF_8).length, store.size(path));
+
+        store.append(path, "第二行\n");
+        assertEquals("...\n二行\n", store.tailPreview(path, 3));
+
+        store.closeAppend(path);
+        store.closeAppend(path);
+        assertEquals(0, store.openLogCount());
+        // 关闭后仍可追加（退回到每次单独打开文件）
+        store.append(path, "收尾\n");
+        assertEquals("开头\n第一行\n第二行\n收尾\n", store.readFromOffset(path, 0, 1024).getContent());
+        assertEquals(store.absolutePath(path).toFile().length(), store.size(path));
+    }
+
+    @Test
+    void writeFullWhileOpenReplacesContentAndLaterAppendsStillWork() {
+        String path = store.relativePath(9L, 2L);
+        store.openForAppend(path);
+        store.append(path, "旧内容，比较长比较长比较长\n");
+
+        store.writeFull(path, "新内容\n");
+        assertEquals(0, store.openLogCount());
+        store.append(path, "追加\n");
+
+        assertEquals("新内容\n追加\n", store.readFromOffset(path, 0, 1024).getContent());
+        assertEquals("新内容\n追加\n".getBytes(StandardCharsets.UTF_8).length, store.size(path));
+    }
+
+    @Test
+    void closeJobLogsOnlyClosesFilesOfThatJob() {
+        store.openForAppend(store.relativePath(1L, 1L));
+        store.openForAppend(store.relativePath(1L, 2L));
+        store.openForAppend(store.relativePath(11L, 1L));
+        assertEquals(3, store.openLogCount());
+
+        store.closeJobLogs(1L);
+        assertEquals(1, store.openLogCount());
+
+        store.deleteJobLogs(11L);
+        assertEquals(0, store.openLogCount());
+        assertFalse(store.exists(store.relativePath(11L, 1L)));
+
+        store.openForAppend(store.relativePath(2L, 1L));
+        store.closeAll();
+        assertEquals(0, store.openLogCount());
+    }
+
+    @Test
+    void openingAnInvalidPathIsIgnored() {
+        store.openForAppend(null);
+        store.openForAppend("  ");
+        assertEquals(0, store.openLogCount());
+        assertThrows(IllegalArgumentException.class, () -> store.absolutePath("../x.log"));
+        store.openForAppend("../x.log");
+        assertEquals(0, store.openLogCount());
+    }
 }

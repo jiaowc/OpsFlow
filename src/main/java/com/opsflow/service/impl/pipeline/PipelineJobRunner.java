@@ -284,6 +284,8 @@ public class PipelineJobRunner {
                 liveness.wakeServiceWaitersAfterCommit(buildJob);
             }
         } finally {
+            // 兜底：步骤异常中断、没走到阶段结束回调时，日志文件也要关掉
+            stageLogStore.closeJobLogs(buildJobId);
             liveness.markInactive(buildJobId);
         }
     }
@@ -431,6 +433,8 @@ public class PipelineJobRunner {
                     + " (" + stepType + ") ====\n"
                     + "开始时间: " + LocalDateTime.now() + "\n\n";
                 stageLogStore.writeFull(relativePath, header);
+                // 步骤运行期间保持日志文件打开，每行输出直接追加；阶段结束或任务结束时关闭
+                stageLogStore.openForAppend(relativePath);
                 stage.setLogPreview(normalizeLogPreview(header));
                 buildJobStageMapper.updateById(stage);
                 lastFlushMs = System.currentTimeMillis();
@@ -501,6 +505,7 @@ public class PipelineJobRunner {
                         stage.setLogPath(path);
                     }
 
+                    stageLogStore.closeAppend(path);
                     long fileSize = stageLogStore.size(path);
                     if (log != null && !log.trim().isEmpty()) {
                         // 步骤返回了整段日志（未实时落盘的情况）：覆盖写入。
