@@ -41,18 +41,25 @@ public class CredentialServiceImpl implements CredentialService {
     @Autowired
     private CredentialMapper credentialMapper;
 
+    @Autowired
+    private com.opsflow.dao.mapper.ComponentMapper componentMapper;
+
+    @Autowired
+    private com.opsflow.dao.mapper.ClusterMapper clusterMapper;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public CredentialDTO create(CredentialDTO request) {
         validateRequest(request, true);
+        assertNameUnique(request.getName(), null);
         Credential credential = new Credential();
         applyFields(credential, request, true);
         credential.setStatus(request.getStatus() != null ? request.getStatus() : 1);
         credential.setCreateTime(LocalDateTime.now());
         credential.setUpdateTime(LocalDateTime.now());
         credentialMapper.insert(credential);
-        return toDto(credential, false);
+        return toDto(credential, true);
     }
 
     @Override
@@ -83,6 +90,7 @@ public class CredentialServiceImpl implements CredentialService {
             throw new BusinessException("钥匙不存在");
         }
         validateRequest(request, false);
+        assertNameUnique(request.getName(), id);
         applyFields(credential, request, false);
         if (request.getStatus() != null) {
             credential.setStatus(request.getStatus());
@@ -94,7 +102,25 @@ public class CredentialServiceImpl implements CredentialService {
 
     @Override
     public boolean delete(Long id) {
+        long components = componentMapper.selectCount(
+                new QueryWrapper<com.opsflow.dao.model.Component>().eq("credential_id", id));
+        long clusters = clusterMapper.selectCount(
+                new QueryWrapper<com.opsflow.dao.model.Cluster>().eq("credential_id", id));
+        if (components > 0 || clusters > 0) {
+            throw new BusinessException("该钥匙仍被 " + components + " 个组件、" + clusters
+                    + " 个集群引用，请先解除关联后再删除");
+        }
         return credentialMapper.deleteById(id) > 0;
+    }
+
+    private void assertNameUnique(String name, Long excludeId) {
+        QueryWrapper<Credential> wrapper = new QueryWrapper<Credential>().eq("name", name.trim());
+        if (excludeId != null) {
+            wrapper.ne("id", excludeId);
+        }
+        if (credentialMapper.selectCount(wrapper) > 0) {
+            throw new BusinessException("钥匙名称已存在");
+        }
     }
 
     private void validateRequest(CredentialDTO request, boolean isCreate) {

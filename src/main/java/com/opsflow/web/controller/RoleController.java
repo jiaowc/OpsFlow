@@ -69,6 +69,12 @@ public class RoleController {
     @RequiresPermission("role:manage")
     @PostMapping("/create")
     public RoleDTO createRole(@RequestBody RoleDTO request) {
+        if (request.getName() == null || request.getName().trim().isEmpty()) {
+            throw new BusinessException("角色名称不能为空");
+        }
+        if (request.getCode() == null || request.getCode().trim().isEmpty()) {
+            throw new BusinessException("角色代码不能为空");
+        }
         // 检查角色代码是否已存在
         QueryWrapper<Role> wrapper = new QueryWrapper<>();
         wrapper.eq("code", request.getCode());

@@ -44,6 +44,13 @@ public class NodeController {
     @RequiresPermission("node:manage")
     @PostMapping("/create")
     public BuildNodeDTO createNode(@RequestBody BuildNodeDTO request) {
+        if (request.getName() == null || request.getName().trim().isEmpty()) {
+            throw new BusinessException("节点名称不能为空");
+        }
+        if (buildNodeMapper.selectCount(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<BuildNode>()
+                .eq("name", request.getName().trim())) > 0) {
+            throw new BusinessException("节点名称已存在");
+        }
         BuildNode node = new BuildNode();
         BeanUtils.copyProperties(request, node, READ_ONLY_FIELDS);
         if (node.getWorkDir() == null || node.getWorkDir().trim().isEmpty()) {

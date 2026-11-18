@@ -40,6 +40,12 @@ public class PipelineController {
     private PipelineMapper pipelineMapper;
 
     @Autowired
+    private com.opsflow.dao.mapper.BuildJobMapper buildJobMapper;
+
+    @Autowired
+    private com.opsflow.dao.mapper.DeployTaskMapper deployTaskMapper;
+
+    @Autowired
     private BuildNodeMapper buildNodeMapper;
     
     private ObjectMapper objectMapper = new ObjectMapper();
@@ -187,6 +193,18 @@ public class PipelineController {
     @RequiresPermission("pipeline_config:manage")
     @DeleteMapping("/{id}")
     public boolean deletePipeline(@PathVariable Long id) {
+        long jobs = buildJobMapper.selectCount(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<com.opsflow.dao.model.BuildJob>()
+                .eq("pipeline_template_id", id));
+        if (jobs > 0) {
+            throw new com.opsflow.common.exception.BusinessException(
+                    "该模版仍被流水线任务使用（共 " + jobs + " 条构建记录），请先把相关任务改用其他模版或删除任务；不再使用可改为禁用");
+        }
+        long tasks = deployTaskMapper.selectCount(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<com.opsflow.dao.model.DeployTask>()
+                .eq("pipeline_template_id", id));
+        if (tasks > 0) {
+            throw new com.opsflow.common.exception.BusinessException(
+                    "该模版仍被 " + tasks + " 个上线任务引用，无法删除；不再使用可改为禁用");
+        }
         return pipelineMapper.deleteById(id) > 0;
     }
 

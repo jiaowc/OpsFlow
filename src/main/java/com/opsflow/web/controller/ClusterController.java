@@ -42,6 +42,7 @@ public class ClusterController {
     @RequiresPermission("cluster:manage")
     @PostMapping("/create")
     public ClusterDTO createCluster(@RequestBody ClusterDTO request) {
+        assertClusterName(request.getName(), null);
         Cluster cluster = new Cluster();
         BeanUtils.copyProperties(request, cluster);
         applyCredential(cluster, request.getCredentialId());
@@ -84,12 +85,25 @@ public class ClusterController {
         return toDto(cluster);
     }
 
+    private void assertClusterName(String name, Long excludeId) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new com.opsflow.common.exception.BusinessException("集群名称不能为空");
+        }
+        QueryWrapper<Cluster> wrapper = new QueryWrapper<Cluster>().eq("name", name.trim());
+        if (excludeId != null) {
+            wrapper.ne("id", excludeId);
+        }
+        if (clusterMapper.selectCount(wrapper) > 0) {
+            throw new com.opsflow.common.exception.BusinessException("集群名称已存在");
+        }
+    }
+
     @RequiresPermission("cluster:manage")
     @DeleteMapping("/{id}")
     public boolean deleteCluster(@PathVariable Long id) {
         Long count = envMapper.selectCount(new QueryWrapper<Env>().eq("cluster_id", id));
         if (count != null && count > 0) {
-            throw new IllegalStateException("该集群已被环境引用，无法删除");
+            throw new com.opsflow.common.exception.BusinessException("该集群已被 " + count + " 个环境引用，无法删除");
         }
         return clusterMapper.deleteById(id) > 0;
     }

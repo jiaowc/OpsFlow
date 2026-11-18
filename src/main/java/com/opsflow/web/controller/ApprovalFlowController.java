@@ -73,6 +73,7 @@ public class ApprovalFlowController {
     public ApprovalFlowDTO createFlow(@RequestBody ApprovalFlowDTO request) {
         requireDeployApprovalLicense();
         validateFlow(request);
+        assertFlowNameUnique(request.getName(), null);
         ApprovalFlow flow = new ApprovalFlow();
         BeanUtils.copyProperties(request, flow, "steps");
         flow.setSteps(serializeSteps(normalizeSteps(request.getSteps())));
@@ -129,6 +130,7 @@ public class ApprovalFlowController {
             throw new BusinessException("审批流不存在");
         }
         validateFlow(request);
+        assertFlowNameUnique(request.getName(), id);
         BeanUtils.copyProperties(request, flow, "id", "createTime", "steps");
         flow.setSteps(serializeSteps(normalizeSteps(request.getSteps())));
         if (request.getStatus() != null) {
@@ -215,6 +217,16 @@ public class ApprovalFlowController {
         }
     }
 
+    private void assertFlowNameUnique(String name, Long excludeId) {
+        QueryWrapper<ApprovalFlow> wrapper = new QueryWrapper<ApprovalFlow>().eq("name", name.trim());
+        if (excludeId != null) {
+            wrapper.ne("id", excludeId);
+        }
+        if (approvalFlowMapper.selectCount(wrapper) > 0) {
+            throw new BusinessException("审批流名称已存在");
+        }
+    }
+
     /** 规范化步骤序号与必审标志，过滤 null 步骤 */
     private List<ApprovalFlowDTO.ApprovalStep> normalizeSteps(List<ApprovalFlowDTO.ApprovalStep> steps) {
         List<ApprovalFlowDTO.ApprovalStep> normalized = new ArrayList<>();
@@ -239,7 +251,11 @@ public class ApprovalFlowController {
                 copy.setApproverName(truncateName(StringUtils.hasText(step.getApproverName())
                         ? step.getApproverName().trim() : joinDisplayNames(approvers)));
             } else {
-                copy.setApprover(usernames.isEmpty() ? null : usernames.iterator().next());
+                if (usernames.isEmpty()) {
+                    throw new BusinessException("第 " + index + " 个审批步骤未选择审批人");
+                }
+                // 单个审批人同样要校验存在且启用，否则这一步没人能审批
+                copy.setApprover(requireEnabledUsers(usernames).get(0).getUsername());
                 copy.setApproverName(step.getApproverName());
             }
             copy.setRequired(step.getRequired() == null || step.getRequired());

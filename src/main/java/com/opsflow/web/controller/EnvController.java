@@ -38,7 +38,7 @@ public class EnvController {
         Env env = new Env();
         BeanUtils.copyProperties(request, env);
         normalizeEnvType(env);
-        validateEnv(env);
+        validateEnv(env, null);
         applyCluster(env, request.getClusterId());
         env.setStatus(1);
         env.setCreateTime(LocalDateTime.now());
@@ -87,7 +87,7 @@ public class EnvController {
         
         BeanUtils.copyProperties(request, env, "id", "createTime");
         normalizeEnvType(env);
-        validateEnv(env);
+        validateEnv(env, id);
         applyCluster(env, request.getClusterId());
         env.setUpdateTime(LocalDateTime.now());
         envMapper.updateById(env);
@@ -105,6 +105,9 @@ public class EnvController {
     }
 
     private void applyCluster(Env env, Long clusterId) {
+        if (clusterId != null && clusterMapper.selectById(clusterId) == null) {
+            throw new BusinessException("关联的集群不存在");
+        }
         env.setClusterId(clusterId);
     }
 
@@ -119,12 +122,34 @@ public class EnvController {
             env.setEnvType(Env.TYPE_PROD);
             return;
         }
+        if (!Env.TYPE_NON_PROD.equals(normalized)) {
+            // 以前会把任何未知值静默当成非生产，写错的 prod 变体会绕过生产环境保护
+            throw new BusinessException("环境类型只能是 prod 或 nonprod");
+        }
         env.setEnvType(Env.TYPE_NON_PROD);
     }
 
-    private void validateEnv(Env env) {
+    /** K8s 命名空间：RFC 1123 label，小写字母数字和 -，首尾为字母数字，最长 63 */
+    private static final java.util.regex.Pattern K8S_NAMESPACE =
+            java.util.regex.Pattern.compile("[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?");
+
+    private void validateEnv(Env env, Long excludeId) {
         if (env.getName() == null || env.getName().trim().isEmpty()) {
             throw new BusinessException("环境名称不能为空");
+        }
+        QueryWrapper<Env> wrapper = new QueryWrapper<Env>().eq("name", env.getName().trim());
+        if (excludeId != null) {
+            wrapper.ne("id", excludeId);
+        }
+        if (envMapper.selectCount(wrapper) > 0) {
+            throw new BusinessException("环境名称已存在");
+        }
+        String namespace = env.getK8sNamespace();
+        if (namespace != null && !namespace.trim().isEmpty()) {
+            if (!K8S_NAMESPACE.matcher(namespace.trim()).matches()) {
+                throw new BusinessException("K8s 命名空间不合法：只能包含小写字母、数字和 -，以字母或数字开头和结尾，最长 63 个字符");
+            }
+            env.setK8sNamespace(namespace.trim());
         }
     }
 
