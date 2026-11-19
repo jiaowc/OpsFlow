@@ -268,18 +268,29 @@ public class AuthController {
         String username = (String) session.getAttribute("user");
         Boolean authenticated = (Boolean) session.getAttribute("authenticated");
 
-        if (authenticated != null && authenticated && username != null
-                && session.getAttribute("userId") != null) {
+        Object uid = session.getAttribute("userId");
+        User user = Boolean.TRUE.equals(authenticated) && username != null && uid instanceof Long
+                ? userMapper.selectById((Long) uid) : null;
+        if (user != null && user.getStatus() != null && user.getStatus() != 1) {
+            user = null;
+        }
+        if (Boolean.TRUE.equals(authenticated) && uid != null && user == null) {
+            // 登录后被禁用或删除：这个接口不经过 AuthInterceptor 的登录校验，要自己作废会话，
+            // 否则页面刷新时还会把它当成已登录
+            session.invalidate();
+            result.put("authenticated", false);
+            return result;
+        }
+
+        if (user != null) {
             sessionPermissionResolver.resolvePermissions(session);
             result.put("username", username);
             result.put("authenticated", true);
-            result.put("userId", session.getAttribute("userId"));
+            result.put("userId", uid);
             result.put("roles", session.getAttribute("roles"));
             result.put("permissions", session.getAttribute("permissions"));
             result.put(MUST_CHANGE_PASSWORD_KEY, Boolean.TRUE.equals(session.getAttribute(MUST_CHANGE_PASSWORD_KEY)));
-            Object uid = session.getAttribute("userId");
-            User user = uid instanceof Long ? userMapper.selectById((Long) uid) : null;
-            result.put("localUser", user != null && isLocalUser(user));
+            result.put("localUser", isLocalUser(user));
         } else {
             result.put("authenticated", false);
         }
