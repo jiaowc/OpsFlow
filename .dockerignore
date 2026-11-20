@@ -1,0 +1,34 @@
+.git
+.github
+.vscode
+.idea
+.env
+.env.*
+!.env.example
+
+# 构建产物与运行时数据（镜像内重新编译）
+target/
+logs/
+data/
+uploads/
+*.log
+
+# 文档与本地联调环境（体积大、与产品镜像无关）
+docs/
+scripts/local/
+agent-transcripts/
+*.md
+!README.md
+
+# 本机敏感配置不打进镜像（运行时用环境变量或挂载）
+config/application-local.yml
+config/*.example
+config/*.md
+
+# IDE / OS
+*.iml
+*.swp
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db

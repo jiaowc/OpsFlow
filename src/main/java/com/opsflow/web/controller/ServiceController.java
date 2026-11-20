@@ -1,0 +1,343 @@
+package com.opsflow.web.controller;
+
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.opsflow.api.dto.GitRefBatchRequest;
+import com.opsflow.api.dto.ServiceDTO;
+import com.opsflow.common.exception.BusinessException;
+import com.opsflow.dao.mapper.ComponentMapper;
+import com.opsflow.dao.mapper.ServiceMapper;
+import com.opsflow.dao.mapper.UserMapper;
+import com.opsflow.dao.model.Component;
+import com.opsflow.dao.model.Service;
+import com.opsflow.dao.model.User;
+import com.opsflow.service.ProjectAccessService;
+import com.opsflow.dao.mapper.ProjectMapper;
+import com.opsflow.dao.model.Project;
+import com.opsflow.service.ServiceGitRefService;
+import com.opsflow.service.util.GitRepoPathResolver;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import com.opsflow.web.security.RequiresPermission;
+
+/**
+ * 服务管理控制器
+ */
+@RestController
+@RequestMapping("/api/service")
+public class ServiceController {
+
+    @Autowired
+    private ServiceMapper serviceMapper;
+
+    @Autowired
+    private ComponentMapper componentMapper;
+
+    @Autowired
+    private ServiceGitRefService serviceGitRefService;
+
+    @Autowired
+    private ProjectAccessService projectAccessService;
+
+    @Autowired
+    private ProjectMapper projectMapper;
+
+    @Autowired
+    private UserMapper userMapper;
+
+    /**
+     * 创建服务
+     */
+    @RequiresPermission("service:manage")
+    @PostMapping("/create")
+    public ServiceDTO createService(@RequestBody ServiceDTO request) {
+        if (request.getProjectId() == null || projectMapper.selectById(request.getProjectId()) == null) {
+            throw new BusinessException("请选择所属项目");
+        }
+        projectAccessService.assertCanOperateProject(request.getProjectId());
+        Service service = new Service();
+        applyServiceFields(service, request, true);
+        service.setProjectId(request.getProjectId());
+        service.setOwnerUserId(request.getOwnerUserId());
+        service.setStatus(request.getStatus() != null ? request.getStatus() : 1);
+        service.setCreateTime(LocalDateTime.now());
+        service.setUpdateTime(LocalDateTime.now());
+        serviceMapper.insert(service);
+
+        return toDto(service);
+    }
+
+    /**
+     * 查询服务列表（仅当前用户可见项目的服务）
+     *
+     * @param projectId 为空表示「我的全部项目」
+     */
+    @RequiresPermission({"service:view", "service:manage", "deploy:create", "pipeline:view"})
+    @GetMapping("/list")
+    public List<ServiceDTO> listServices(@RequestParam(required = false) Long projectId) {
+        Set<Long> serviceIds = projectAccessService.accessibleServiceIds(projectId);
+        if (serviceIds != null && serviceIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        QueryWrapper<Service> wrapper = new QueryWrapper<>();
+        if (serviceIds != null) {
+            wrapper.in("id", serviceIds);
+        }
+        wrapper.orderByAsc("project_id").orderByAsc("name").orderByAsc("id");
+        List<Service> services = serviceMapper.selectList(wrapper);
+        Map<Long, String> projectNames = projectMapper.selectList(null).stream()
+                .collect(Collectors.toMap(Project::getId, Project::getName));
+        return services.stream().map(s -> toDto(s, projectNames)).collect(Collectors.toList());
+    }
+
+    /**
+     * 查询服务详情
+     */
+    @RequiresPermission({"service:view", "service:manage"})
+    @GetMapping("/{id}")
+    public ServiceDTO getService(@PathVariable Long id) {
+        Service service = serviceMapper.selectById(id);
+        if (service == null) {
+            return null;
+        }
+        projectAccessService.assertCanViewService(id);
+        return toDto(service);
+    }
+
+    /**
+     * 更新服务；负责人以请求为准（可清空），移动到其他项目需同时有两个项目的操作权限
+     */
+    @RequiresPermission("service:manage")
+    @PutMapping("/{id}")
+    public ServiceDTO updateService(@PathVariable Long id, @RequestBody ServiceDTO request) {
+        Service service = serviceMapper.selectById(id);
+        if (service == null) {
+            return null;
+        }
+        projectAccessService.assertCanOperateService(id);
+        if (request.getProjectId() != null && !request.getProjectId().equals(service.getProjectId())) {
+            if (projectMapper.selectById(request.getProjectId()) == null) {
+                throw new BusinessException("所属项目不存在");
+            }
+            projectAccessService.assertCanOperateProject(request.getProjectId());
+            service.setProjectId(request.getProjectId());
+        }
+
+        applyServiceFields(service, request, false);
+        if (request.getStatus() != null) {
+            service.setStatus(request.getStatus());
+        }
+        service.setUpdateTime(LocalDateTime.now());
+        serviceMapper.updateById(service);
+        // updateById 会忽略 null 字段，清空负责人需显式 set
+        serviceMapper.update(null, new UpdateWrapper<Service>().eq("id", id).set("owner_user_id", request.getOwnerUserId()));
+        service.setOwnerUserId(request.getOwnerUserId());
+
+        return toDto(service);
+    }
+
+    /**
+     * 根据 Git 仓库地址获取分支或 Tag 列表
+     */
+    @RequiresPermission({"service:view", "pipeline:view", "pipeline:run"})
+    @GetMapping("/git/refs")
+    public List<String> listGitRefs(@RequestParam String gitRepo,
+                                    @RequestParam(defaultValue = "branch") String type,
+                                    @RequestParam(required = false) Long componentId) {
+        return serviceGitRefService.listRefs(gitRepo, type, componentId);
+    }
+
+    /**
+     * 批量获取 Git 引用（同仓库去重后由服务端缓存加速）
+     */
+    @RequiresPermission({"service:view", "pipeline:view", "pipeline:run"})
+    @PostMapping("/git/refs/batch")
+    public Map<String, List<String>> listGitRefsBatch(@RequestBody GitRefBatchRequest request) {
+        if (request == null || request.getQueries() == null) {
+            return new HashMap<>();
+        }
+        return serviceGitRefService.listRefsBatch(request.getQueries());
+    }
+
+    /**
+     * 解析组件地址 + 仓库路径为完整 Git 仓库地址
+     */
+    @RequiresPermission({"service:view", "service:manage"})
+    @GetMapping("/resolve-git-repo")
+    public Map<String, Object> resolveGitRepo(@RequestParam Long componentId, @RequestParam String repoPath) {
+        Map<String, Object> result = new HashMap<>();
+        Component component = componentMapper.selectById(componentId);
+        if (component == null) {
+            result.put("success", false);
+            result.put("message", "关联的 Git 组件不存在");
+            return result;
+        }
+        if (!GitRepoPathResolver.isGitComponentType(component.getType())) {
+            result.put("success", false);
+            result.put("message", "仅支持关联 GitLab 或 GitHub 组件");
+            return result;
+        }
+        GitRepoPathResolver.ResolveResult resolved = GitRepoPathResolver.resolve(component.getUrl(), repoPath);
+        result.put("success", resolved.isSuccess());
+        if (resolved.isSuccess()) {
+            result.put("gitRepo", resolved.getGitRepo());
+        } else {
+            result.put("message", resolved.getErrorMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 删除服务
+     */
+    @RequiresPermission("service:manage")
+    @DeleteMapping("/{id}")
+    public boolean deleteService(@PathVariable Long id) {
+        projectAccessService.assertCanOperateService(id);
+        return serviceMapper.deleteById(id) > 0;
+    }
+
+    private void applyServiceFields(Service service, ServiceDTO request, boolean isCreate) {
+        if (request.getName() != null) {
+            service.setName(request.getName().trim());
+        }
+        if (isCreate) {
+            service.setCode(resolveUniqueServiceCode(service.getName()));
+        }
+
+        applyGitRepoFields(service, request);
+
+        if (isCreate) {
+            service.setGitType("branch");
+        }
+        if (request.getDefaultBranch() != null && !request.getDefaultBranch().trim().isEmpty()) {
+            service.setDefaultBranch(request.getDefaultBranch().trim());
+        } else if (isCreate) {
+            // 与表字段默认值一致，写明后创建接口的返回值才不是 null
+            service.setDefaultBranch("master");
+        }
+        if (request.getServiceType() != null && !request.getServiceType().trim().isEmpty()) {
+            service.setServiceType(request.getServiceType().trim());
+        } else if (isCreate) {
+            service.setServiceType("backend");
+        }
+
+        if (request.getServicePort() != null) {
+            validateServicePort(request.getServicePort());
+            service.setServicePort(request.getServicePort());
+        } else if (isCreate) {
+            throw new BusinessException("请填写对外提供服务端口");
+        }
+    }
+
+    private void validateServicePort(Integer port) {
+        if (port == null || port < 1 || port > 65535) {
+            throw new BusinessException("对外提供服务端口须为 1-65535 之间的整数");
+        }
+    }
+
+    private void applyGitRepoFields(Service service, ServiceDTO request) {
+        if (request.getComponentId() != null) {
+            Component component = componentMapper.selectById(request.getComponentId());
+            if (component == null) {
+                throw new BusinessException("关联的 Git 组件不存在");
+            }
+            if (!GitRepoPathResolver.isGitComponentType(component.getType())) {
+                throw new BusinessException("仅支持关联 GitLab 或 GitHub 组件");
+            }
+            String repoPath = request.getGitRepoPath();
+            if (repoPath == null || repoPath.trim().isEmpty()) {
+                throw new BusinessException("请填写仓库路径");
+            }
+            GitRepoPathResolver.ResolveResult resolved = GitRepoPathResolver.resolve(component.getUrl(), repoPath.trim());
+            if (!resolved.isSuccess()) {
+                throw new BusinessException(resolved.getErrorMessage());
+            }
+            service.setComponentId(request.getComponentId());
+            service.setGitRepoPath(repoPath.trim());
+            service.setGitRepo(resolved.getGitRepo());
+            return;
+        }
+
+        if (request.getGitRepo() != null) {
+            service.setGitRepo(request.getGitRepo().trim());
+            service.setComponentId(null);
+            service.setGitRepoPath(request.getGitRepoPath());
+        }
+    }
+
+    private ServiceDTO toDto(Service service) {
+        Map<Long, String> projectNames = new HashMap<>();
+        if (service.getProjectId() != null) {
+            Project project = projectMapper.selectById(service.getProjectId());
+            if (project != null) {
+                projectNames.put(project.getId(), project.getName());
+            }
+        }
+        return toDto(service, projectNames);
+    }
+
+    private ServiceDTO toDto(Service service, Map<Long, String> projectNames) {
+        ServiceDTO dto = new ServiceDTO();
+        BeanUtils.copyProperties(service, dto);
+        if (service.getProjectId() != null && projectNames.containsKey(service.getProjectId())) {
+            dto.setProjectName(projectNames.get(service.getProjectId()));
+        }
+        if (service.getComponentId() != null) {
+            Component component = componentMapper.selectById(service.getComponentId());
+            if (component != null) {
+                dto.setComponentName(component.getName());
+            }
+        }
+        if (service.getOwnerUserId() != null) {
+            dto.setOwnerName(displayName(userMapper.selectById(service.getOwnerUserId())));
+        }
+        return dto;
+    }
+
+    private String displayName(User user) {
+        if (user == null) {
+            return null;
+        }
+        return user.getRealName() != null && !user.getRealName().trim().isEmpty()
+                ? user.getRealName().trim() + "(" + user.getUsername() + ")" : user.getUsername();
+    }
+
+    private String resolveUniqueServiceCode(String name) {
+        String base = generateServiceCode(name);
+        String code = base;
+        int suffix = 1;
+        while (codeExists(code)) {
+            suffix++;
+            code = base + "-" + suffix;
+        }
+        return code;
+    }
+
+    private boolean codeExists(String code) {
+        QueryWrapper<Service> wrapper = new QueryWrapper<>();
+        wrapper.eq("code", code);
+        return serviceMapper.selectCount(wrapper) > 0;
+    }
+
+    private String generateServiceCode(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            return "service";
+        }
+        String slug = name.trim().toLowerCase()
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-+|-+$", "");
+        if (!slug.isEmpty()) {
+            return slug;
+        }
+        return "svc-" + Integer.toHexString(name.trim().hashCode()).replace("-", "");
+    }
+}

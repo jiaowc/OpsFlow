@@ -1,0 +1,31 @@
+services:
+  build-1:
+    build: .
+    image: ${BUILD_NODE_IMAGE:-opsflow-local-build-node:1}
+    container_name: opsflow-build-1
+    restart: unless-stopped
+    ports:
+      - "${BUILD_NODE1_PORT:-2222}:22"
+    environment:
+      BUILD_NODE_SSH_PASSWORD: ${BUILD_NODE_SSH_PASSWORD:-Build12345}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${BN_DATA_DIR:-./.data}/build-1:/root/opsflow
+    # 容器内解析 localhost → 宿主机（少数本机工具需要；docker push 走宿主机 daemon，一般仍解析宿主机 localhost）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  build-2:
+    build: .
+    image: ${BUILD_NODE_IMAGE:-opsflow-local-build-node:1}
+    container_name: opsflow-build-2
+    restart: unless-stopped
+    ports:
+      - "${BUILD_NODE2_PORT:-2223}:22"
+    environment:
+      BUILD_NODE_SSH_PASSWORD: ${BUILD_NODE_SSH_PASSWORD:-Build12345}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${BN_DATA_DIR:-./.data}/build-2:/root/opsflow
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

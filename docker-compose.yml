@@ -1,0 +1,75 @@
+# OpsFlow 一键安装：MySQL + 应用（推荐默认方式）
+#
+# 快速开始：
+#   cp .env.example .env          # 可选，建议改密码
+#   ./scripts/deploy/compose-up.sh
+#   # 或：docker compose up -d --build
+#
+# 访问：http://localhost:${OPSFLOW_PORT:-8080}
+# 初始账号：admin / admin（首次登录会被要求修改密码）
+# 数据库表结构和默认数据由应用启动时自动建立（Flyway），MySQL 容器只提供一个空库
+#
+# 停止：./scripts/deploy/compose-down.sh
+# 清空库重建：docker compose down -v && docker compose up -d --build
+#
+# 使用已有 MySQL：见 docker-compose.app.yml
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: opsflow-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-opsflow}
+      MYSQL_DATABASE: opsflow
+      MYSQL_USER: opsflow
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-opsflow}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - opsflow-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-opsflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 25s
+
+  opsflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${OPSFLOW_DOCKER_IMAGE:-opsflow:1.0.0}
+    container_name: opsflow
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "${OPSFLOW_PORT:-8080}:8080"
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m}
+      DB_URL: jdbc:mysql://mysql:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai
+      DB_USERNAME: opsflow
+      DB_PASSWORD: ${MYSQL_PASSWORD:-opsflow}
+      OPSFLOW_WEBHOOK_SECRET: ${OPSFLOW_WEBHOOK_SECRET:-}
+      # 凭据加密主密钥（Base64 的 32 字节）；留空则首次启动自动生成 ./data/secret.key，务必备份
+      OPSFLOW_SECRET_KEY: ${OPSFLOW_SECRET_KEY:-}
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+
+volumes:
+  opsflow-mysql:

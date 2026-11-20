@@ -1,81 +1,63 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Django
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-/staticfiles/
-/media/
-
-# Environment
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Kubernetes
-*.kubeconfig
-
 # 编译输出
 target/
 *.jar
 *.war
 *.ear
+*.class
+
+# Maven 本地仓库（CI 里放在项目目录下，见 .gitlab-ci.yml）
+.m2/
 
 # 日志文件
 logs/
 *.log
 *.log.*
+nohup.out
+
+# 进程与 JVM 诊断文件
+*.pid
+*.hprof
 
 # 数据文件
 data/
 uploads/
 
-# 配置文件（包含敏感信息）
-config/application.yml
-config/application-*.yml
-!config/application.yml.example
-!config/*.example
+# 环境变量文件（含密码）；只有模板入库
+.env
+.env.*
+!.env.example
+
+# 应用配置统一在 config/；只有每台机器自己的覆盖配置（数据库密码等）不入库
+config/application-local.yml
+
+# Kubernetes
+*.kubeconfig
+kubeconfig
+kubeconfig.*
+
+# 密钥与证书（公开仓库，一律不入库；License 公钥是唯一例外）
+*.pem
+!src/main/resources/license/public.pem
+*.key
+*.p12
+*.jks
+id_rsa*
+id_ed25519*
+
+# Claude Code 本地数据
+.claude/worktrees/
+.claude/settings.local.json
+agent-transcripts/
 
 # IDE
 .idea/
 .vscode/
 *.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
 *.swp
 *.swo
 *~
@@ -89,13 +71,11 @@ Thumbs.db
 *.bak
 *.cache
 
+# License 私钥不得进入产品仓库（签发在独立 License 项目）
+*.private.pem
+**/private*.pem
 
-
-
-
-
-
-
-
-
-
+# 本地 Harbor / Nexus / 构建节点 数据
+scripts/local/harbor-nexus/.data/
+scripts/local/build-nodes/.data/
+scripts/local/k8s/.data/

@@ -1,0 +1,12 @@
+# 复制为 config/application-local.yml（不入库）并按本机/服务器实际情况填写。
+# DB_* 会被 application*.yml 中的 ${...} 占位符引用；同名环境变量优先级更高。
+DB_PASSWORD: "change-me"
+# DB_URL: "jdbc:mysql://127.0.0.1:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai"
+# DB_USERNAME: "root"
+# Git 推送 Webhook 校验密钥（与 GitLab Secret token / GitHub Secret / Gitee WebHook 密码一致），不填则关闭 Webhook
+# OPSFLOW_WEBHOOK_SECRET: "change-me"
+
+# 其它配置项也可写在这里，优先于 application.yml 和当前激活的 application-<env>.yml。
+# logging:
+#   level:
+#     com.opsflow: DEBUG

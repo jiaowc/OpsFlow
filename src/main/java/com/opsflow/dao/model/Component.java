@@ -1,0 +1,64 @@
+package com.opsflow.dao.model;
+
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.opsflow.common.crypto.EncryptedStringTypeHandler;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+/**
+ * 组件实体
+ */
+@Data
+@TableName(value = "component", autoResultMap = true)
+public class Component {
+    
+    @TableId(type = IdType.AUTO)
+    private Long id;
+    
+    /**
+     * 组件名称，如：GitLab、Harbor、K8s 等
+     */
+    private String name;
+    
+    /**
+     * 组件类型，如：gitlab、github、harbor、k8s 等
+     */
+    private String type;
+    
+    /**
+     * 访问地址
+     */
+    private String url;
+    
+    /**
+     * 认证类型：api_key, username_password, token, oauth等
+     */
+    private String authType;
+    
+    /**
+     * 认证信息（JSON格式存储，根据authType不同而不同；落库加密，读出自动解密）
+     */
+    @TableField(typeHandler = EncryptedStringTypeHandler.class)
+    private String authConfig;
+
+    /**
+     * 关联钥匙串 ID
+     */
+    private Long credentialId;
+    
+    /**
+     * 描述
+     */
+    private String description;
+    
+    private Integer status;
+    
+    private LocalDateTime createTime;
+    
+    private LocalDateTime updateTime;
+}
+
+

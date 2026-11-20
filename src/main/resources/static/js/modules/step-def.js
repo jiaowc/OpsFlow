@@ -1,0 +1,805 @@
+// ============================================
+// Pipeline 步骤定义模块（可复用步骤）
+// ============================================
+
+const STEP_TYPE_LABELS = {
+    checkout: '拉取代码',
+    build: '代码构建',
+    docker_build: '镜像制作',
+    push_image: '上传镜像',
+    deploy: '开始部署',
+    check_deploy: '检查部署状态',
+    render_template: '渲染模版',
+    clean: '清理缓存',
+    clean_workspace: '清理空间',
+    rollback: '回滚',
+    notify: '通知'
+};
+
+const CI_STEP_TYPES = ['checkout', 'build', 'docker_build', 'push_image', 'clean', 'clean_workspace'];
+const CD_STEP_TYPES = ['deploy', 'check_deploy', 'render_template', 'rollback', 'notify'];
+
+const STEP_CONTENT_FIELDS = {
+    checkout: [
+        { key: 'branch', label: '默认分支（可选）', type: 'text', placeholder: '留空则使用任务分支' }
+    ],
+    build: [
+        { key: 'buildCommand', label: '构建命令 *', type: 'textarea', rows: 3, placeholder: 'mvn clean package -DskipTests', required: true }
+    ],
+    docker_build: [
+        { key: 'dockerfileTemplateId', label: 'Dockerfile 模版 *', type: 'template-select', templateType: 'dockerfile', contentKey: 'dockerfileContent', required: true },
+        { key: 'dockerfilePath', label: 'Dockerfile 路径', type: 'text', placeholder: 'Dockerfile', defaultValue: 'Dockerfile' },
+        { key: 'dockerfileContent', label: 'Dockerfile 内容（由模版带入，可微调）', type: 'textarea', rows: 10, placeholder: '请先选择 Dockerfile 模版' },
+        { key: 'dockerBuildArgs', label: 'docker build 额外参数（可选）', type: 'text', placeholder: '例如：--no-cache --pull' },
+        { key: 'dockerBuildCommand', label: 'docker build 命令 *', type: 'text', required: true,
+          placeholder: 'docker build -f ${dockerfilePath} -t ${harbor}/${namespace}/${serviceName}:${tag} ${workspace}',
+          defaultValue: 'docker build -f ${dockerfilePath} -t ${harbor}/${namespace}/${serviceName}:${tag} ${workspace}',
+          hint: '可用变量：${harbor} ${namespace} ${serviceName} ${tag} ${dockerfilePath} ${workspace}' }
+    ],
+    push_image: [
+        { type: 'hint', text: '本步骤对应「镜像制作」里的 docker build：自动使用上一步输出的镜像地址（${imageFullName}），先 docker login，再执行下面的 docker push。' },
+        { key: 'dockerPushCommand', label: 'docker push 命令 *', type: 'text', required: true,
+          placeholder: 'docker push ${imageFullName}',
+          defaultValue: 'docker push ${imageFullName}',
+          hint: '可用变量：${imageFullName} / ${image}（来自镜像制作步骤，二者相同）' },
+        { key: 'dockerPushArgs', label: 'docker push 额外参数（可选）', type: 'text', placeholder: '一般留空；若填写自定义命令则此项不生效' }
+    ],
+    render_template: [
+        { key: 'deploymentTemplateId', label: 'Deployment 模版 *', type: 'template-select', templateType: 'deployment', contentKey: 'deploymentTemplateContent', required: true },
+        { key: 'serviceTemplateId', label: 'Service 模版（可选）', type: 'template-select', templateType: 'service', contentKey: 'serviceTemplateContent' },
+        { key: 'serviceType', type: 'hidden' },
+        { key: 'outputDir', label: '输出目录', type: 'text', placeholder: 'manifests', defaultValue: 'manifests' },
+        { key: 'deploymentTemplateContent', label: 'Deployment 内容（由模版带入，可微调）', type: 'textarea', rows: 10, placeholder: '请先选择 Deployment 模版' },
+        { key: 'serviceTemplateContent', label: 'Service 内容（由模版带入，可微调）', type: 'textarea', rows: 6, placeholder: '可选：选择 Service 模版后自动填充' }
+    ],
+    deploy: [
+        { key: 'deployScript', label: '额外部署脚本（可选）', type: 'textarea', rows: 3, placeholder: 'kubectl apply -f ...' }
+    ],
+    check_deploy: [
+        { key: 'timeoutSeconds', label: '超时秒数', type: 'text', placeholder: '300', defaultValue: '300' }
+    ],
+    clean: [
+        { key: 'cleanCommand', label: '清理命令', type: 'textarea', rows: 2, placeholder: 'mvn clean' }
+    ],
+    clean_workspace: [
+        { key: 'workspaceBase', label: '工作目录根路径', type: 'text', placeholder: '~/opsflow', defaultValue: '~/opsflow' },
+        { key: 'workspacePath', label: '完整工作目录（可选，留空则按服务/环境/分支自动生成）', type: 'text', placeholder: '~/opsflow/demo/dev/develop' },
+        { key: 'cleanDocker', label: '同时清理 Docker 缓存', type: 'text', placeholder: 'true / false', defaultValue: 'false' }
+    ],
+    rollback: [
+        { key: 'toRevision', label: '回滚到指定 revision（可选，留空则回滚上一版本）', type: 'text', placeholder: '例如 3' },
+        { key: 'waitRollout', label: '等待回滚完成', type: 'text', placeholder: 'true / false', defaultValue: 'true' },
+        { key: 'timeoutSeconds', label: '等待超时秒数', type: 'text', placeholder: '300', defaultValue: '300' }
+    ],
+    notify: [
+        { key: 'notifyWebhook', label: '通知 Webhook', type: 'text', placeholder: 'https://...' }
+    ]
+};
+
+let pipelineStepDefCache = [];
+const stepTemplateCache = {};
+
+async function loadStepTemplates(type, force) {
+    if (!force && stepTemplateCache[type]) {
+        return stepTemplateCache[type];
+    }
+    try {
+        const response = await fetch(`/api/pipeline-template/list?type=${encodeURIComponent(type)}`);
+        if (response.ok) {
+            const list = (await response.json() || []).filter(t => t.status === 1 || t.status == null);
+            stepTemplateCache[type] = list;
+            return list;
+        }
+    } catch (e) {
+        console.error('Load templates for step error:', e);
+    }
+    stepTemplateCache[type] = stepTemplateCache[type] || [];
+    return stepTemplateCache[type];
+}
+
+function renderTemplateSelectOptions(templates, selectedId, emptyLabel) {
+    let html = `<option value="">${escapeHtml(emptyLabel || '请选择模版')}</option>`;
+    if (!templates.length) {
+        html += '<option value="" disabled>暂无模版，请先在「模版管理」中创建</option>';
+        return html;
+    }
+    templates.forEach(t => {
+        const selected = selectedId != null && String(selectedId) === String(t.id) ? ' selected' : '';
+        html += `<option value="${t.id}"${selected}>${escapeHtml(t.name)}</option>`;
+    });
+    return html;
+}
+
+function inferPhase(stepType) {
+    return CI_STEP_TYPES.includes(stepType) ? 'ci' : 'cd';
+}
+
+function getStepTypeLabel(stepType) {
+    return STEP_TYPE_LABELS[stepType] || stepType;
+}
+
+async function loadPipelineStepDefs(force) {
+    if (!force && pipelineStepDefCache.length > 0) {
+        return pipelineStepDefCache;
+    }
+    try {
+        const response = await fetch('/api/pipeline-step-def/list');
+        if (response.ok) {
+            pipelineStepDefCache = await response.json() || [];
+            window.pipelineStepDefCache = pipelineStepDefCache;
+            return pipelineStepDefCache;
+        }
+    } catch (error) {
+        console.error('Load pipeline step defs error:', error);
+    }
+    return pipelineStepDefCache;
+}
+window.loadPipelineStepDefs = loadPipelineStepDefs;
+
+async function loadStepDefs() {
+    const list = document.getElementById('stepDefList');
+    if (!list) return;
+    list.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-4);">加载中...</td></tr>';
+    const defs = await loadPipelineStepDefs(true);
+    renderStepDefList(defs);
+}
+window.loadStepDefs = loadStepDefs;
+
+function renderStepDefList(defs) {
+    const list = document.getElementById('stepDefList');
+    if (!list) return;
+    if (!defs.length) {
+        list.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-4);">暂无步骤，请点击「添加步骤」创建</td></tr>';
+        return;
+    }
+    list.innerHTML = defs.map(def => {
+        const phaseText = def.phase === 'cd' ? 'CD' : 'CI';
+        const statusText = (def.status === 1 || def.status == null)
+            ? '<span class="status-tag is-on">启用</span>'
+            : '<span class="status-tag is-off">禁用</span>';
+        const timeoutText = def.timeoutSeconds != null ? def.timeoutSeconds : 60;
+        return `
+            <tr>
+                <td>${escapeHtml(def.name)}</td>
+                <td>${getStepTypeLabel(def.stepType)}</td>
+                <td>${phaseText}</td>
+                <td>${timeoutText}</td>
+                <td>${escapeHtml(def.description || '-')}</td>
+                <td>${statusText}</td>
+                <td>
+                    <button class="btn-edit" onclick="editStepDef(${def.id})">修改</button>
+                    <button class="btn-danger" onclick="deleteStepDef(${def.id})">删除</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/** 步骤内容框 → 模版类型；挂上模版管理同一套变量检查 */
+const STEP_CONTENT_TEMPLATE_TYPE = {
+    dockerfileContent: 'dockerfile',
+    deploymentTemplateContent: 'deployment',
+    serviceTemplateContent: 'service'
+};
+
+function appendTemplateVarCheckHtml(textareaName, contentKey) {
+    const type = STEP_CONTENT_TEMPLATE_TYPE[contentKey];
+    if (!type || typeof window.buildTemplateVarCheckHtml !== 'function') {
+        return '';
+    }
+    return window.buildTemplateVarCheckHtml({ type, textareaName });
+}
+
+function wireStepTemplateVarChecks(root) {
+    if (root && typeof window.wireTemplateVarChecks === 'function') {
+        window.wireTemplateVarChecks(root);
+    }
+}
+
+async function passStepTemplateVarChecks(root) {
+    if (!root || typeof window.passTemplateVarChecks !== 'function') {
+        return true;
+    }
+    return window.passTemplateVarChecks(root);
+}
+
+async function buildStepContentFieldsHtml(stepType, contentConfig) {
+    contentConfig = contentConfig || {};
+    const fields = STEP_CONTENT_FIELDS[stepType] || [];
+    if (!fields.length) {
+        return '<div style="color:var(--text-3);font-size:13px;padding:8px 0;">此步骤类型无需额外配置</div>';
+    }
+    const parts = [];
+    for (const field of fields) {
+        const value = contentConfig[field.key] != null ? contentConfig[field.key] : (field.defaultValue || '');
+        const required = field.required ? ' required' : '';
+        if (field.type === 'hint') {
+            parts.push(`
+                <div style="margin:8px 0 12px;padding:10px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#4b5563;line-height:1.5;">
+                    ${escapeHtml(field.text || '')}
+                </div>
+            `);
+            continue;
+        }
+        if (field.type === 'template-select') {
+            const templates = await loadStepTemplates(field.templateType);
+            const emptyLabel = field.required ? '请选择模版' : '不关联（可选）';
+            parts.push(`
+                <div class="form-item">
+                    <label>${field.label}</label>
+                    <select name="content_${field.key}" data-content-key="${escapeHtml(field.contentKey || '')}"
+                            data-template-type="${escapeHtml(field.templateType || '')}"
+                            onchange="onStepTemplateSelectChange(this)"${required}>
+                        ${renderTemplateSelectOptions(templates, value, emptyLabel)}
+                    </select>
+                    <small style="color:var(--text-3);">从「模版管理」选择；执行时会自动使用模版最新内容</small>
+                </div>
+            `);
+            continue;
+        }
+        if (field.type === 'hidden') {
+            parts.push(`<input type="hidden" name="content_${field.key}" value="${escapeHtml(value)}">`);
+            continue;
+        }
+        if (field.type === 'textarea') {
+            const textareaName = `content_${field.key}`;
+            parts.push(`
+                <div class="form-item">
+                    <label>${field.label}</label>
+                    <textarea name="${textareaName}" rows="${field.rows || 3}" placeholder="${escapeHtml(field.placeholder || '')}"${required}>${escapeHtml(value)}</textarea>
+                    ${field.hint ? `<small style="color:var(--text-3);">${escapeHtml(field.hint)}</small>` : ''}
+                    ${appendTemplateVarCheckHtml(textareaName, field.key)}
+                </div>
+            `);
+            continue;
+        }
+        parts.push(`
+            <div class="form-item">
+                <label>${field.label}</label>
+                <input type="text" name="content_${field.key}" value="${escapeHtml(value)}"
+                       placeholder="${escapeHtml(field.placeholder || '')}"
+                       style="width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;"${required}>
+                ${field.hint ? `<small style="color:var(--text-3);">${escapeHtml(field.hint)}</small>` : ''}
+            </div>
+        `);
+    }
+    return parts.join('');
+}
+
+async function onStepTemplateSelectChange(selectEl) {
+    const contentKey = selectEl.getAttribute('data-content-key');
+    if (!contentKey) return;
+    const form = selectEl.closest('form');
+    if (!form) return;
+    const contentInput = form.querySelector(`[name="content_${contentKey}"]`);
+    if (!contentInput) return;
+    const templateType = selectEl.getAttribute('data-template-type') || '';
+    const templateId = selectEl.value;
+    if (!templateId) {
+        contentInput.value = '';
+        if (templateType === 'service') {
+            setHiddenStepField(form, 'serviceType', '');
+        }
+        return;
+    }
+    try {
+        const response = await fetch(`/api/pipeline-template/${templateId}`);
+        if (!response.ok) {
+            notify('加载模版失败');
+            return;
+        }
+        const template = await response.json();
+        contentInput.value = template.content || '';
+        contentInput.dispatchEvent(new Event('input', { bubbles: true }));
+        if (templateType === 'service' || template.type === 'service') {
+            setHiddenStepField(form, 'serviceType', template.serviceType || 'ClusterIP');
+        }
+    } catch (e) {
+        notify('加载模版失败: ' + e.message);
+    }
+}
+
+function setHiddenStepField(form, key, value) {
+    let input = form.querySelector(`[name="content_${key}"]`);
+    if (!input) {
+        input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = `content_${key}`;
+        form.appendChild(input);
+    }
+    input.value = value == null ? '' : String(value);
+}
+window.onStepTemplateSelectChange = onStepTemplateSelectChange;
+
+async function refreshContentConfigFromTemplates(contentConfig) {
+    contentConfig = contentConfig || {};
+    const bindings = [
+        { idKey: 'dockerfileTemplateId', contentKey: 'dockerfileContent' },
+        { idKey: 'deploymentTemplateId', contentKey: 'deploymentTemplateContent' },
+        { idKey: 'serviceTemplateId', contentKey: 'serviceTemplateContent', serviceTypeKey: 'serviceType' }
+    ];
+    for (const binding of bindings) {
+        const id = contentConfig[binding.idKey];
+        if (!id) continue;
+        try {
+            const response = await fetch(`/api/pipeline-template/${id}`);
+            if (!response.ok) continue;
+            const template = await response.json();
+            if (template.content != null) {
+                contentConfig[binding.contentKey] = template.content;
+            }
+            if (binding.serviceTypeKey && template.serviceType) {
+                contentConfig[binding.serviceTypeKey] = template.serviceType;
+            }
+        } catch (e) {
+            console.warn('刷新关联模版失败:', binding.idKey, e);
+        }
+    }
+    return contentConfig;
+}
+
+async function onStepDefTypeChange(selectEl) {
+    const form = selectEl.closest('form');
+    if (!form) return;
+    const container = form.querySelector('#stepDefContentFields');
+    if (!container) return;
+    const stepType = selectEl.value;
+    const phaseSelect = form.querySelector('[name="phase"]');
+    if (phaseSelect && stepType) {
+        phaseSelect.value = inferPhase(stepType);
+    }
+    container.innerHTML = '<div style="color:var(--text-3);font-size:13px;">加载配置中...</div>';
+    container.innerHTML = await buildStepContentFieldsHtml(stepType, {});
+    wireStepTemplateVarChecks(form);
+}
+
+function collectStepDefFormData(form) {
+    const name = (form.querySelector('[name="name"]')?.value || '').trim();
+    const stepType = form.querySelector('[name="stepType"]')?.value;
+    const phase = form.querySelector('[name="phase"]')?.value;
+    const description = (form.querySelector('[name="description"]')?.value || '').trim();
+    const timeoutRaw = (form.querySelector('[name="timeoutSeconds"]')?.value || '').trim();
+    const timeoutSeconds = timeoutRaw ? parseInt(timeoutRaw, 10) : 60;
+    if (!name) { notify('步骤名称不能为空'); return null; }
+    if (!stepType) { notify('请选择步骤类型'); return null; }
+    if (!phase) { notify('请选择阶段'); return null; }
+    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 1) {
+        notify('超时时间必须是大于0的整数（秒）');
+        return null;
+    }
+
+    const contentConfig = {};
+    const fields = STEP_CONTENT_FIELDS[stepType] || [];
+    for (const field of fields) {
+        const input = form.querySelector(`[name="content_${field.key}"]`);
+        if (!input) continue;
+        const val = (input.value || '').trim();
+        if (field.required && !val) {
+            notify(`请填写 ${field.label.replace(' *', '')}`);
+            return null;
+        }
+        if (val) contentConfig[field.key] = val;
+    }
+    if (stepType === 'docker_build' && !contentConfig.dockerfileContent) {
+        notify('请选择 Dockerfile 模版并确认内容已填充');
+        return null;
+    }
+    if (stepType === 'render_template' && !contentConfig.deploymentTemplateContent) {
+        notify('请选择 Deployment 模版并确认内容已填充');
+        return null;
+    }
+    const statusRaw = form.querySelector('[name="status"]')?.value;
+    const status = statusRaw === '0' ? 0 : 1;
+    return { name, stepType, phase, description, timeoutSeconds, contentConfig, status };
+}
+
+function showCreateStepDefModal() {
+    if (typeof window.showModal !== 'function') {
+        notify('模态框功能未加载，请刷新页面');
+        return;
+    }
+    const stepTypeOptions = Object.entries(STEP_TYPE_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+    const content = `
+        <form id="createStepDefForm" class="tpl-form">
+            <div class="form-item"><label>步骤名称 *</label><input type="text" name="name" placeholder="例如: 我的镜像制作" required></div>
+            <div class="form-item">
+                <label>步骤类型 *</label>
+                <select name="stepType" required onchange="onStepDefTypeChange(this)">
+                    <option value="">请选择</option>${stepTypeOptions}
+                </select>
+            </div>
+            <div class="form-item">
+                <label>阶段 *</label>
+                <select name="phase" required>
+                    <option value="ci">CI（构建）</option>
+                    <option value="cd">CD（部署）</option>
+                </select>
+            </div>
+            <div class="form-item"><label>描述</label><textarea name="description" rows="2"></textarea></div>
+            <div class="form-item">
+                <label>超时时间（秒） *</label>
+                <input type="number" name="timeoutSeconds" value="60" min="1" placeholder="默认 60" required>
+            </div>
+            <div class="form-item">
+                <label>状态</label>
+                <select name="status">
+                    <option value="1" selected>启用</option>
+                    <option value="0">禁用</option>
+                </select>
+            </div>
+            <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;">
+                <h4 style="margin:0 0 12px 0;">步骤自定义内容</h4>
+                <div id="stepDefContentFields"><div style="color:var(--text-3);font-size:13px;">请先选择步骤类型</div></div>
+            </div>
+        </form>
+    `;
+    window.showModal('添加步骤', content, async () => {
+        const form = document.getElementById('createStepDefForm');
+        const data = collectStepDefFormData(form);
+        if (!data) return;
+        if (!await passStepTemplateVarChecks(form)) return;
+        try {
+            const response = await fetch('/api/pipeline-step-def/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (response.ok) {
+                notify('创建成功');
+                pipelineStepDefCache = [];
+                loadStepDefs();
+                if (typeof window.closeModal === 'function') {
+                    window.closeModal();
+                } else if (typeof closeModal === 'function') {
+                    closeModal();
+                }
+            } else {
+                notify('创建失败: ' + await response.text());
+            }
+        } catch (e) {
+            notify('创建失败: ' + e.message);
+        }
+    });
+    wireStepTemplateVarChecks(document.getElementById('createStepDefForm'));
+}
+window.showCreateStepDefModal = showCreateStepDefModal;
+
+function bindAddStepDefButton() {
+    const btn = document.getElementById('addStepDefBtn');
+    if (!btn || btn.dataset.bound === '1') {
+        return;
+    }
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showCreateStepDefModal();
+    });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindAddStepDefButton);
+} else {
+    bindAddStepDefButton();
+}
+
+async function editStepDef(id) {
+    try {
+        const response = await fetch(`/api/pipeline-step-def/${id}`);
+        if (!response.ok) { notify('加载失败'); return; }
+        const def = await response.json();
+        const contentConfig = await refreshContentConfigFromTemplates(def.contentConfig || {});
+        const stepTypeOptions = Object.entries(STEP_TYPE_LABELS).map(([k, v]) =>
+            `<option value="${k}" ${def.stepType === k ? 'selected' : ''}>${v}</option>`).join('');
+        const content = `
+            <form id="editStepDefForm" class="tpl-form">
+                <div class="form-item"><label>步骤名称 *</label><input type="text" name="name" value="${escapeHtml(def.name || '')}" required></div>
+                <div class="form-item">
+                    <label>步骤类型 *</label>
+                    <select name="stepType" required onchange="onStepDefTypeChange(this)">
+                        ${stepTypeOptions}
+                    </select>
+                </div>
+                <div class="form-item">
+                    <label>阶段 *</label>
+                    <select name="phase" required>
+                        <option value="ci" ${def.phase === 'ci' ? 'selected' : ''}>CI（构建）</option>
+                        <option value="cd" ${def.phase === 'cd' ? 'selected' : ''}>CD（部署）</option>
+                    </select>
+                </div>
+                <div class="form-item"><label>描述</label><textarea name="description" rows="2">${escapeHtml(def.description || '')}</textarea></div>
+                <div class="form-item">
+                <label>超时时间（秒） *</label>
+                <input type="number" name="timeoutSeconds" value="${def.timeoutSeconds != null ? def.timeoutSeconds : 60}" min="1" required>
+            </div>
+                <div class="form-item">
+                    <label>状态</label>
+                    <select name="status">
+                        <option value="1" ${def.status !== 0 ? 'selected' : ''}>启用</option>
+                        <option value="0" ${def.status === 0 ? 'selected' : ''}>禁用</option>
+                    </select>
+                </div>
+                <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;">
+                    <h4 style="margin:0 0 12px 0;">步骤自定义内容</h4>
+                    <div id="stepDefContentFields">${await buildStepContentFieldsHtml(def.stepType, contentConfig)}</div>
+                </div>
+            </form>
+        `;
+        showModal('编辑步骤', content, async () => {
+            const form = document.getElementById('editStepDefForm');
+            const data = collectStepDefFormData(form);
+            if (!data) return;
+            if (!await passStepTemplateVarChecks(form)) return;
+            try {
+                const resp = await fetch(`/api/pipeline-step-def/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (resp.ok) {
+                    notify('更新成功');
+                    pipelineStepDefCache = [];
+                    loadStepDefs();
+                    closeModal();
+                } else {
+                    notify('更新失败: ' + await resp.text());
+                }
+            } catch (e) {
+                notify('更新失败: ' + e.message);
+            }
+        });
+        wireStepTemplateVarChecks(document.getElementById('editStepDefForm'));
+    } catch (e) {
+        notify('加载失败: ' + e.message);
+    }
+}
+window.editStepDef = editStepDef;
+window.onStepDefTypeChange = onStepDefTypeChange;
+
+async function deleteStepDef(id) {
+    if (!await confirmDialog('确定删除此步骤？已被 Pipeline 模板引用的步骤删除后需重新配置模板。')) return;
+    try {
+        const response = await fetch(`/api/pipeline-step-def/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+            notify('删除成功');
+            pipelineStepDefCache = [];
+            loadStepDefs();
+        } else {
+            notify('删除失败');
+        }
+    } catch (e) {
+        notify('删除失败');
+    }
+}
+window.deleteStepDef = deleteStepDef;
+
+// 供 Pipeline 模板使用的步骤下拉选项
+function renderStepDefSelectOptions(phase, selectedId) {
+    const defs = (window.pipelineStepDefCache || pipelineStepDefCache || [])
+        .filter(d => d.phase === phase && (d.status === 1 || d.status == null));
+    let html = '<option value="">请选择步骤</option>';
+    if (!defs.length) {
+        html += '<option value="" disabled>暂无步骤，请先在「步骤管理」中创建</option>';
+    }
+    defs.forEach(d => {
+        const selected = selectedId != null && String(selectedId) === String(d.id) ? ' selected' : '';
+        html += `<option value="${d.id}"${selected}>${escapeHtml(d.name)} (${getStepTypeLabel(d.stepType)})</option>`;
+    });
+    return html;
+}
+window.renderStepDefSelectOptions = renderStepDefSelectOptions;
+
+// ============================================
+// 方案 A：流水线步骤差异覆盖（第一期）
+// 步骤定义 = 默认；流水线只写差异项；空值 = 不覆盖
+// ============================================
+
+/** 第一期允许在流水线侧覆盖的 content_config 键 */
+const PIPELINE_STEP_OVERRIDE_KEYS = {
+    build: ['buildCommand'],
+    docker_build: ['dockerfileTemplateId', 'dockerfileContent'],
+    render_template: [
+        'deploymentTemplateId', 'deploymentTemplateContent',
+        'serviceTemplateId', 'serviceTemplateContent'
+    ]
+};
+
+function getStepDefById(id) {
+    if (id == null || id === '') return null;
+    return (window.pipelineStepDefCache || pipelineStepDefCache || [])
+        .find(d => String(d.id) === String(id)) || null;
+}
+
+function findStepContentField(stepType, key) {
+    const fields = STEP_CONTENT_FIELDS[stepType] || [];
+    return fields.find(f => f.key === key) || null;
+}
+
+/**
+ * 构建流水线步骤「差异配置」面板 HTML。
+ * @param {string} stepId DOM step id
+ * @param {string} stepType 步骤类型
+ * @param {object} overrides 已有 parameters
+ * @param {number|null} timeoutOverride 引擎超时覆盖
+ * @param {object} defaults 步骤定义默认 contentConfig（作 placeholder）
+ * @param {number|null} defaultTimeout 步骤定义默认超时
+ */
+async function buildPipelineStepOverrideHtml(stepId, stepType, overrides, timeoutOverride, defaults, defaultTimeout) {
+    overrides = overrides || {};
+    defaults = defaults || {};
+    const keys = PIPELINE_STEP_OVERRIDE_KEYS[stepType] || [];
+    const parts = [];
+
+    parts.push(`
+        <div class="pipeline-step-override" data-step-id="${escapeHtml(stepId)}"
+             style="margin-top:10px;padding:10px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <strong style="font-size:12px;color:#334155;">差异配置（可选）</strong>
+                <span style="font-size:11px;color:#64748b;">留空则使用步骤默认</span>
+            </div>
+            <div class="form-item" style="margin:0 0 8px;">
+                <label style="font-size:12px;">执行超时（秒）</label>
+                <input type="number" name="override_timeout_${escapeHtml(stepId)}" min="1"
+                       value="${timeoutOverride != null && timeoutOverride >= 1 ? timeoutOverride : ''}"
+                       placeholder="默认 ${defaultTimeout != null ? defaultTimeout : 60}"
+                       style="width:100%;box-sizing:border-box;font-size:13px;">
+            </div>
+    `);
+
+    if (!keys.length) {
+        parts.push(`<div style="font-size:12px;color:#94a3b8;">此步骤类型第一期暂无其它可覆盖项</div></div>`);
+        return parts.join('');
+    }
+
+    for (const key of keys) {
+        const field = findStepContentField(stepType, key) || { key, label: key, type: 'text' };
+        const value = overrides[key] != null ? overrides[key] : '';
+        const hintDefault = defaults[key] != null ? String(defaults[key]) : '';
+        const label = (field.label || key).replace(/\s*\*\s*$/, '') + '（覆盖）';
+
+        if (field.type === 'template-select') {
+            const templates = await loadStepTemplates(field.templateType);
+            parts.push(`
+                <div class="form-item" style="margin:0 0 8px;">
+                    <label style="font-size:12px;">${escapeHtml(label)}</label>
+                    <select name="override_${escapeHtml(key)}_${escapeHtml(stepId)}"
+                            data-override-key="${escapeHtml(key)}"
+                            data-content-key="${escapeHtml(field.contentKey || '')}"
+                            data-template-type="${escapeHtml(field.templateType || '')}"
+                            onchange="onPipelineOverrideTemplateChange(this, '${escapeHtml(stepId)}')"
+                            style="width:100%;font-size:13px;">
+                        ${renderTemplateSelectOptions(templates, value, '不覆盖（用步骤默认）')}
+                    </select>
+                </div>
+            `);
+            continue;
+        }
+
+        if (field.type === 'textarea' || key.endsWith('Content') || key === 'buildCommand') {
+            const ph = hintDefault
+                ? `不覆盖则用步骤默认（当前默认已配置）`
+                : (field.placeholder || '留空不覆盖');
+            const textareaName = `override_${key}_${stepId}`;
+            parts.push(`
+                <div class="form-item" style="margin:0 0 8px;">
+                    <label style="font-size:12px;">${escapeHtml(label)}</label>
+                    <textarea name="${escapeHtml(textareaName)}"
+                              data-override-key="${escapeHtml(key)}"
+                              rows="${field.rows || 4}" placeholder="${escapeHtml(ph)}"
+                              style="width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;">${escapeHtml(value)}</textarea>
+                    ${appendTemplateVarCheckHtml(textareaName, key)}
+                </div>
+            `);
+            continue;
+        }
+
+        parts.push(`
+            <div class="form-item" style="margin:0 0 8px;">
+                <label style="font-size:12px;">${escapeHtml(label)}</label>
+                <input type="text" name="override_${escapeHtml(key)}_${escapeHtml(stepId)}"
+                       data-override-key="${escapeHtml(key)}"
+                       value="${escapeHtml(value)}"
+                       placeholder="${escapeHtml(hintDefault || field.placeholder || '留空不覆盖')}"
+                       style="width:100%;box-sizing:border-box;font-size:13px;">
+            </div>
+        `);
+    }
+
+    parts.push('</div>');
+    return parts.join('');
+}
+
+async function onPipelineOverrideTemplateChange(selectEl, stepId) {
+    const contentKey = selectEl.getAttribute('data-content-key');
+    if (!contentKey) return;
+    const stepItem = document.querySelector(`[data-step-id="${stepId}"]`);
+    if (!stepItem) return;
+    const contentInput = stepItem.querySelector(`[name="override_${contentKey}_${stepId}"]`);
+    if (!contentInput) return;
+    const templateId = selectEl.value;
+    if (!templateId) {
+        // 不覆盖模版时，也不强制清空已手写正文（用户可单独覆盖正文）
+        return;
+    }
+    try {
+        const response = await fetch(`/api/pipeline-template/${templateId}`);
+        if (!response.ok) {
+            notify('加载模版失败');
+            return;
+        }
+        const template = await response.json();
+        contentInput.value = template.content || '';
+        contentInput.dispatchEvent(new Event('input', { bubbles: true }));
+    } catch (e) {
+        notify('加载模版失败: ' + e.message);
+    }
+}
+window.onPipelineOverrideTemplateChange = onPipelineOverrideTemplateChange;
+
+/**
+ * 根据所选步骤定义刷新差异配置面板。
+ */
+async function refreshPipelineStepOverridePanel(stepId, preserved) {
+    const stepItem = document.querySelector(`[data-step-id="${stepId}"]`);
+    if (!stepItem) return;
+    const select = stepItem.querySelector(`[name="stepTemplateId_${stepId}"]`);
+    let panel = stepItem.querySelector('.pipeline-step-override-host');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.className = 'pipeline-step-override-host';
+        stepItem.appendChild(panel);
+    }
+
+    const defId = select ? select.value : '';
+    const def = getStepDefById(defId);
+    if (!def) {
+        panel.innerHTML = '';
+        return;
+    }
+
+    const overrides = (preserved && preserved.parameters) || {};
+    const timeoutOverride = preserved && preserved.timeoutSeconds != null ? preserved.timeoutSeconds : null;
+    panel.innerHTML = await buildPipelineStepOverrideHtml(
+        stepId,
+        def.stepType,
+        overrides,
+        timeoutOverride,
+        def.contentConfig || {},
+        def.timeoutSeconds
+    );
+    wireStepTemplateVarChecks(stepItem.closest('form') || stepItem);
+}
+window.refreshPipelineStepOverridePanel = refreshPipelineStepOverridePanel;
+
+/**
+ * 从步骤 DOM 收集差异覆盖（仅非空值）。
+ * @returns {{ parameters: Object, timeoutSeconds: number|null }}
+ */
+function collectPipelineStepOverrides(stepItem, stepId) {
+    const parameters = {};
+    const inputs = stepItem.querySelectorAll('[data-override-key]');
+    inputs.forEach(input => {
+        const key = input.getAttribute('data-override-key');
+        if (!key) return;
+        const val = (input.value || '').trim();
+        if (val) {
+            parameters[key] = val;
+        }
+    });
+
+    let timeoutSeconds = null;
+    const timeoutInput = stepItem.querySelector(`[name="override_timeout_${stepId}"]`);
+    if (timeoutInput) {
+        const raw = (timeoutInput.value || '').trim();
+        if (raw) {
+            const n = parseInt(raw, 10);
+            if (Number.isFinite(n) && n >= 1) {
+                timeoutSeconds = n;
+            }
+        }
+    }
+    return { parameters, timeoutSeconds };
+}
+window.collectPipelineStepOverrides = collectPipelineStepOverrides;
+window.PIPELINE_STEP_OVERRIDE_KEYS = PIPELINE_STEP_OVERRIDE_KEYS;
+window.getStepDefById = getStepDefById;
+

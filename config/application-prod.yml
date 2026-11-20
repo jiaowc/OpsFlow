@@ -1,0 +1,7 @@
+# 生产库地址必须显式注入 DB_URL，避免误连默认库
+spring:
+  config:
+    import: "optional:file:./config/application-local.yml"
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME:opsflow}

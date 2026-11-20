@@ -4,27 +4,31 @@
 
 ```
 OpsFlow/
-├── api/                          # API 模块（DTO）
-├── common/                       # 公共模块（工具类、常量）
-├── dao/                          # 数据访问层（Model、Mapper）
-├── integration/                  # 集成模块（K8s、Harbor、SSH、Pipeline 步骤）
-├── service/                      # 业务逻辑层
-├── web/                          # Web 层（Controller + 静态前端 + 默认配置）
-│   └── src/main/
-│       ├── java/com/opsflow/web/
+├── src/
+│   └── main/
+│       ├── java/com/opsflow/
+│       │   ├── Application.java      # 启动类
+│       │   ├── api/                  # DTO
+│       │   ├── common/               # 工具、常量、异常
+│       │   ├── dao/                  # Model、Mapper
+│       │   ├── integration/          # K8s、Harbor、SSH、Pipeline
+│       │   ├── service/              # 业务逻辑
+│       │   └── web/                  # Controller、拦截器、配置
 │       └── resources/
-│           ├── application.yml     # 开发环境默认配置
-│           └── static/           # HTML、CSS、JS
-├── app/                          # 启动模块（仅 Application + 打包）
-│   └── src/main/java/com/opsflow/Application.java
-├── config/                       # 外部配置（生产/本地，不提交 Git）
+│           ├── mapper/               # MyBatis XML
+│           ├── db/migration/         # Flyway 版本文件（表结构 + 默认数据）
+│           └── static/               # 前端静态资源
+├── config/                           # 全部应用配置（只放这里）
+│   ├── application.yml               # 公共配置
+│   ├── application-<env>.yml         # dev/test/prod 差异配置
+│   └── application-local.yml         # 本机私有配置（不提交 Git）
 ├── scripts/
-│   ├── deploy/                   # start / stop / restart
+│   ├── deploy/                       # start / stop / restart
 │   └── database/
-│       ├── schema.sql            # 全量建表
-│       ├── migrations/           # 增量迁移 migrate_*.sql
-│       ├── seeds/                # 种子数据 seed_*.sql
-│       └── run_migrations.sh
+│       ├── migrate.sh                # 手动执行/查看数据库迁移
+│       ├── export_sample_data.sh     # 导出本地演示数据
+│       ├── sample/                   # 可选的演示数据
+│       └── legacy/                   # 引入 Flyway 之前的迁移脚本（仅旧库追平用）
 ├── docs/
 ├── logs/
 ├── data/
@@ -32,33 +36,13 @@ OpsFlow/
 └── README.md
 ```
 
-## 模块依赖关系
-
-```
-app → web → service → api
-                    ├── dao → common
-                    └── integration → api, dao
-```
-
-| 模块 | 职责 |
-|------|------|
-| **api** | 请求/响应 DTO |
-| **common** | 常量、异常、通用工具 |
-| **dao** | MyBatis 实体与 Mapper |
-| **integration** | 第三方集成与 Pipeline 步骤执行 |
-| **service** | 业务逻辑 |
-| **web** | REST API、静态管理页面、默认 `application.yml` |
-| **app** | Spring Boot 启动入口，打出可执行 `opsflow.jar` |
-
 ## 打包产物
 
 ```bash
 mvn clean package -DskipTests
-# 可部署 JAR（统一输出）：
+# 可部署 JAR：
 #   target/opsflow.jar
 ```
-
-各子模块编译时仍会在 `模块名/target/` 生成中间产物（Maven 惯例），**部署只需关注根目录这一个 jar**。
 
 ## 启动方式
 
@@ -66,8 +50,8 @@ mvn clean package -DskipTests
 # 开发
 java -jar target/opsflow.jar
 
-# 生产（外置配置）
-java -jar target/opsflow.jar --spring.config.location=file:./config/application.yml
+# 指定环境（配置说明见 config/README.md）
+SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar
 
 # 或使用脚本
 ./scripts/deploy/restart.sh
@@ -75,12 +59,13 @@ java -jar target/opsflow.jar --spring.config.location=file:./config/application.
 
 ## Git 管理
 
-**提交到 Git**：各模块源码、`config/*.example`、`scripts/`、`docs/`
+**提交到 Git**：源码、`config/` 下的 `application*.yml` 与 `*.example`、`scripts/`、`docs/`
 
-**不提交到 Git**：`config/application.yml`、`target/`、`logs/`、`data/`
+**不提交到 Git**：`target/`、`logs/`、`data/`、`config/application-local.yml`
 
 ## 说明
 
-- 采用 **Maven 多模块平级结构**，符合 Java 社区惯例
-- `web` 负责对外 HTTP（API + 页面），`app` 仅负责启动与打包，职责清晰
-- 数据库脚本按 `schema` / `migrations` / `seeds` 分类存放
+- 采用 **Spring Boot 单模块标准目录**（`src/main/java` + `src/main/resources`），应用配置不放 resources，统一在 `config/`
+- 包内仍按职责分层：`api` / `dao` / `service` / `web` / `integration`
+- 数据库表结构与默认数据由 Flyway 管理（`src/main/resources/db/migration`，V1 结构、V2 默认数据，之后每个变更一个新版本），应用启动时自动执行
+- Docker Compose：`docker-compose.yml`（MySQL 提供空库 + 应用启动时自动建表）

@@ -1,0 +1,9 @@
+spring:
+  config:
+    import: "optional:file:./config/application-local.yml"
+  datasource:
+    url: ${DB_URL:jdbc:mysql://mysql-dev:3306/opsflow?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai}
+
+logging:
+  level:
+    com.opsflow: DEBUG
