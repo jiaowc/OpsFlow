@@ -16,7 +16,7 @@ public class LicenseStatusDTO {
 
     private String licenseId;
 
-    /** 订阅计划：pro / enterprise 等，可空 */
+    /** 订阅计划：enterprise，可空 */
     private String plan;
 
     private String issuedAt;

@@ -92,7 +92,7 @@ async function loadBrandingAdminPanel() {
 
 async function uploadBrandingLogo() {
     if (typeof hasFeature === 'function' && !hasFeature('branding')) {
-        notify(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为 Pro 功能，请导入含 branding 的 License');
+        notify(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为企业版功能，请导入含 branding 的 License');
         return;
     }
     const input = document.getElementById('brandingLogoFile');
@@ -119,7 +119,7 @@ async function uploadBrandingLogo() {
 
 async function saveBrandingTitle() {
     if (typeof hasFeature === 'function' && !hasFeature('branding')) {
-        notify(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为 Pro 功能，请导入含 branding 的 License');
+        notify(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为企业版功能，请导入含 branding 的 License');
         return;
     }
     const titleInput = document.getElementById('brandingTitleInput');
@@ -145,7 +145,7 @@ async function saveBrandingTitle() {
 
 async function clearBrandingLogo() {
     if (typeof hasFeature === 'function' && !hasFeature('branding')) {
-        notify(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为 Pro 功能，请导入含 branding 的 License');
+        notify(typeof t === 'function' ? t('branding.needLicense') : '企业品牌为企业版功能，请导入含 branding 的 License');
         return;
     }
     if (!await confirmDialog(typeof t === 'function' ? t('branding.clearConfirm') : '确定清除自定义 Logo？')) {

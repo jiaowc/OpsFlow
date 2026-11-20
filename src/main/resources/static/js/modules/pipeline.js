@@ -161,7 +161,7 @@ function canRollbackPipelineJob(job) {
 function getPipelineRollbackButtonTitle(job) {
     if (job && job.prodEnv && typeof hasFeature === 'function' && !hasFeature('prod_rollback')) {
         return typeof t === 'function' ? t('license.feature.prodRollback')
-            : '生产环境回滚为 Pro 订阅功能，请导入含 prod_rollback 的 License';
+            : '生产环境回滚为企业版功能，请导入含 prod_rollback 的 License';
     }
     if (!hasRollbackPermissionFor(job)) {
         return job && job.prodEnv ? '生产环境回滚需要「回滚部署」权限' : '无回滚权限';

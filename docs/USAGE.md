@@ -11,7 +11,7 @@
 2. [核心概念](#2-核心概念)
 3. [首次初始化：管理员配置顺序](#3-首次初始化管理员配置顺序)
 4. [日常使用：工作视图与流水线 Job](#4-日常使用工作视图与流水线-job)
-5. [上线任务与审批（Pro）](#5-上线任务与审批pro)
+5. [上线任务与审批（企业版）](#5-上线任务与审批企业版)
 6. [流水线配置详解](#6-流水线配置详解)
 7. [用户、角色与权限](#7-用户角色与权限)
 8. [集成与通知、品牌、License](#8-集成与通知品牌license)
@@ -61,7 +61,7 @@ cd scripts/local/build-nodes && ./start.sh && ./configure-opsflow.sh
 | **流水线模版** | 若干步骤的有序组合，类型为 CI / CD / CI/CD |
 | **Job** | 「服务 + 环境 + 流水线模版 + 分支/Tag」的组合，日常点「构建」就是运行 Job |
 | **视图** | 按环境筛选 Job 的 Tab，可按角色分配可见性 |
-| **上线任务** | 生产发布单：多个服务模块 + 审批流 + CD 流水线（Pro 功能） |
+| **上线任务** | 生产发布单：多个服务模块 + 审批流 + CD 流水线（企业版功能） |
 
 关系示意：
 
@@ -149,7 +149,7 @@ Job = 服务 + 环境 + 流水线模版 + 分支/Tag ──运行于──> 构�
 | 环境名称 | 如 dev / test / prod |
 | 关联集群 | 部署到哪个 K8s 集群 |
 | K8s 命名空间 | 部署到的 Namespace，模版中用 `${namespace}` 引用 |
-| 环境类型 | **非生产环境** / **生产环境**。生产环境不能在工作视图直接建 Job 构建，需走上线任务；生产回滚需 Pro |
+| 环境类型 | **非生产环境** / **生产环境**。生产环境不能在工作视图直接建 Job 构建，需走上线任务；生产回滚需企业版 |
 
 ### 3.5 项目与服务
 
@@ -205,11 +205,11 @@ OpsFlow 服务重启后，会自动回收因重启而中断的流水线，不会
 限制：
 
 - 需要 `pipeline:rollback` 权限；
-- **生产环境**回滚需额外勾选确认，且 License 需开通 `prod_rollback`（Pro）。
+- **生产环境**回滚需额外勾选确认，且 License 需开通 `prod_rollback`（企业版）。
 
 ---
 
-## 5. 上线任务与审批（Pro）
+## 5. 上线任务与审批（企业版）
 
 需 License 开通 `deploy_approval`。
 
@@ -336,7 +336,7 @@ docker build -f ${dockerfilePath} -t ${harbor}/${namespace}/${serviceName}:${tag
 | `pipeline_config:manage` | 流水线模版/步骤/视图 |
 | `credential:manage` | 凭据与组件 |
 | `user:manage` / `role:manage` / `permission:manage` | 用户 / 角色 / 权限码 |
-| `audit:view` | 操作审计（Pro） |
+| `audit:view` | 操作审计（企业版） |
 | `system:config` | 集成与通知、品牌、License |
 
 > 菜单按权限自动显示/隐藏，后端接口同样校验，只隐藏菜单不会绕过权限。
@@ -349,17 +349,17 @@ docker build -f ${dockerfilePath} -t ${harbor}/${namespace}/${serviceName}:${tag
 
 | Tab | 内容 |
 |-----|------|
-| 通知设置 | **站内信**（开源）开关；**飞书审批通知**（Pro `notify_integration`）：App ID、App Secret、API 地址、接收 ID 类型（user_id / open_id / email）、OpsFlow 访问地址（用于消息中的跳转链接） |
+| 通知设置 | **站内信**（开源）开关；**飞书审批通知**（企业版 `notify_integration`）：App ID、App Secret、API 地址、接收 ID 类型（user_id / open_id / email）、OpsFlow 访问地址（用于消息中的跳转链接） |
 | SSO 登录 | 飞书 / 钉钉 / 企业微信：应用 ID、密钥、回调地址，勾选启用 |
 | LDAP | 服务器地址、Base DN、管理员 DN 与密码 |
 
 右上角铃铛为**站内信**收件箱，审批待办、审批结果等会在这里提醒。
 
-### 8.2 操作审计（Pro `audit`）
+### 8.2 操作审计（企业版 `audit`）
 
 「操作审计」按 用户 / 模块 / 结果 / 关键字（动作、路径、对象 ID、参数）查询，展示操作人、IP、耗时等。未开通时审计仍会记录，开通后可查历史。
 
-### 8.3 品牌设置（Pro `branding`）
+### 8.3 品牌设置（企业版 `branding`）
 
 设置品牌名称，上传企业 Logo（PNG/JPG/WEBP/SVG，≤512KB），显示在登录页与控制台顶栏。
 
@@ -370,7 +370,7 @@ docker build -f ${dockerfilePath} -t ${harbor}/${namespace}/${serviceName}:${tag
 | 版本 | 能力 |
 |------|------|
 | Community（免费） | 项目/服务/环境/集群/节点、凭据组件、流水线全流程、非生产回滚、RBAC、工作台、站内信、Webhook |
-| Pro（订阅） | + 上线任务与审批、操作审计、飞书通知、生产回滚、企业品牌 |
+| 企业版（订阅） | + 上线任务与审批、操作审计、飞书通知、生产回滚、企业品牌 |
 
 到期后有 **7 天宽限期**（仅告警），之后回退为 Community，数据与 Job 均保留；续费只需重新导入新 License。
 

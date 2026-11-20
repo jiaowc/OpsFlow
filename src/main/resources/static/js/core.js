@@ -553,11 +553,11 @@ function showSection(sectionId, element, options) {
 
     // License 未开通时，拦截商业功能深链
     if (sectionId === 'audit' && !hasFeature('audit')) {
-        notify(typeof t === 'function' ? t('license.feature.audit') : '操作审计为 Pro 订阅功能，请导入有效 License');
+        notify(typeof t === 'function' ? t('license.feature.audit') : '操作审计为企业版功能，请导入有效 License');
         sectionId = firstAccessibleSection();
         element = document.querySelector(`.menu-item[data-section="${sectionId}"]`);
     } else if (sectionId === 'integration-config' && !hasFeature('notify_integration')) {
-        notify(typeof t === 'function' ? t('license.feature.notify') : '集成与通知为 Pro 订阅功能，请导入有效 License');
+        notify(typeof t === 'function' ? t('license.feature.notify') : '集成与通知为企业版功能，请导入有效 License');
         sectionId = firstAccessibleSection();
         element = document.querySelector(`.menu-item[data-section="${sectionId}"]`);
     } else if ((sectionId === 'tasks' || sectionId === 'approval') && !hasFeature('deploy_approval')) {

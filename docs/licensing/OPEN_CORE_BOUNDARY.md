@@ -21,19 +21,17 @@
 | 版本 | 功能码 |
 |---|---|
 | Community | （无商业码；仅开源能力） |
-| Pro | `deploy_approval` + `audit` + `notify_integration` + `prod_rollback` + `branding` |
-| Enterprise | Pro + 预留（如 `sso`，本期不实现） |
+| Enterprise（企业版） | `deploy_approval` + `audit` + `notify_integration` + `prod_rollback` + `branding`；预留 `sso`（本期不实现） |
 
 ## 1.1 订阅模式（已定）
 
-商业版采用 **按期订阅**，不卖永久解锁。
+企业版采用 **按期订阅**，不卖永久解锁。
 
 ### 售卖形态
 
 | 计划 | 周期 | 内容 |
 |---|---|---|
-| Pro 年订 / 月订 | 签发时写入 `expiresAt` | 上述 Pro 功能码全集 |
-| Enterprise | 同上 + 合同支持 | Pro + 预留能力 |
+| Enterprise 年订 / 月订 | 签发时写入 `expiresAt` | 上述功能码全集 + 合同支持 |
 
 ### 技术形态（与现有 License 对齐）
 
@@ -53,17 +51,17 @@
 | `features` | 本订阅周期开通的功能码 |
 | `issuedAt` | 签发时间 |
 | `expiresAt` | **订阅到期时间（必填）** |
-| `plan`（可选，第 2 步可加） | 如 `pro` / `enterprise`，便于展示 |
+| `plan`（可选，第 2 步可加） | 固定为 `enterprise`，便于展示 |
 
 ### 产品文案原则
 
 - Community：永久免费，无订阅。
-- Pro：订阅期内可用商业模块；到期回退到 Community 能力，数据与流水线任务保留。
+- Enterprise：订阅期内可用商业模块；到期回退到 Community 能力，数据与流水线任务保留。
 - 续费不换库、不重装，只换 License 文件。
 
-## 2. Community / Pro 对照
+## 2. Community / Enterprise 对照
 
-| 能力 | Community（开源） | Pro（商业） |
+| 能力 | Community（开源） | Enterprise（企业版） |
 |---|---|---|
 | 项目管理 / 服务 / 环境 / 集群 / 节点 | ✅ | ✅ |
 | 凭据与组件（Git / Harbor / K8s 等基础接入） | ✅ | ✅ |
