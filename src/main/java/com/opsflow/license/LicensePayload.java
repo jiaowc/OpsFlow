@@ -17,7 +17,7 @@ public class LicensePayload {
 
     private String customer;
 
-    /** 订阅计划：pro / enterprise 等（可选） */
+    /** 订阅计划：固定为 enterprise（可选） */
     private String plan;
 
     private List<String> features = new ArrayList<>();

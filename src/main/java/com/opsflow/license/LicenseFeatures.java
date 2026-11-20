@@ -2,7 +2,7 @@ package com.opsflow.license;
 
 /**
  * License 功能码（与 docs/licensing/OPEN_CORE_BOUNDARY.md 保持一致）。
- * <p>Community 不含下列码；Pro 通常包含全部。
+ * <p>社区版不含下列码；企业版包含全部。
  */
 public final class LicenseFeatures {
 
