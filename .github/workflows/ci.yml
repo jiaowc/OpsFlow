@@ -1,0 +1,123 @@
+# OpsFlow 社区版 CI：lint → 测试 → 镜像
+# - push / PR：lint、Maven 测试、构建镜像（只构建 amd64，不推送）
+# - tag v*：额外校验 tag 与 pom 版本一致，构建双架构镜像并推送到
+#   ghcr.io/<owner>/opsflow（Dockerfile）和 ghcr.io/<owner>/opsflow-allinone（Dockerfile.allinone）
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        # 先完整输出，再只以 error 级别作为门禁（与 .gitlab-ci.yml 一致）
+        run: |
+          shellcheck --version
+          find scripts -name '*.sh' -not -path '*/.data/*' -print0 | xargs -0 shellcheck -f gcc || true
+          find scripts -name '*.sh' -not -path '*/.data/*' -print0 | xargs -0 shellcheck -S error
+      - name: hadolint
+        run: docker run --rm -i hadolint/hadolint:v2.12.0-debian hadolint --failure-threshold warning - < Dockerfile
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: tag 与 pom 版本一致
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(mvn -B -q -ntp help:evaluate -Dexpression=project.version -DforceStdout)"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} 与 pom 版本 ${version} 不一致"
+            exit 1
+          fi
+      - name: mvn verify
+        run: mvn -B -ntp verify
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: "*/target/surefire-reports/"
+          retention-days: 7
+      - name: 上传 opsflow.jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: opsflow-jar
+          path: opsflow-app/target/opsflow.jar
+          retention-days: 7
+
+  image:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    strategy:
+      # 一个镜像失败不要取消另一个，方便看清是哪个 Dockerfile 的问题
+      fail-fast: false
+      matrix:
+        include:
+          - name: opsflow
+            dockerfile: Dockerfile
+          - name: opsflow-allinone
+            dockerfile: Dockerfile.allinone
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: 镜像名
+        id: name
+        # ghcr 镜像名必须小写
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ steps.name.outputs.image }}
+          # latest=auto：发正式版 tag（vX.Y.Z，非预发布）时同时打 latest，两个镜像一致
+          flavor: |
+            latest=auto
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      - name: 登录 ghcr
+        if: env.IS_RELEASE == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 构建（tag 时推送）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          # 平时只构建 amd64 验证 Dockerfile，发版时出双架构
+          platforms: ${{ env.IS_RELEASE == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          build-args: OPSFLOW_VERSION=${{ steps.meta.outputs.version }}
+          push: ${{ env.IS_RELEASE == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 两个镜像各用各的缓存，避免互相覆盖
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

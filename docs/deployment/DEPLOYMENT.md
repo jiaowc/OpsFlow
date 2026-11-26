@@ -76,10 +76,10 @@ SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh
 mvn clean package -DskipTests
 
 # 2. 在部署目录下启动（默认环境）
-java -jar target/opsflow.jar
+java -jar opsflow-app/target/opsflow.jar
 
 # 3. 指定环境启动（示例：dev）
-SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar
+SPRING_PROFILES_ACTIVE=dev java -jar opsflow-app/target/opsflow.jar
 ```
 
 ## 配置说明
@@ -135,7 +135,7 @@ WorkingDirectory=/opt/opsflow
 Environment=SPRING_PROFILES_ACTIVE=prod
 # DB_URL / DB_PASSWORD 可写在 /opt/opsflow/config/application-local.yml，或用 EnvironmentFile 注入
 EnvironmentFile=-/opt/opsflow/opsflow.env
-ExecStart=/usr/bin/java -jar /opt/opsflow/target/opsflow.jar
+ExecStart=/usr/bin/java -jar /opt/opsflow/opsflow-app/target/opsflow.jar
 Restart=always
 RestartSec=10
 

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.opsflow</groupId>
+        <artifactId>opsflow</artifactId>
+        <version>1.1.0</version>
+    </parent>
+
+    <artifactId>opsflow-app</artifactId>
+    <packaging>jar</packaging>
+    <name>OpsFlow App</name>
+    <description>OpsFlow 可执行包：只有启动类和打包配置，产物 opsflow-app/target/opsflow.jar</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.opsflow</groupId>
+            <artifactId>opsflow-core</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>opsflow</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>build-info</id>
+                        <goals>
+                            <goal>build-info</goal>
+                        </goals>
+                        <!-- 默认取本模块的 name/artifactId（OpsFlow App / opsflow-app）；
+                             保持拆分前的值，版本接口和页面底部显示不变 -->
+                        <configuration>
+                            <additionalProperties>
+                                <name>OpsFlow</name>
+                                <artifact>opsflow</artifact>
+                            </additionalProperties>
+                        </configuration>
+                    </execution>
+                </executions>
+                <configuration>
+                    <mainClass>com.opsflow.Application</mainClass>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

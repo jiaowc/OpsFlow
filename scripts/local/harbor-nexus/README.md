@@ -3,7 +3,7 @@
 在本机 Docker 中启动：
 
 - **Harbor**（官方 online installer，HTTP）：镜像仓库 + `/api/v2.0` API  
-- **Nexus 3**：仅用于「凭据与组件」连通性检测（当前流水线推镜像**不走** Nexus）
+- **Nexus 3**：仅用于「凭据与集成 → 组件」连通性检测（当前流水线推镜像**不走** Nexus）
 
 默认账号：
 
@@ -55,7 +55,7 @@ chmod +x *.sh
 
 ## 在 OpsFlow 里确认
 
-1. 打开「凭据与组件」  
+1. 打开「系统设置 → 凭据与集成」的「组件」页签  
 2. 应看到启用中的 `harbor-local`、`nexus-local`  
 3. 分别点「检测」，应成功  
 4. 流水线 `docker_build` / `push_image` 使用的 registry 主机为 `localhost`（从组件 URL 解析）  

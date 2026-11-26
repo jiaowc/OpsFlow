@@ -44,8 +44,8 @@ cp config/application-local.yml.example config/application-local.yml
 vim config/application-local.yml        # 填写 DB_PASSWORD
 
 mvn clean package -DskipTests
-java -jar target/opsflow.jar                                 # 默认环境（本机库）
-SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar      # dev 环境
+java -jar opsflow-app/target/opsflow.jar                                 # 默认环境（本机库）
+SPRING_PROFILES_ACTIVE=dev java -jar opsflow-app/target/opsflow.jar      # dev 环境
 ```
 
 **必须在项目根目录（或部署目录）下启动**：Spring Boot 从当前工作目录的 `config/` 读取配置。

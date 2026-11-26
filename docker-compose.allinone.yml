@@ -1,0 +1,35 @@
+# OpsFlow 体验镜像（all-in-one）：单个容器内置 MySQL 与演示数据，仅用于体验 / 演示
+#
+#   docker compose -f docker-compose.allinone.yml up -d            # 拉取已发布的镜像
+#   docker compose -f docker-compose.allinone.yml up -d --build    # 从当前源码构建
+#
+# 访问：http://localhost:${OPSFLOW_PORT:-8080}
+# 初始账号：admin / admin（首次登录会被要求修改密码）
+#
+# 停止（保留数据）：docker compose -f docker-compose.allinone.yml down
+# 清空重来：        docker compose -f docker-compose.allinone.yml down -v
+#
+# 正式使用请用 docker-compose.yml（应用与数据库分开）或 docker-compose.app.yml（外部 MySQL）
+
+services:
+  opsflow-allinone:
+    build:
+      context: .
+      dockerfile: Dockerfile.allinone
+    image: ${OPSFLOW_ALLINONE_IMAGE:-ghcr.io/jiaowc/opsflow-allinone:1.1.0}
+    container_name: opsflow-allinone
+    restart: unless-stopped
+    ports:
+      - "${OPSFLOW_PORT:-8080}:8080"
+    environment:
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m}
+      # 首次启动是否导入演示数据（示例项目、环境、服务、视图）；只在首次启动时生效
+      OPSFLOW_DEMO_DATA: ${OPSFLOW_DEMO_DATA:-true}
+    volumes:
+      # 数据库文件、应用数据、日志都在 /data
+      - opsflow-allinone-data:/data
+    # 先停应用再停数据库，留足时间让 MySQL 正常关闭
+    stop_grace_period: 1m
+
+volumes:
+  opsflow-allinone-data:

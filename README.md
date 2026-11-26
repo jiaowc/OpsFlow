@@ -6,44 +6,44 @@ OpsFlow 是一个开源的 CI/CD 平台：接入 Git 仓库、镜像仓库和 Ku
 
 📖 **使用文档**：[docs/USAGE.md](docs/USAGE.md)（初始化配置顺序、流水线 Job、权限、Webhook、常见问题）
 
+⬆️ **升级说明**：[docs/UPGRADE.md](docs/UPGRADE.md)（版本间的行为和接口变化，升级前必看）
+
 ## 功能特性
 
 - **流水线**：原生 Pipeline，内置拉代码、编译、构建镜像、推送镜像、渲染模版、部署、检查部署状态、回滚等步骤；支持流水线模版和自定义步骤
 - **构建与部署**：通过 SSH 接入构建节点和部署节点，构建 Docker 镜像推送到 Harbor，部署到 Kubernetes 集群
 - **任务管理**：工作视图、作业列表、构建历史、阶段实时日志、重新构建
-- **回滚**：按历史构建的镜像回滚
+- **部署与回滚**：生产和非生产环境都可部署，按历史构建的镜像回滚（按权限码控制）
 - **资源管理**：项目、服务、环境、集群、节点
-- **凭据与组件**：钥匙串统一保存账号密码、Token、Kubeconfig、SSH 密钥（加密存库），供 Git、Harbor、K8s 等组件引用
+- **凭据与集成**：钥匙串统一保存账号密码、Token、Kubeconfig、SSH 密钥（加密存库），供 Git、Harbor、K8s 等组件引用
 - **自动构建**：Git Webhook 推送触发
-- **账号与权限**：本地账号、角色与权限（RBAC）、项目成员
+- **账号与权限**：本地账号、LDAP 登录、两步验证（TOTP 动态码 + 恢复码）、角色与权限（RBAC）、项目成员
 - **其他**：站内信、工作台统计、中英文界面
 
 ## 版本说明
 
-OpsFlow 采用 Open Core 模式：社区版提供完整可用的 CI/CD 核心，企业版在此基础上增加面向企业的管控能力。
+OpsFlow 采用 Open Core 模式：社区版提供完整可用的 CI/CD 核心，企业版在此基础上增加面向企业的管控能力。两个版本库结构相同，可以直接换镜像升级或回退，数据不动。
 
 | 能力 | 社区版 | 企业版 |
 | --- | :---: | :---: |
 | 项目 / 服务 / 环境 / 集群 / 节点管理 | ✅ | ✅ |
-| 凭据与组件（Git / Harbor / K8s） | ✅ | ✅ |
+| 凭据与集成：钥匙串、组件接入（Git / Harbor / K8s） | ✅ | ✅ |
 | 流水线：构建、部署、日志、模版、自定义步骤 | ✅ | ✅ |
-| 回滚（生产和非生产） | ✅ | ✅ |
+| 生产与非生产环境的部署和回滚（按权限码控制） | ✅ | ✅ |
 | Git Webhook 自动构建 | ✅ | ✅ |
-| 本地账号 + RBAC | ✅ | ✅ |
+| 本地账号、LDAP 登录、角色权限（RBAC） | ✅ | ✅ |
+| 两步验证（动态码 + 恢复码，可设为全员强制） | ✅ | ✅ |
 | 站内信、工作台统计 | ✅ | ✅ |
-| LDAP 登录 | 开发中 | ✅ |
-| 流水线直接部署生产环境 | 开发中 | ✅ |
 | 上线任务与审批流程 | — | ✅ |
 | 操作审计查询 | — | ✅ |
-| 飞书等外部通知集成 | — | ✅ |
-| 企业品牌定制（Logo） | — | ✅ |
-| 单点登录（飞书；OIDC、钉钉、企业微信规划中） | — | ✅ |
+| 外部通知（飞书等） | — | ✅ |
+| 单点登录（飞书、企业微信、钉钉） | — | ✅ |
+| 企业品牌（Logo、名称） | — | ✅ |
 
 说明：
 
-- 社区版永久免费；企业版按期订阅，到期后回退到社区版能力，数据和流水线保留。
-- 社区版与企业版的代码拆分正在进行中。当前仓库里仍包含一部分将移入企业版的模块，后续版本会移出；上表是拆分完成后的划分。
-- 标注"开发中"的两项尚未进入本仓库：目前生产环境的发布需要通过上线任务进行。
+- 社区版永久免费，不含 License 校验代码；企业版按期订阅，到期后回到社区版能力，数据和流水线保留。
+- 企业版功能不在本仓库。完整边界见 [docs/licensing/OPEN_CORE_BOUNDARY.md](docs/licensing/OPEN_CORE_BOUNDARY.md)。
 - 企业版咨询：<https://www.opslink.cn>
 
 ## 技术栈
@@ -59,16 +59,32 @@ OpsFlow 采用 Open Core 模式：社区版提供完整可用的 CI/CD 核心，
 
 ```
 OpsFlow/
-├── src/main/java/com/opsflow/   # 启动类 + 按包分层（api/dao/service/web/integration）
-├── src/main/resources/          # 数据库迁移、mapper、静态页面
-├── config/                      # 全部应用配置（application*.yml）
-├── scripts/                     # 部署、数据库、本地环境脚本
-└── docs/                        # 文档
+├── pom.xml          # 父 POM（多模块）
+├── opsflow-core/    # 全部业务代码（api/dao/service/web/integration）、mapper、静态页面、数据库迁移、测试；对外提供扩展点（com.opsflow.spi）
+├── opsflow-app/     # 启动类 + 打包配置，产物 opsflow-app/target/opsflow.jar
+├── config/          # 全部应用配置（application*.yml）
+├── scripts/         # 部署、数据库、本地环境脚本
+└── docs/            # 文档
 ```
 
 详细结构说明见 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)。
 
 ## 快速开始
+
+### 体验：单镜像一条命令启动（内置 MySQL 与演示数据）
+
+只想先看看界面和功能时用这个。一个容器里同时跑 MySQL 和 OpsFlow，首次启动自动建表、写入默认数据并导入一份演示数据（示例项目、dev/test/prod 环境、示例服务、流水线视图）：
+
+```bash
+docker run -d --name opsflow-allinone -p 8080:8080 -v opsflow-allinone-data:/data ghcr.io/jiaowc/opsflow-allinone:1.1.0
+# 首次启动约 1 分钟，打开 http://localhost:8080
+```
+
+镜像支持 `linux/amd64` 和 `linux/arm64`。拉取不了 ghcr.io 时可以从源码自己构建：`docker build -f Dockerfile.allinone -t ghcr.io/jiaowc/opsflow-allinone:1.1.0 .`
+
+初始账号 **admin / admin**，这是公开的演示口令，**首次登录后请修改**（系统会强制要求改密）。
+
+仅用于体验 / 演示，正式使用请用下面的方式一。持久化、关闭演示数据等说明见 [docs/deployment/DOCKER.md](docs/deployment/DOCKER.md#体验镜像all-in-one)。
 
 ### 方式一：Docker Compose（推荐）
 
@@ -136,7 +152,7 @@ vim config/application-local.yml   # 填写 DB_PASSWORD（本机私有，不入�
 
 #### 4. 编译打包
 
-构建必须使用 **JDK 17**（`pom.xml` 中 maven-enforcer-plugin 限定 `[17,22)`，JDK 22 及以上 Lombok 会失效）。
+构建必须使用 **JDK 17**（父 `pom.xml` 中 maven-enforcer-plugin 限定 `[17,22)`，JDK 22 及以上 Lombok 会失效）。
 `mvn -v` 显示的不是 17 时（如系统默认是 JDK 8，或 Homebrew 装的新版 JDK），先指定 `JAVA_HOME`：
 
 ```bash
@@ -144,7 +160,7 @@ vim config/application-local.yml   # 填写 DB_PASSWORD（本机私有，不入�
 # Linux 填 JDK 17 安装目录，如 /usr/lib/jvm/java-17-openjdk
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
 mvn -v                          # 确认 Java version: 17.x
-mvn clean package -DskipTests   # 所有环境共用同一个 jar
+mvn clean package -DskipTests   # 所有环境共用同一个 jar：opsflow-app/target/opsflow.jar
 ```
 
 #### 5. 运行
@@ -163,8 +179,8 @@ SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh
 或手动启动（在项目根目录执行）：
 
 ```bash
-java -jar target/opsflow.jar
-SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar
+java -jar opsflow-app/target/opsflow.jar
+SPRING_PROFILES_ACTIVE=dev java -jar opsflow-app/target/opsflow.jar
 ```
 
 ## 配置文件管理
@@ -207,18 +223,13 @@ SPRING_PROFILES_ACTIVE=dev java -jar target/opsflow.jar
 ## 文档
 
 - [使用文档](docs/USAGE.md)
+- [升级说明](docs/UPGRADE.md)
+- [社区版与企业版的边界](docs/licensing/OPEN_CORE_BOUNDARY.md)
 - [Docker 部署](docs/deployment/DOCKER.md)
 - [传统部署](docs/deployment/DEPLOYMENT.md)
 - [配置说明](config/README.md)
 - [数据库脚本说明](scripts/database/README.md)
 
-## 开发计划
-
-- [ ] 社区版与企业版代码拆分（多模块 + 扩展点）
-- [ ] LDAP 登录
-- [ ] 流水线直接部署生产环境
-- [ ] 流水线结果通知（站内信）
-
 ## 许可证
 
-MIT License
+社区版以 [MIT License](LICENSE) 开源。企业版功能不在本仓库，需单独订阅，见 <https://www.opslink.cn>。

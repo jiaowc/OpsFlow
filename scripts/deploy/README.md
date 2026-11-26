@@ -48,7 +48,7 @@ SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh
 SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh --docker
 
 # 或
-docker build -t opsflow:1.0.0 .
+docker build -t opsflow:1.1.0 .
 ./scripts/deploy/start.sh --docker
 
 # 停止
@@ -63,7 +63,7 @@ OPSFLOW_DEPLOY_MODE=docker ./scripts/deploy/restart.sh
 
 ### Docker 行为说明
 
-- 镜像名默认：`opsflow:1.0.0`（可用 `OPSFLOW_DOCKER_IMAGE` 覆盖）
+- 镜像名默认：`opsflow:1.1.0`（可用 `OPSFLOW_DOCKER_IMAGE` 覆盖）
 - 容器名默认：`opsflow`（可用 `OPSFLOW_DOCKER_CONTAINER` 覆盖）
 - 端口默认：`8080`（可用 `OPSFLOW_PORT` 覆盖）
 - `Dockerfile` 多阶段编译并打入 `config/`（不含 `application-local.yml`）

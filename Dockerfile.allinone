@@ -1,0 +1,87 @@
+# OpsFlow 体验镜像（all-in-one）：一个容器内同时运行 MySQL 8.0 和 OpsFlow，启动即带默认数据和演示数据。
+#
+#   docker build -f Dockerfile.allinone -t ghcr.io/jiaowc/opsflow-allinone:1.1.0 .
+#   docker run -d --name opsflow-allinone -p 8080:8080 ghcr.io/jiaowc/opsflow-allinone:1.1.0
+# 多架构构建与发布命令见 docs/deployment/DOCKER.md「发布镜像」
+#   浏览器打开 http://localhost:8080 ，初始账号 admin / admin（首次登录会被要求修改密码）
+#
+# 仅用于体验 / 演示；正式使用请用 docker-compose.yml（应用与数据库分开）或外部 MySQL。
+# 说明见 docs/deployment/DOCKER.md「体验镜像」一节。
+
+# ---------- build ----------
+# jar 与 CPU 架构无关：多架构构建时固定在构建机本机架构上编译一次，不走模拟
+FROM --platform=$BUILDPLATFORM maven:3.9.9-eclipse-temurin-17 AS build
+WORKDIR /build
+
+COPY pom.xml .
+COPY opsflow-core/pom.xml opsflow-core/
+COPY opsflow-app/pom.xml opsflow-app/
+# 先拉依赖，源码变更时尽量复用层缓存
+RUN mvn -B -q -DskipTests dependency:go-offline || true
+
+COPY opsflow-core/src ./opsflow-core/src
+COPY opsflow-app/src ./opsflow-app/src
+RUN mvn -B -q -DskipTests package \
+    && test -f opsflow-app/target/opsflow.jar
+
+# ---------- jre ----------
+FROM eclipse-temurin:17-jre-jammy AS jre
+
+# ---------- mysql ----------
+# 官方 MySQL 镜像（与 docker-compose.yml 用的数据库版本一致）自带约 490MB 的 MySQL Shell，这里用不到，卸掉
+FROM mysql:8.0 AS mysql-slim
+RUN rpm -e mysql-shell \
+    && rm -rf /var/cache/dnf /var/cache/yum /var/lib/mysql/*
+
+# ---------- runtime ----------
+# 在后面的层里删文件不会让镜像变小，所以把瘦身后的文件系统整体拷进空镜像，再放入 JRE 和应用。
+# 这样也不会继承底镜像的 VOLUME /var/lib/mysql（数据目录在 /data/mysql）和 EXPOSE 3306
+FROM scratch
+# hadolint ignore=DL3067
+COPY --from=mysql-slim / /
+LABEL maintainer="OpsFlow" \
+      app="opsflow-allinone" \
+      description="OpsFlow 体验镜像：内置 MySQL 与演示数据" \
+      org.opencontainers.image.title="opsflow-allinone" \
+      org.opencontainers.image.description="OpsFlow 体验镜像：内置 MySQL 与演示数据，仅用于体验和演示" \
+      org.opencontainers.image.source="https://github.com/jiaowc/OpsFlow"
+
+# mysql 底镜像没有设置 LANG，JVM 会按 ASCII 输出，中文日志变成问号
+ENV JAVA_HOME=/opt/java/openjdk \
+    PATH=/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    LANG=C.UTF-8 \
+    TZ=Asia/Shanghai \
+    JAVA_OPTS="-Xms256m -Xmx512m" \
+    OPSFLOW_DEMO_DATA=true
+
+COPY --from=jre /opt/java/openjdk /opt/java/openjdk
+
+WORKDIR /app
+
+# 数据库文件、应用数据、日志统一放在 /data，挂一个卷即可全部持久化
+RUN groupadd -r opsflow \
+    && useradd -r -g opsflow -d /app -s /sbin/nologin opsflow \
+    && mkdir -p /data/mysql /data/app /data/logs /app/config \
+    && ln -s /data/app /app/data \
+    && ln -s /data/logs /app/logs \
+    && chown -R opsflow:opsflow /app /data/app /data/logs \
+    && chown mysql:mysql /data/mysql \
+    && java -version
+
+COPY --from=build /build/opsflow-app/target/opsflow.jar /app/opsflow.jar
+COPY --chown=opsflow:opsflow config/ /app/config/
+COPY scripts/docker/allinone/mysql.cnf /etc/mysql/conf.d/opsflow.cnf
+COPY scripts/docker/allinone/demo-data.sql /app/demo-data.sql
+COPY scripts/docker/allinone/entrypoint.sh /app/allinone-entrypoint.sh
+RUN chmod 0644 /etc/mysql/conf.d/opsflow.cnf /app/demo-data.sql \
+    && chmod 0755 /app/allinone-entrypoint.sh
+
+VOLUME /data
+EXPOSE 8080
+
+# 首次启动要初始化数据库、建表并导入演示数据，start-period 留得比较宽
+HEALTHCHECK --interval=15s --timeout=5s --start-period=120s --retries=8 \
+  CMD ["curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/api/health"]
+
+# 以 root 进入 entrypoint：mysqld 降权为 mysql 用户，应用降权为 opsflow 用户
+ENTRYPOINT ["/app/allinone-entrypoint.sh"]
