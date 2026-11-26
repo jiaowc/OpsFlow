@@ -1,9 +1,9 @@
 # 数据库脚本
 
-表结构和产品默认数据由 **Flyway** 管理，版本文件在 `opsflow-core/src/main/resources/db/migration/`，随 jar 发布，应用启动时自动执行。这个目录只放辅助脚本。
+表结构和产品默认数据由 **Flyway** 管理，版本文件在 `core/src/main/resources/db/migration/`，随 jar 发布，应用启动时自动执行。这个目录只放辅助脚本。
 
 ```
-opsflow-core/src/main/resources/db/migration/
+core/src/main/resources/db/migration/
 ├── V1__baseline_schema.sql   # 基线：全部表结构
 ├── V2__default_data.sql      # 基线：角色权限、初始管理员、步骤定义、默认模版、通用流水线
 ├── V3__unify_table_collation.sql  # 统一 4 张表的排序规则
@@ -40,7 +40,7 @@ bash scripts/database/migrate.sh           # 执行待执行的版本
 bash scripts/database/migrate.sh --profile=prod
 ```
 
-`migrate.sh` 用的是 jar 里的同一批版本文件，需要先有 `opsflow-app/target/opsflow.jar`（或用 `OPSFLOW_JAR` 指定）。
+`migrate.sh` 用的是 jar 里的同一批版本文件，需要先有 `app/target/opsflow.jar`（或用 `OPSFLOW_JAR` 指定）。
 
 ### 三种库的处理
 
@@ -63,7 +63,7 @@ bash scripts/database/migrate.sh             # 重新执行，或直接重启应
 
 ## 新增一个数据库变更
 
-1. 在 `opsflow-core/src/main/resources/db/migration/` 新建 `V<下一个序号>__<英文描述>.sql`，例如 `V4__add_service_owner_index.sql`。
+1. 在 `core/src/main/resources/db/migration/` 新建 `V<下一个序号>__<英文描述>.sql`，例如 `V4__add_service_owner_index.sql`。
 2. 只写这一次变更需要的语句，不需要写成可重复执行的形式（Flyway 保证只执行一次）。
 3. **已经发布的版本文件不要再改**：Flyway 会校验内容，改过的文件会让已执行过它的环境启动失败。要修正就再加一个新版本。
 4. 本地启动应用验证；生产按上面的方式执行。

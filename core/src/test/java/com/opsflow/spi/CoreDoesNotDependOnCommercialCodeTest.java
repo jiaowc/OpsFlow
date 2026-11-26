@@ -20,7 +20,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Open Core 边界：社区版（opsflow-core、opsflow-app）的源码里不能有商业代码。
+ * Open Core 边界：社区版（core、app 两个模块）的源码里不能有商业代码。
  * <p>商业功能都在 opsflow-ee，核心只通过 {@code com.opsflow.spi} 的扩展点接入。这里扫描两个模块 src/main 下的全部文本文件
  * （java、html、js、css、json、yml、sql 等，含注释），不允许出现 {@link #FORBIDDEN} 里的写法；
  * 唯一例外是 BuildJob 的 {@code deployTaskId} 字段及其 getter / setter（{@code DeployTaskId}）。</p>
@@ -28,9 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class CoreDoesNotDependOnCommercialCodeTest {
 
-    /** 社区版的两个模块（测试在 opsflow-core 目录下运行） */
+    /** 社区版的两个模块（测试在 core 目录下运行） */
     private static final List<Path> COMMUNITY_SOURCES = Arrays.asList(
-            Paths.get("src/main"), Paths.get("../opsflow-app/src/main"));
+            Paths.get("src/main"), Paths.get("../app/src/main"));
 
     private static final Set<String> TEXT_EXTENSIONS = new LinkedHashSet<>(Arrays.asList(
             "java", "html", "js", "css", "json", "yml", "yaml", "sql", "properties", "xml", "md", "txt", "factories"));
@@ -82,8 +82,8 @@ class CoreDoesNotDependOnCommercialCodeTest {
     @Test
     void scanCoversBothModules() throws IOException {
         List<Path> files = communityTextFiles();
-        assertTrue(files.stream().anyMatch(p -> p.toString().replace('\\', '/').contains("opsflow-app/src/main")),
-                "没有扫到 opsflow-app 的源码");
+        assertTrue(files.stream().anyMatch(p -> p.toString().replace('\\', '/').contains("app/src/main")),
+                "没有扫到 app/src/main 的源码");
         assertTrue(files.stream().anyMatch(p -> p.toString().endsWith("dashboard.html")), "没有扫到静态页面");
         assertTrue(files.stream().anyMatch(p -> p.toString().endsWith(".sql")), "没有扫到迁移脚本");
     }

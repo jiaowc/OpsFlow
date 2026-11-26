@@ -23,7 +23,7 @@
  *      注释说明原因，内容以 required-mark-dynamic 开头：模板里用 HTML 注释，模板外用 JS 注释
  *
  * 只提示（不影响退出码）：
- *   5. 带 required 的输入控件所在的 .form-item 没有星号（登录页、两步验证这类刻意不标星号的也会列出来）
+ *   5. 带 required 的输入控件所在的 .form-item 没有星号（刻意不标星号的也会列出来）
  */
 'use strict';
 
@@ -32,7 +32,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const staticDir = [
-    'opsflow-core/src/main/resources/static',
+    'core/src/main/resources/static',
     'src/main/resources/static'
 ].map(p => path.join(repoRoot, p)).find(p => fs.existsSync(path.join(p, 'js/utils.js')));
 if (!staticDir) {

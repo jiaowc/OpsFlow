@@ -8,7 +8,7 @@
     <parent>
         <groupId>com.opsflow</groupId>
         <artifactId>opsflow</artifactId>
-        <version>1.1.0</version>
+        <version>1.1.1</version>
     </parent>
 
     <artifactId>opsflow-core</artifactId>

@@ -4,7 +4,7 @@
 -- 包含：1 个演示项目、1 个占位集群、dev/test/prod 三个环境、2 个占位组件、3 个示例服务、3 个流水线视图。
 -- 不含：任何凭据（钥匙串、kubeconfig、Token）、构建/部署节点、审批流、运行历史。
 --       集群和 Harbor 的地址是 example.com 占位符，要真正跑流水线需在界面上换成自己的环境并补上凭据和节点。
--- 表结构、角色权限、admin、步骤定义、模版、通用流水线由 Flyway 默认数据提供（opsflow-core/src/main/resources/db/migration）。
+-- 表结构、角色权限、admin、步骤定义、模版、通用流水线由 Flyway 默认数据提供（core/src/main/resources/db/migration）。
 --
 -- 全部使用 INSERT IGNORE，重复执行不会报错，也不会覆盖已有记录。
 

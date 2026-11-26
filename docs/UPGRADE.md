@@ -1,6 +1,20 @@
 # 升级说明
 
-升级步骤见 [deployment/DOCKER.md「升级」](deployment/DOCKER.md#升级)：备份数据库和 `./data` → 换新版本 → 启动时自动迁移。本文只列**行为和接口的变化**。
+升级步骤见 [部署文档「升级」](deployment/DEPLOYMENT.md#升级)：备份数据库和 `./data` → 换新版本 → 启动时自动迁移。本文只列**行为和接口的变化**。
+
+## 1.1.1（2026-11-26）
+
+没有数据库迁移，升级只换镜像。
+
+- **许可证改为 GNU AGPLv3**（AGPL-3.0-only，原为 MIT）。只对 1.1.1 及以后的版本生效，1.1.0 及更早的版本仍按 MIT。自己或公司内部部署、不修改源码时没有额外义务；修改后分发，或者把修改后的版本通过网络提供给别人使用，要向这些用户提供修改后的完整源码。详见 README「许可证」。
+- 登录页的用户名、密码补上了必填星号（只是标记，校验没变）。
+- 「新建 Job」去掉了「构建完成后自动部署」勾选框（它此前不生效）。是否部署由所选流水线模版里有没有部署步骤决定。
+- 接口 `/api/build/start` 仍接受 `autoDeploy` 字段，但会忽略，已有的调用方不用改。
+- 源码目录去掉了 `opsflow-` 前缀：`opsflow-core/` → `core/`，`opsflow-app/` → `app/`。只影响从源码构建的用户：jar 产物从 `opsflow-app/target/opsflow.jar` 变为 `app/target/opsflow.jar`（`scripts/deploy` 和 `scripts/database/migrate.sh` 已同步）；Maven 的 groupId / artifactId、jar 名、镜像名都不变。本地旧的 `opsflow-*/target` 目录可以直接删掉。
+- 使用文档两步验证一节补了「脚本调用接口」：开了两步验证后用账号密码调接口的脚本怎么登录，含完整的 curl 示例（登录 → 用 `oathtool` 算动态码提交 `/api/auth/two-factor/verify` → 用同一个 Cookie 调接口）。要点：
+  - 策略为「用户自愿开启」时，给脚本单独建一个不绑定两步验证的账号即可，脚本不用改。
+  - 策略为「全员强制」时，脚本账号也必须绑定，脚本要保存验证器密钥并自己算动态码；密钥和密码放在一起，这个账号的两步验证就只剩一道防线，要给它最小权限并限制密钥的读取权限。
+  - 接口本身没有变化。以后计划提供 API Token，届时脚本可以不再用密码和动态码。
 
 ## 1.1.0（2026-11-26）
 
@@ -189,7 +203,7 @@
 
 已有接口的变化：
 
-- `POST /api/auth/login`：用户需要输动态码时不再直接登录成功，而是返回 `{"success": false, "step": "two_factor", ...}`，要再调 `/api/auth/two-factor/verify`。**用账号密码调接口的脚本**，在开启两步验证且该账号已绑定后会登录不了，策略为「用户自愿开启」时，可以给脚本单独建一个不绑定两步验证的账号；策略为「全员强制」时，脚本账号也必须走第二步。
+- `POST /api/auth/login`：用户需要输动态码时不再直接登录成功，而是返回 `{"success": false, "step": "two_factor", ...}`，要再调 `/api/auth/two-factor/verify`。**用账号密码调接口的脚本**，在开启两步验证且该账号已绑定后会登录不了，策略为「用户自愿开启」时，可以给脚本单独建一个不绑定两步验证的账号；策略为「全员强制」时，脚本账号也必须走第二步。脚本怎么走第二步见[使用文档「脚本调用接口」](USAGE.md#82-两步验证系统设置--安全设置)。
 - `GET /api/auth/user` 多了 `twoFactor` 字段；用户列表和详情多了 `twoFactorEnabled`。
 - 全员强制下还没绑定的用户，访问 `/api/auth/` 以外的接口返回 403，`code` 为 `two_factor.must_enroll`。
 - `/api/system/config` 保存 `security.twoFactorPolicy` 时只接受 `off` / `optional` / `required`。
