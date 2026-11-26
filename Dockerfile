@@ -28,7 +28,7 @@ LABEL maintainer="OpsFlow" \
       org.opencontainers.image.title="opsflow" \
       org.opencontainers.image.description="OpsFlow 社区版：DevOps 构建发布平台" \
       org.opencontainers.image.version="${OPSFLOW_VERSION}" \
-      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.source="https://github.com/jiaowc/OpsFlow"
 
 WORKDIR /app

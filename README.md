@@ -2,7 +2,7 @@
 
 OpsFlow 是一个开源的 CI/CD 平台：接入 Git 仓库、镜像仓库和 Kubernetes 集群后，通过流水线完成拉代码、编译、构建镜像、推送和部署，并提供阶段日志、回滚、权限管理和 Webhook 自动构建。
 
-本仓库是 **社区版（Community）**，以 MIT 许可证开源。
+本仓库是 **社区版（Community）**，以 GNU AGPLv3 许可证开源（1.1.1 起；1.1.0 及更早的版本是 MIT）。
 
 📖 **使用文档**：[docs/USAGE.md](docs/USAGE.md)（初始化配置顺序、流水线 Job、权限、Webhook、常见问题）
 
@@ -171,4 +171,12 @@ JDK 版本、本地辅助环境（构建节点、Harbor、kind 集群）、测�
 
 ## 许可证
 
-社区版以 [MIT License](LICENSE) 开源。企业版功能不在本仓库，需单独订阅，见 <https://www.opslink.cn>。
+Copyright (C) 2026 jiaowc
+
+社区版自 1.1.1 起以 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0-only）开源；1.1.0 及更早的版本按当时的 MIT 许可发布，不受影响。
+
+- 自己或公司内部部署使用，不修改源码：不需要做任何额外的事。
+- 修改了源码并分发，或者把修改后的版本通过网络提供给别人使用（例如托管服务）：必须按 AGPLv3 向这些用户提供修改后的完整源码。
+- 不想受 AGPLv3 约束（例如做成闭源产品或闭源托管服务）：可以联系获取商业授权。
+
+企业版功能不在本仓库，需单独订阅，见 <https://www.opslink.cn>。
