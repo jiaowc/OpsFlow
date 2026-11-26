@@ -6,8 +6,10 @@
 .env.*
 !.env.example
 
+
 # 构建产物与运行时数据（镜像内重新编译）
 target/
+**/target/
 logs/
 data/
 uploads/

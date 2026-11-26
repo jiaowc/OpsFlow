@@ -9,6 +9,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV JAVA_HOME=/opt/java/openjdk
 ENV PATH="${JAVA_HOME}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+# 管道（echo | chpasswd）里任一命令失败都让构建失败
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# DL3008：本地调试镜像，apt 包不固定版本（基础镜像更新后固定的版本会下架，反而构建不了）
+# SC2016：java.sh 里要写入字面量 $JAVA_HOME / $PATH，在登录时展开，所以故意用单引号
+# hadolint ignore=DL3008,SC2016
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         openssh-server \

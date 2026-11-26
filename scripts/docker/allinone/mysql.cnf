@@ -1,0 +1,18 @@
+# OpsFlow 体验镜像内置 MySQL 的配置（小内存、仅本容器内访问）
+[mysqld]
+datadir = /data/mysql
+# 只给同容器内的应用用，不对外监听
+bind-address = 127.0.0.1
+mysqlx = OFF
+
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# root 只允许容器内的系统 root 通过 socket 登录（无口令可用）
+plugin-load-add = auth_socket.so
+
+# 体验用途：压低内存占用，不写 binlog
+innodb_buffer_pool_size = 128M
+performance_schema = OFF
+skip-log-bin
+max_connections = 100

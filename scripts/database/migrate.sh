@@ -10,7 +10,7 @@
 #   bash scripts/database/migrate.sh --profile=prod    # 指定环境，连接解析规则见 db_env.sh
 #   bash scripts/database/migrate.sh --repair          # 某个版本执行失败后：处理完原因，清除失败记录以便重试
 #
-# 版本文件打在 jar 里（src/main/resources/db/migration），所以要先有 target/opsflow.jar，
+# 版本文件打在 jar 里（opsflow-core/src/main/resources/db/migration），所以要先有 opsflow-app/target/opsflow.jar，
 # 或用 OPSFLOW_JAR 指定 jar 路径。连接信息与应用一致；密码通过环境变量传给 Java，不出现在命令行。
 set -euo pipefail
 
@@ -35,7 +35,7 @@ for arg in "$@"; do
   esac
 done
 
-JAR="${OPSFLOW_JAR:-${PROJECT_DIR}/target/opsflow.jar}"
+JAR="${OPSFLOW_JAR:-${PROJECT_DIR}/opsflow-app/target/opsflow.jar}"
 if [ ! -f "$JAR" ]; then
   echo "找不到 $JAR，请先打包（mvn clean package -DskipTests）或用 OPSFLOW_JAR 指定 jar 路径" >&2
   exit 1

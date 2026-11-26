@@ -29,6 +29,11 @@ mybatis-plus:
 
 server:
   port: 8080
+  # 页面、脚本、样式和 JSON 接口响应按 gzip 压缩（前面有反向代理已压缩时不冲突）
+  compression:
+    enabled: true
+    mime-types: text/html,text/css,application/javascript,text/javascript,application/json
+    min-response-size: 1024
   servlet:
     session:
       cookie:
@@ -36,13 +41,8 @@ server:
         same-site: lax
         http-only: true
 
-# 飞书 / LDAP 等集成配置在「系统设置」页面维护（system_config 表），不在配置文件中。
+# LDAP 等集成配置在「系统设置」页面维护（system_config 表），不在配置文件中。
 opsflow:
-  # License 强校验：false=关闭（功能全开）；后期改为 true 重新启用
-  license:
-    enforcement-enabled: false
-  branding:
-    dir: ./data/branding
   pipeline:
     log-dir: ./data/pipeline-logs
     # 同时执行的流水线任务上限，超出的任务排队（界面显示「排队中」）
