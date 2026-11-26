@@ -23,7 +23,7 @@ const vm = require('vm');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const staticDir = [
-    'opsflow-core/src/main/resources/static',
+    'core/src/main/resources/static',
     'src/main/resources/static'
 ].map(p => path.join(repoRoot, p)).find(p => fs.existsSync(path.join(p, 'js/routes.js')));
 if (!staticDir) {

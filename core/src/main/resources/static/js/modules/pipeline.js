@@ -1828,12 +1828,6 @@ async function openPipelineTaskModal(jobId) {
                 </div>
                 <small id="pipelineTaskRefHint" style="color:var(--text-3);display:block;margin-top:4px;">${t('pipeline.ref.hint', { type: escapeHtml(getPipelineGitTypeLabel(defaultGitType)) })}</small>
             </div>
-            ${isEdit ? '' : `
-            <div class="form-item">
-                <label style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" name="autoDeploy" checked> ${t('pipeline.form.autoDeploy')}
-                </label>
-            </div>`}
             <div class="form-item">
                 <label style="display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" name="webhookEnabled" data-original="${isEdit && editingJob?.webhookEnabled ? "1" : "0"}" ${isEdit && editingJob?.webhookEnabled ? "checked" : ""}> ${t('pipeline.webhook.label')}
@@ -2402,8 +2396,7 @@ function buildPipelineTaskPayload(formData) {
         envId,
         pipelineTemplateId,
         branch,
-        gitType,
-        autoDeploy: formData.get('autoDeploy') === 'on'
+        gitType
     };
 }
 

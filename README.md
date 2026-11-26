@@ -60,14 +60,14 @@ OpsFlow 采用 Open Core 模式：社区版提供完整可用的 CI/CD 核心，
 ```
 OpsFlow/
 ├── pom.xml          # 父 POM（多模块）
-├── opsflow-core/    # 全部业务代码（api/dao/service/web/integration）、mapper、静态页面、数据库迁移、测试；对外提供扩展点（com.opsflow.spi）
-├── opsflow-app/     # 启动类 + 打包配置，产物 opsflow-app/target/opsflow.jar
+├── core/            # 全部业务代码（api/dao/service/web/integration）、mapper、静态页面、数据库迁移、测试；对外提供扩展点（com.opsflow.spi）
+├── app/             # 启动类 + 打包配置，产物 app/target/opsflow.jar
 ├── config/          # 全部应用配置（application*.yml）
 ├── scripts/         # 部署、数据库、本地环境脚本
 └── docs/            # 文档
 ```
 
-详细结构说明见 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)。
+模块划分、扩展点、流水线执行模型等见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，本地开发见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
 ## 快速开始
 
@@ -76,15 +76,15 @@ OpsFlow/
 只想先看看界面和功能时用这个。一个容器里同时跑 MySQL 和 OpsFlow，首次启动自动建表、写入默认数据并导入一份演示数据（示例项目、dev/test/prod 环境、示例服务、流水线视图）：
 
 ```bash
-docker run -d --name opsflow-allinone -p 8080:8080 -v opsflow-allinone-data:/data ghcr.io/jiaowc/opsflow-allinone:1.1.0
+docker run -d --name opsflow-allinone -p 8080:8080 -v opsflow-allinone-data:/data ghcr.io/jiaowc/opsflow-allinone:1.1.1
 # 首次启动约 1 分钟，打开 http://localhost:8080
 ```
 
-镜像支持 `linux/amd64` 和 `linux/arm64`。拉取不了 ghcr.io 时可以从源码自己构建：`docker build -f Dockerfile.allinone -t ghcr.io/jiaowc/opsflow-allinone:1.1.0 .`
+镜像支持 `linux/amd64` 和 `linux/arm64`。拉取不了 ghcr.io 时可以从源码自己构建：`docker build -f Dockerfile.allinone -t ghcr.io/jiaowc/opsflow-allinone:1.1.1 .`
 
 初始账号 **admin / admin**，这是公开的演示口令，**首次登录后请修改**（系统会强制要求改密）。
 
-仅用于体验 / 演示，正式使用请用下面的方式一。持久化、关闭演示数据等说明见 [docs/deployment/DOCKER.md](docs/deployment/DOCKER.md#体验镜像all-in-one)。
+仅用于体验 / 演示，正式使用请用下面的方式一。持久化、关闭演示数据等说明见 [部署文档「体验镜像」](docs/deployment/DEPLOYMENT.md#体验镜像all-in-one)。
 
 ### 方式一：Docker Compose（推荐）
 
@@ -105,83 +105,22 @@ cp .env.example .env
 ./scripts/deploy/compose-up.sh
 ```
 
-详见 [docs/deployment/DOCKER.md](docs/deployment/DOCKER.md)。
+配置、使用发布的镜像、外部数据库、上线检查清单、备份与升级见 [docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md)。
 
 ### 方式二：源码构建运行
 
-#### 1. 环境要求
-
-- JDK 17（构建限定 JDK 17~21，见「编译打包」）
-- Maven 3.6+
-- MySQL 8.0
-- 构建节点（通过 SSH 接入，用于执行流水线）
-- Kubernetes 集群（部署目标）
-
-#### 2. 数据库初始化
-
-只需要建一个空库，表结构和默认数据（角色权限、初始管理员、步骤定义、默认模版、通用流水线）由应用**启动时自动建立**（Flyway）：
+需要 JDK 17、Maven 3.6+ 和 MySQL 8.0。建一个空库，表结构和默认数据由应用启动时自动建立：
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS opsflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+cp config/application-local.yml.example config/application-local.yml   # 填写 DB_PASSWORD
+mvn clean package -DskipTests
+java -jar app/target/opsflow.jar                                # 在项目根目录执行
 ```
 
-之后每次升级，新增的表结构和默认数据变更也在启动时自动执行，只执行一次。不希望启动时改库的环境（如生产）：
+JDK 版本、本地辅助环境（构建节点、Harbor、kind 集群）、测试和前端检查见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)；生产服务器用 jar 部署（systemd、反向代理）见 [部署文档「外部数据库」](docs/deployment/DEPLOYMENT.md#外部数据库)。
 
-```bash
-export OPSFLOW_DB_MIGRATE=false            # 启动时只检查，有未执行的迁移就拒绝启动
-bash scripts/database/migrate.sh --info    # 查看待执行的版本
-bash scripts/database/migrate.sh           # 手动执行
-```
-
-本地联调想要一套现成的集群 / 环境 / 节点 / 服务示例（可选）：
-
-```bash
-mysql -u root -p opsflow < scripts/database/sample/sample-data.sql
-```
-
-详见 [scripts/database/README.md](scripts/database/README.md)。
-
-#### 3. 配置文件
-
-```bash
-cp config/application-local.yml.example config/application-local.yml
-vim config/application-local.yml   # 填写 DB_PASSWORD（本机私有，不入库）
-```
-
-所有配置都在 `config/`（需在项目根目录启动），各环境的 `application-<env>.yml` 只写与公共配置的差异。详见 [config/README.md](config/README.md)。
-
-#### 4. 编译打包
-
-构建必须使用 **JDK 17**（父 `pom.xml` 中 maven-enforcer-plugin 限定 `[17,22)`，JDK 22 及以上 Lombok 会失效）。
-`mvn -v` 显示的不是 17 时（如系统默认是 JDK 8，或 Homebrew 装的新版 JDK），先指定 `JAVA_HOME`：
-
-```bash
-# macOS：brew install openjdk@17 后用下面的路径；也可用 /usr/libexec/java_home -v 17 查（需已注册到系统）
-# Linux 填 JDK 17 安装目录，如 /usr/lib/jvm/java-17-openjdk
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-mvn -v                          # 确认 Java version: 17.x
-mvn clean package -DskipTests   # 所有环境共用同一个 jar：opsflow-app/target/opsflow.jar
-```
-
-#### 5. 运行
-
-使用脚本：
-
-```bash
-./scripts/deploy/start.sh      # 启动
-./scripts/deploy/stop.sh       # 停止
-./scripts/deploy/restart.sh    # 重启（会重新编译）
-
-# 指定环境（示例：dev）
-SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh
-```
-
-或手动启动（在项目根目录执行）：
-
-```bash
-java -jar opsflow-app/target/opsflow.jar
-SPRING_PROFILES_ACTIVE=dev java -jar opsflow-app/target/opsflow.jar
-```
+要真正跑流水线，还需要通过 SSH 接入的构建节点和作为部署目标的 Kubernetes 集群，配置顺序见 [使用文档](docs/USAGE.md)。
 
 ## 配置文件管理
 
@@ -215,8 +154,7 @@ SPRING_PROFILES_ACTIVE=dev java -jar opsflow-app/target/opsflow.jar
   "envId": 1,
   "pipelineTemplateId": 3,
   "branch": "develop",
-  "gitType": "branch",
-  "autoDeploy": true
+  "gitType": "branch"
 }
 ```
 
@@ -225,8 +163,9 @@ SPRING_PROFILES_ACTIVE=dev java -jar opsflow-app/target/opsflow.jar
 - [使用文档](docs/USAGE.md)
 - [升级说明](docs/UPGRADE.md)
 - [社区版与企业版的边界](docs/licensing/OPEN_CORE_BOUNDARY.md)
-- [Docker 部署](docs/deployment/DOCKER.md)
-- [传统部署](docs/deployment/DEPLOYMENT.md)
+- [部署文档](docs/deployment/DEPLOYMENT.md)（体验镜像、Docker Compose、外部数据库、上线检查清单）
+- [技术架构](docs/ARCHITECTURE.md)
+- [开发指南](docs/DEVELOPMENT.md)
 - [配置说明](config/README.md)
 - [数据库脚本说明](scripts/database/README.md)
 

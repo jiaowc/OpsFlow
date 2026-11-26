@@ -16,7 +16,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.allinone
-    image: ${OPSFLOW_ALLINONE_IMAGE:-ghcr.io/jiaowc/opsflow-allinone:1.1.0}
+    image: ${OPSFLOW_ALLINONE_IMAGE:-ghcr.io/jiaowc/opsflow-allinone:1.1.1}
     container_name: opsflow-allinone
     restart: unless-stopped
     ports:

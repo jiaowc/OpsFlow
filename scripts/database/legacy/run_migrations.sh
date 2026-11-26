@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 【已归档】引入 Flyway 之前的增量迁移，只用于把很早的旧库追平到 Flyway 基线，之后不再新增脚本。
 # 什么时候需要：应用启动或 migrate.sh 报「这个数据库的结构落后于迁移基线」时，执行一次本脚本，然后重新启动。
-# 新的表结构/默认数据变更请加到 opsflow-core/src/main/resources/db/migration/（V3 起）。
+# 新的表结构/默认数据变更请加到 core/src/main/resources/db/migration/（V3 起）。
 #
 # 增量数据库迁移（可重复执行，已存在的变更会跳过）
 # 使用场景：拉取新代码后有数据库变更时手动执行，不必每次重启都跑

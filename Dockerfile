@@ -1,6 +1,6 @@
 # OpsFlow 社区版镜像：多阶段构建，源码进镜像内编译，无需本机先 mvn package
 #   docker compose up -d --build
-#   或：docker build -t opsflow:1.1.0 .
+#   或：docker build -t opsflow:1.1.1 .
 #   多架构：docker buildx build --platform linux/amd64,linux/arm64 -t <镜像名>:<版本> .
 
 # ---------- build ----------
@@ -9,19 +9,19 @@ FROM --platform=$BUILDPLATFORM maven:3.9.9-eclipse-temurin-17 AS build
 WORKDIR /build
 
 COPY pom.xml .
-COPY opsflow-core/pom.xml opsflow-core/
-COPY opsflow-app/pom.xml opsflow-app/
+COPY core/pom.xml core/
+COPY app/pom.xml app/
 # 先拉依赖，源码变更时尽量复用层缓存
 RUN mvn -B -q -DskipTests dependency:go-offline || true
 
-COPY opsflow-core/src ./opsflow-core/src
-COPY opsflow-app/src ./opsflow-app/src
+COPY core/src ./core/src
+COPY app/src ./app/src
 RUN mvn -B -q -DskipTests package \
-    && test -f opsflow-app/target/opsflow.jar
+    && test -f app/target/opsflow.jar
 
 # ---------- runtime ----------
 FROM eclipse-temurin:17-jre-jammy
-ARG OPSFLOW_VERSION=1.1.0
+ARG OPSFLOW_VERSION=1.1.1
 LABEL maintainer="OpsFlow" \
       app="opsflow" \
       description="DevOps 构建发布平台" \
@@ -43,7 +43,7 @@ RUN apt-get update \
     && useradd -r -g opsflow -d /app -s /sbin/nologin opsflow \
     && chown -R opsflow:opsflow /app
 
-COPY --from=build /build/opsflow-app/target/opsflow.jar /app/opsflow.jar
+COPY --from=build /build/app/target/opsflow.jar /app/opsflow.jar
 COPY --chown=opsflow:opsflow config/ /app/config/
 COPY scripts/docker/entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh

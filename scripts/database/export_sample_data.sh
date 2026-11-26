@@ -2,7 +2,7 @@
 # 从当前库导出「本地演示数据」到 scripts/database/sample/sample-data.sql。
 #
 # 表结构和产品默认数据（角色权限、admin、步骤定义、默认模版、通用流水线）由 Flyway 管理
-# （opsflow-core/src/main/resources/db/migration），不在这里导出。这里只导出环境相关的配置，方便本地联调时
+# （core/src/main/resources/db/migration），不在这里导出。这里只导出环境相关的配置，方便本地联调时
 # 快速得到一套可用的集群 / 环境 / 节点 / 服务：
 #
 #   bash scripts/database/export_sample_data.sh

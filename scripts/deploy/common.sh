@@ -6,14 +6,14 @@
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 JAR_NAME="opsflow.jar"
-JAR_PATH="${PROJECT_DIR}/opsflow-app/target/${JAR_NAME}"
+JAR_PATH="${PROJECT_DIR}/app/target/${JAR_NAME}"
 LOG_FILE="${PROJECT_DIR}/logs/app.log"
 LOCAL_CONFIG_FILE="${PROJECT_DIR}/config/application-local.yml"
 PORT="${OPSFLOW_PORT:-8080}"
 APP_NAME="OpsFlow"
 
 # Docker 相关
-DOCKER_IMAGE="${OPSFLOW_DOCKER_IMAGE:-opsflow:1.1.0}"
+DOCKER_IMAGE="${OPSFLOW_DOCKER_IMAGE:-opsflow:1.1.1}"
 DOCKER_CONTAINER="${OPSFLOW_DOCKER_CONTAINER:-opsflow}"
 DOCKER_NETWORK="${OPSFLOW_DOCKER_NETWORK:-}"
 
@@ -171,7 +171,7 @@ parse_deploy_args() {
                 echo "  --local,  -l   使用本地 java -jar 运行（默认）"
                 echo "环境变量:"
                 echo "  OPSFLOW_DEPLOY_MODE=docker|local"
-                echo "  OPSFLOW_DOCKER_IMAGE=opsflow:1.1.0"
+                echo "  OPSFLOW_DOCKER_IMAGE=opsflow:1.1.1"
                 echo "  OPSFLOW_DOCKER_CONTAINER=opsflow"
                 echo "  OPSFLOW_PORT=8080"
                 exit 0

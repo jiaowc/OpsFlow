@@ -14,15 +14,15 @@
 
     <groupId>com.opsflow</groupId>
     <artifactId>opsflow</artifactId>
-    <version>1.1.0</version>
+    <version>1.1.1</version>
     <packaging>pom</packaging>
     <name>OpsFlow</name>
     <description>DevOps构建发布平台</description>
 
-    <!-- opsflow-core：全部社区版代码、静态资源、Flyway 迁移；opsflow-app：可执行包 opsflow.jar（社区版）。 -->
+    <!-- core（artifactId opsflow-core）：全部社区版代码、静态资源、Flyway 迁移；app（opsflow-app）：可执行包 opsflow.jar（社区版）。 -->
     <modules>
-        <module>opsflow-core</module>
-        <module>opsflow-app</module>
+        <module>core</module>
+        <module>app</module>
     </modules>
 
 
