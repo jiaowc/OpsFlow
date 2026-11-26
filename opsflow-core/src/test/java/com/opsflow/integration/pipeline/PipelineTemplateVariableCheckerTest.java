@@ -256,7 +256,7 @@ class PipelineTemplateVariableCheckerTest {
         String sql = readResource("/db/migration/V2__default_data.sql");
         // 列顺序：id, name, type, description, content, ...
         Matcher rows = Pattern.compile("(?m)^INSERT INTO `pipeline_template` \\([^)]*\\) VALUES \\((\\d+),"
-                + "'((?:[^'\\\\]|\\\\.)*)','(\\w+)','((?:[^'\\\\]|\\\\.)*)','((?:[^'\\\\]|\\\\.)*)'").matcher(sql);
+                + "'([^'\\\\]*+(?:\\\\.[^'\\\\]*+)*+)','(\\w+)','([^'\\\\]*+(?:\\\\.[^'\\\\]*+)*+)','([^'\\\\]*+(?:\\\\.[^'\\\\]*+)*+)'").matcher(sql);
         int count = 0;
         while (rows.find()) {
             count++;
