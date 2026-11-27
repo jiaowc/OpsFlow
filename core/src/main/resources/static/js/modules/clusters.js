@@ -56,7 +56,7 @@ function renderClusterList(clusters) {
     clusterList.innerHTML = clusters.map(cluster => `
         <tr data-cluster-id="${cluster.id}">
             <td style="font-weight:600;color:#111827;">${escapeHtml(cluster.clusterName)}</td>
-            <td>${cluster.server ? escapeHtml(cluster.server) : '<span style="color:#9ca3af;">-</span>'}</td>
+            <td title="${escapeHtml(cluster.server || '')}">${cluster.server ? escapeHtml(cluster.server) : '<span style="color:#9ca3af;">-</span>'}</td>
             <td>${cluster.credentialName
                 ? escapeHtml(cluster.credentialName)
                 : ('<span style="color:#dc2626;">' + t('clusters.unlinked') + '</span>')}</td>
@@ -429,8 +429,8 @@ function renderClusterCheckResult(result) {
                         <th>${t('clusters.test.col.item')}</th>
                         <th>${t('common.type')}</th>
                         <th>${t('clusters.test.col.result')}</th>
-                        <th>${t('clusters.test.col.output')}</th>
-                        <th>${t('clusters.form.description')}</th>
+                        <th class="col-wrap">${t('clusters.test.col.output')}</th>
+                        <th class="col-wrap">${t('clusters.form.description')}</th>
                     </tr>
                 </thead>
                 <tbody>${rows || ('<tr><td colspan="5" style="text-align:center;color:var(--text-4);">' + t('clusters.test.noItems') + '</td></tr>')}</tbody>

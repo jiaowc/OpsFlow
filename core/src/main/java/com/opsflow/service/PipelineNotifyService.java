@@ -19,5 +19,24 @@ public interface PipelineNotifyService {
      *
      * @return 给步骤日志用的结果说明
      */
-    String sendStepMessage(Long buildJobId, String message);
+    default String sendStepMessage(Long buildJobId, String message) {
+        return sendStepMessage(buildJobId, message, java.util.Collections.emptyList());
+    }
+
+    /**
+     * 同上，只发到步骤里指定的通道；{@code channelIds} 为空时按通道规则匹配。
+     *
+     * @return 给步骤日志用的结果说明
+     */
+    String sendStepMessage(Long buildJobId, String message, java.util.List<Long> channelIds);
+
+    /**
+     * 替换通知步骤消息里的变量：${service} ${env} ${branch} ${image} ${jobNumber} ${trigger} ${project} ${pipeline}。
+     * 一次性文本替换，替换进去的值不再解析；未知变量原样保留，空值换成空串。
+     *
+     * @param runtime 运行时才有的值（目前只有 image：镜像还没回写到 Job 时取当前步骤参数），可为 null
+     */
+    default String renderStepMessage(Long buildJobId, String template, java.util.Map<String, String> runtime) {
+        return template;
+    }
 }

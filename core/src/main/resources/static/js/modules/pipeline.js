@@ -6,6 +6,8 @@ let currentPipelineJobId = null;
 let pipelinePollTimer = null;
 let pipelinePollTick = null;
 let pipelineStageViewPage = 1;
+/** 深链（站内信、通知卡片、工作台）指定要标「当前」的那次构建；从列表正常进入时为 null */
+let pipelineDetailFocusJobId = null;
 /** 用于丢弃过期的列表/阶段视图渲染，避免轮询把详情页盖回列表 */
 let pipelineListRenderToken = 0;
 let pipelineStageRenderToken = 0;
@@ -975,7 +977,36 @@ function setPipelineSectionMode(mode) {
     if (listToolbar) listToolbar.style.display = isDetail ? 'none' : 'flex';
 }
 
+/**
+ * 深链 /pipeline?job=<jobId>（通知卡片「查看详情」、站内信）：取出 job 参数后从地址栏去掉，
+ * 刷新或之后切页面不会再次打开。站内信在同一页面里跳转时通过 window.opsflowPendingPipelineJobId 传入。
+ */
+function takePipelineDeepLinkJobId() {
+    let jobId = parseInt(window.opsflowPendingPipelineJobId, 10);
+    window.opsflowPendingPipelineJobId = null;
+    try {
+        const url = new URL(window.location.href);
+        const fromUrl = parseInt(url.searchParams.get('job'), 10);
+        if (url.searchParams.has('job')) {
+            url.searchParams.delete('job');
+            history.replaceState(history.state, '', url.pathname + (url.search || '') + url.hash);
+        }
+        if (!(jobId > 0) && fromUrl > 0) {
+            jobId = fromUrl;
+        }
+    } catch (e) {
+        /* 地址解析失败时忽略深链 */
+    }
+    return jobId > 0 ? jobId : null;
+}
+
 async function loadPipelineJobsView() {
+    const deepLinkJobId = takePipelineDeepLinkJobId();
+    if (deepLinkJobId) {
+        await loadPipelineViews(true);
+        await showPipelineDetail(deepLinkJobId, { focusBuild: true });
+        return;
+    }
     currentPipelineJobId = null;
     pipelineListRenderToken += 1;
     stopPipelinePolling();
@@ -1310,13 +1341,21 @@ function stopPipelineListPolling() {
     pipelineListForcePollingStartAt = 0;
 }
 
-async function showPipelineDetail(jobId) {
-    const isNewTask = currentPipelineJobId !== jobId;
+/**
+ * 打开流水线详情。jobId 是任务里任意一次构建的 ID。
+ * options.focusBuild 为 true 时（深链）把 jobId 这次构建标为「当前」并翻到它所在的页；
+ * 不传时按原来的规则高亮运行中或最新的构建。
+ */
+async function showPipelineDetail(jobId, options) {
+    const focusBuild = !!(options && options.focusBuild);
+    const isNewTask = currentPipelineJobId !== jobId || focusBuild;
     currentPipelineJobId = jobId;
+    pipelineDetailFocusJobId = focusBuild ? jobId : null;
     pipelineListRenderToken += 1;
     stopPipelineListPolling();
     if (isNewTask) {
-        pipelineStageViewPage = 1;
+        // 0 表示让后端翻到深链那次构建所在的页
+        pipelineStageViewPage = focusBuild ? 0 : 1;
     }
     const container = document.getElementById('pipelineJobsView');
     if (!container) return;
@@ -1336,8 +1375,9 @@ async function showPipelineDetail(jobId) {
 window.showPipelineDetail = showPipelineDetail;
 window.showPipelineView = showPipelineDetail;
 
-async function fetchPipelineStageView(jobId, page, pageSize) {
-    const response = await fetch(`/api/pipeline-run/${jobId}/stage-view?page=${page}&pageSize=${pageSize}`);
+async function fetchPipelineStageView(jobId, page, pageSize, focusJobId) {
+    const focus = focusJobId ? `&focus=${encodeURIComponent(focusJobId)}` : '';
+    const response = await fetch(`/api/pipeline-run/${jobId}/stage-view?page=${page}&pageSize=${pageSize}${focus}`);
     if (!response.ok) {
         throw new Error(await response.text() || response.statusText);
     }
@@ -1349,18 +1389,20 @@ async function loadPipelineStageView(jobId, page, options) {
     if (!box) return;
 
     const pageSize = getPipelinePageSize();
-    pipelineStageViewPage = page || 1;
+    pipelineStageViewPage = page === 0 && pipelineDetailFocusJobId ? 0 : (page || 1);
     const renderToken = ++pipelineStageRenderToken;
     const fromPoll = !!(options && options.fromPoll);
 
     try {
-        const view = await fetchPipelineStageView(jobId, pipelineStageViewPage, pageSize);
+        const view = await fetchPipelineStageView(jobId, pipelineStageViewPage, pageSize, pipelineDetailFocusJobId);
         if (renderToken !== pipelineStageRenderToken) {
             return null;
         }
         if (String(currentPipelineJobId) !== String(jobId)) {
             return null;
         }
+        // 深链首次加载由后端定位页码，之后翻页、轮询都用这个页码
+        pipelineStageViewPage = view.currentPage || 1;
         // 轮询期间若日志弹窗打开，跳过整页重绘，避免点不到阶段卡片
         if (fromPoll && isPipelineModalOpen()) {
             return view;

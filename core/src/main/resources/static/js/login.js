@@ -98,11 +98,25 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     window.history.replaceState({}, '', url.pathname + (url.search || '') + url.hash);
 })();
 
+/** 登录后回到哪里：next 参数只接受站内相对路径（以单个 / 开头），否则去首页 */
+function loginRedirectTarget() {
+    try {
+        const next = new URLSearchParams(window.location.search).get('next');
+        // 浏览器解析地址时会去掉制表符、换行，「/<Tab>/evil.com」会变成「//evil.com」，所以带空白或控制字符的一律不认
+        if (next && /^\/(?![\/\\])/.test(next) && !/[\s\u0000-\u001f\u007f]/.test(next) && !/^\/index\.html/.test(next)) {
+            return next;
+        }
+    } catch (e) {
+        /* 忽略非法参数 */
+    }
+    return '/statistics';
+}
+
 function finishLogin(data) {
     if (data.token) {
         localStorage.setItem('token', data.token);
     }
-    window.location.href = '/statistics';
+    window.location.href = loginRedirectTarget();
 }
 
 // ---- 登录第二步（两步验证）：在同一个登录框里原位切换，提交到 /api/auth/two-factor/verify

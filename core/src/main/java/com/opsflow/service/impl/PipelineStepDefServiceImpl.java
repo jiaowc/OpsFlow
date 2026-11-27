@@ -91,6 +91,7 @@ public class PipelineStepDefServiceImpl implements PipelineStepDefService {
                 {"dockerfileTemplateId", "Dockerfile 模版"}, {"dockerBuildCommand", "docker build 命令"}});
         REQUIRED_CONTENT.put("push_image", new String[][]{{"dockerPushCommand", "docker push 命令"}});
         REQUIRED_CONTENT.put("render_template", new String[][]{{"deploymentTemplateId", "Deployment 模版"}});
+        REQUIRED_CONTENT.put("notify", new String[][]{{"message", "消息内容"}});
     }
 
     /** 新建和修改都是整体提交，必填项缺了就拒绝；名称、类型、阶段保存 trim 后的值，内容项原样保存 */

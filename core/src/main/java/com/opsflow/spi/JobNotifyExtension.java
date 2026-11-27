@@ -2,6 +2,8 @@ package com.opsflow.spi;
 
 import com.opsflow.integration.notify.NotifyMessage;
 
+import java.util.List;
+
 /**
  * 流水线通知的外部通道。核心负责组装消息和发站内信，外部推送（群机器人等）由实现提供。
  * <p>核心默认实现不推送；{@code notify} 步骤返回"社区版不含外部通知通道"。</p>
@@ -24,4 +26,16 @@ public interface JobNotifyExtension {
      * @return 写进步骤日志的结果说明
      */
     String sendStepMessage(JobNotifyContext context, NotifyMessage message);
+
+    /**
+     * 流水线 {@code notify} 步骤，带步骤里指定的通道 id。
+     * <p>{@code channelIds} 为空表示没指定，按实现自己的规则匹配；默认实现忽略指定的 id，转调
+     * {@link #sendStepMessage(JobNotifyContext, NotifyMessage)}，不支持指定通道的实现无需改动。</p>
+     *
+     * @param channelIds 步骤参数 {@code channelIds} 解析出的 id，不为 null
+     * @return 写进步骤日志的结果说明
+     */
+    default String sendStepMessage(JobNotifyContext context, NotifyMessage message, List<Long> channelIds) {
+        return sendStepMessage(context, message);
+    }
 }

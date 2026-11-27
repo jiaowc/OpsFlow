@@ -261,11 +261,11 @@ async function tfPost(url, body) {
     if (data && data.code === 'two_factor.too_many') {
         // 连续输错 5 次，后端已作废会话
         notifyAfterReload(t('twoFactor.sessionEnded'), 'error');
-        window.location.href = '/index.html';
+        window.location.href = '/index.html' + window.location.search; // 保留 next，重新登录后仍回原页面
         return null;
     }
     if (data && data.code === 'two_factor.not_logged_in') {
-        window.location.href = '/index.html';
+        window.location.href = '/index.html' + window.location.search; // 保留 next，重新登录后仍回原页面
         return null;
     }
     if (!resp.ok && !data.code) {

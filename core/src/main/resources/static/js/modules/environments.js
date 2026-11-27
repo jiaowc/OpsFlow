@@ -47,7 +47,7 @@ function renderEnvList(envs) {
             <td><strong>${escapeHtml(env.name || '-')}</strong></td>
             <td>
                 ${env.k8sCluster ? `<div style="font-weight:600;color:#111827;">${escapeHtml(env.k8sCluster)}</div>` : emptyCell}
-                ${env.clusterServer ? `<div style="margin-top:4px;font-size:12px;color:#9ca3af;">${escapeHtml(env.clusterServer)}</div>` : ''}
+                ${env.clusterServer ? `<div style="margin-top:4px;font-size:12px;color:#9ca3af;" title="${escapeHtml(env.clusterServer)}">${escapeHtml(env.clusterServer)}</div>` : ''}
             </td>
             <td>${env.k8sNamespace ? escapeHtml(env.k8sNamespace) : emptyCell}</td>
             <td style="white-space:nowrap;">${formatEnvType(env.envType, env.name)}</td>

@@ -213,7 +213,7 @@ function jumpOverviewSection(sectionId, viewId, jobId) {
         setTimeout(() => window.selectPipelineView(viewId), 80);
     }
     if (sectionId === 'pipeline' && jobId != null && typeof window.showPipelineDetail === 'function') {
-        setTimeout(() => window.showPipelineDetail(jobId), 120);
+        setTimeout(() => window.showPipelineDetail(jobId, { focusBuild: true }), 120);
     }
 }
 window.jumpOverviewSection = jumpOverviewSection;

@@ -107,6 +107,12 @@ public interface PipelineRunService {
     PipelineViewDTO getStageView(Long anchorJobId, int page, int pageSize);
 
     /**
+     * 阶段视图，并把 focusJobId 那次构建标为「当前」（深链）；页码 &lt;= 0 时翻到它所在的页。
+     * focusJobId 为空或不属于这个任务时与 {@link #getStageView(Long, int, int)} 相同。
+     */
+    PipelineViewDTO getStageView(Long anchorJobId, int page, int pageSize, Long focusJobId);
+
+    /**
      * 对已有任务触发一次新构建（不新增任务行）
      */
     BuildResponse rebuildPipelineJob(Long jobId);
