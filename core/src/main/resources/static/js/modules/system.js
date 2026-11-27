@@ -261,7 +261,7 @@ function renderComponentList(components) {
             <tr>
                 <td>${escapeHtml(component.name)}</td>
                 <td>${escapeHtml(componentTypeText)}</td>
-                <td>${escapeHtml(component.url || '-')}</td>
+                <td title="${escapeHtml(component.url || '')}">${escapeHtml(component.url || '-')}</td>
                 <td>${escapeHtml(authDisplay)}</td>
                 <td data-component-id="${component.id}">
                     <span style="color: #6b7280; font-size: 14px;">${t('system.component.checking')}</span>

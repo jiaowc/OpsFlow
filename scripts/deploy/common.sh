@@ -13,7 +13,7 @@ PORT="${OPSFLOW_PORT:-8080}"
 APP_NAME="OpsFlow"
 
 # Docker 相关
-DOCKER_IMAGE="${OPSFLOW_DOCKER_IMAGE:-opsflow:1.1.2}"
+DOCKER_IMAGE="${OPSFLOW_DOCKER_IMAGE:-opsflow:1.1.3}"
 DOCKER_CONTAINER="${OPSFLOW_DOCKER_CONTAINER:-opsflow}"
 DOCKER_NETWORK="${OPSFLOW_DOCKER_NETWORK:-}"
 
@@ -171,7 +171,7 @@ parse_deploy_args() {
                 echo "  --local,  -l   使用本地 java -jar 运行（默认）"
                 echo "环境变量:"
                 echo "  OPSFLOW_DEPLOY_MODE=docker|local"
-                echo "  OPSFLOW_DOCKER_IMAGE=opsflow:1.1.2"
+                echo "  OPSFLOW_DOCKER_IMAGE=opsflow:1.1.3"
                 echo "  OPSFLOW_DOCKER_CONTAINER=opsflow"
                 echo "  OPSFLOW_PORT=8080"
                 exit 0

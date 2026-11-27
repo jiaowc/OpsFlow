@@ -369,6 +369,16 @@ function renderServiceList(services) {
     applyServiceFilters();
 }
 
+/** 列表里只显示「组/仓库名」（去掉协议、主机和 .git），完整地址放在单元格的 title 里 */
+function shortGitRepo(url) {
+    const raw = String(url || '').trim();
+    if (!raw) return '';
+    // git@host:group/repo.git 或 http(s)://host/group/repo.git
+    const m = raw.match(/^[^@\s]+@[^:]+:(.+)$/) || raw.match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\/(.+)$/i);
+    const path = (m ? m[1] : raw).replace(/\/+$/, '').replace(/\.git$/i, '');
+    return path || raw;
+}
+
 function paintServiceTable(services, fromFilter) {
     const serviceList = document.getElementById('serviceList');
     if (!serviceList) return;
@@ -382,11 +392,11 @@ function paintServiceTable(services, fromFilter) {
     serviceList.innerHTML = services.map(service => `
         <tr data-service-id="${service.id}">
             <td>${escapeHtml(service.projectName || '-')}</td>
-            <td>${escapeHtml(service.name || '-')}</td>
+            <td><span class="cell-ellipsis" title="${escapeHtml(service.name || '')}">${escapeHtml(service.name || '-')}</span></td>
             <td>${escapeHtml(getServiceTypeLabel(service.serviceType))}</td>
             <td>${escapeHtml(service.componentName || '-')}</td>
             <td>${service.servicePort != null ? escapeHtml(service.servicePort) : '-'}</td>
-            <td>${escapeHtml(service.gitRepo || '-')}</td>
+            <td title="${escapeHtml(service.gitRepo || '')}">${escapeHtml(shortGitRepo(service.gitRepo) || '-')}</td>
             <td>${escapeHtml(service.ownerName || '-')}</td>
             <td>${service.status === 1 ? ('<span class="status-tag is-on">' + t('common.enabled') + '</span>') : ('<span class="status-tag is-off">' + t('common.disabled') + '</span>')}</td>
             <td>

@@ -1,6 +1,6 @@
 # OpsFlow 社区版镜像：多阶段构建，源码进镜像内编译，无需本机先 mvn package
 #   docker compose up -d --build
-#   或：docker build -t opsflow:1.1.2 .
+#   或：docker build -t opsflow:1.1.3 .
 #   多架构：docker buildx build --platform linux/amd64,linux/arm64 -t <镜像名>:<版本> .
 
 # ---------- build ----------
@@ -21,7 +21,7 @@ RUN mvn -B -q -DskipTests package \
 
 # ---------- runtime ----------
 FROM eclipse-temurin:17-jre-jammy
-ARG OPSFLOW_VERSION=1.1.2
+ARG OPSFLOW_VERSION=1.1.3
 LABEL maintainer="OpsFlow" \
       app="opsflow" \
       description="DevOps 构建发布平台" \

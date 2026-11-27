@@ -69,8 +69,9 @@ public class PipelineRunController {
     public PipelineViewDTO getStageView(
             @PathVariable Long jobId,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int pageSize) {
-        return pipelineRunService.getStageView(jobId, page, pageSize);
+            @RequestParam(defaultValue = "10") int pageSize,
+            @RequestParam(required = false) Long focus) {
+        return pipelineRunService.getStageView(jobId, page, pageSize, focus);
     }
 
     @RequiresPermission("pipeline:view")

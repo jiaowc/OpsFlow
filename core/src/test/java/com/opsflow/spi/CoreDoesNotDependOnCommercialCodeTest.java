@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Open Core 边界：社区版（core、app 两个模块）的源码里不能有商业代码。
- * <p>商业功能都在 opsflow-ee，核心只通过 {@code com.opsflow.spi} 的扩展点接入。这里扫描两个模块 src/main 下的全部文本文件
+ * <p>商业功能都在企业版，核心只通过 {@code com.opsflow.spi} 的扩展点接入。这里扫描两个模块 src/main 下的全部文本文件
  * （java、html、js、css、json、yml、sql 等，含注释），不允许出现 {@link #FORBIDDEN} 里的写法；
  * 唯一例外是 BuildJob 的 {@code deployTaskId} 字段及其 getter / setter（{@code DeployTaskId}）。</p>
  * <p>匹配区分大小写：表名、配置键、用户来源这类小写写法（如 {@code deploy_task}、{@code feishu}）按拆分计划保留。</p>
@@ -75,7 +75,7 @@ class CoreDoesNotDependOnCommercialCodeTest {
             }
         }
         assertTrue(violations.isEmpty(),
-                "社区版源码里出现了商业代码，请移到 opsflow-ee 并通过 com.opsflow.spi 的扩展点接入：\n"
+                "社区版源码里出现了商业代码，请移到企业版并通过 com.opsflow.spi 的扩展点接入：\n"
                         + String.join("\n", violations));
     }
 
@@ -88,7 +88,7 @@ class CoreDoesNotDependOnCommercialCodeTest {
         assertTrue(files.stream().anyMatch(p -> p.toString().endsWith(".sql")), "没有扫到迁移脚本");
     }
 
-    /** 阶段 4 已搬进 opsflow-ee 的类：核心里不能再出现同名类 */
+    /** 阶段 4 已搬进企业版的类：核心里不能再出现同名类 */
     private static final Set<String> MOVED_TO_EE = new LinkedHashSet<>(Arrays.asList(
             "LicenseServiceImpl", "LicenseController", "LicenseStatusDTO", "LicenseUiExtension",
             "LicenseCrypto", "LicenseDocument", "LicensePayload", "LicenseEditionInfo",
@@ -127,7 +127,7 @@ class CoreDoesNotDependOnCommercialCodeTest {
                 .map(p -> p.getFileName().toString().replace(".java", ""))
                 .filter(MOVED_TO_EE::contains)
                 .collect(Collectors.toList());
-        assertTrue(back.isEmpty(), "这些类已搬到 opsflow-ee，社区版里不应再有: " + back);
+        assertTrue(back.isEmpty(), "这些类已搬到企业版，社区版里不应再有: " + back);
     }
 
     /** 核心静态页面和脚本（相对 src/main/resources/static） */
@@ -270,7 +270,7 @@ class CoreDoesNotDependOnCommercialCodeTest {
         }
         assertTrue(violations.isEmpty(), "核心页面写死了上线任务或审批流程页的内容：\n" + String.join("\n", violations));
         assertTrue(!Files.exists(root.resolve("js/modules/tasks.js")) && !Files.exists(root.resolve("js/modules/approval.js")),
-                "tasks.js / approval.js 已搬到 opsflow-ee 的 static/ext/deploy/");
+                "tasks.js / approval.js 已搬到企业版（static/ext/deploy/）");
     }
 
     /** 飞书登录按钮和用户表单的飞书字段已改为 ee 的 FeishuUiExtension 提供 */

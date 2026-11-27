@@ -78,7 +78,12 @@ async function openInboxMessage(id, linkPath) {
     const panel = document.getElementById('inboxDropdown');
     if (panel) panel.style.display = 'none';
     if (linkPath) {
-        const section = String(linkPath).replace(/^\//, '') || 'statistics';
+        const link = String(linkPath);
+        const queryAt = link.indexOf('?');
+        const section = (queryAt >= 0 ? link.slice(0, queryAt) : link).replace(/^\//, '') || 'statistics';
+        // 流水线结果站内信带 ?job=<id>：切到流水线页后直接打开这次 Job 的详情
+        const job = queryAt >= 0 ? new URLSearchParams(link.slice(queryAt + 1)).get('job') : null;
+        window.opsflowPendingPipelineJobId = section === 'pipeline' && job ? job : null;
         if (typeof showSection === 'function') {
             const menuItem = document.querySelector(`.menu-item[data-section="${section}"]`);
             showSection(section, menuItem);

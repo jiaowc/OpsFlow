@@ -23,7 +23,7 @@ const CI_STEP_TYPES = ['checkout', 'build', 'docker_build', 'push_image', 'clean
 const CD_STEP_TYPES = ['deploy', 'check_deploy', 'render_template', 'rollback', 'notify'];
 
 function stepContentFields() {
-    return {
+    const fields = {
     checkout: [
         { key: 'branch', label: t('stepdef.field.branch'), type: 'text', placeholder: t('stepdef.field.branchPlaceholder') }
     ],
@@ -76,9 +76,53 @@ function stepContentFields() {
         { key: 'timeoutSeconds', label: t('stepdef.field.waitTimeout'), type: 'text', placeholder: '300', defaultValue: '300' }
     ],
     notify: [
-        { key: 'notifyWebhook', label: t('stepdef.field.notifyWebhook'), type: 'text', placeholder: 'https://...' }
+        { key: 'message', label: t('stepdef.field.notifyMessage'), type: 'textarea', rows: 3, required: true,
+          placeholder: t('stepdef.field.notifyMessagePlaceholder'),
+          hint: t('stepdef.field.notifyMessageHint') + '${service} ${env} ${branch} ${image} ${jobNumber} ${trigger} ${project} ${pipeline}' },
+        // 有扩展字段（如外部通知通道）时不显示
+        { type: 'hint', text: t('stepdef.field.notifyNoChannelHint'), hideWhenExtended: true }
     ]
     };
+    Object.keys(stepContentFieldExtensions).forEach(stepType => {
+        const extra = availableStepContentFieldExtensions(stepType);
+        if (extra.length) {
+            fields[stepType] = (fields[stepType] || []).concat(extra);
+        }
+    });
+    return fields;
+}
+
+/**
+ * 步骤内容字段的扩展点：其他模块（如扩展脚本）可给某种步骤类型追加字段，追加在核心字段之后。
+ * 字段格式同 stepContentFields()；另支持 type: 'custom'：
+ *   render(value, ctx) → HTML 字符串（可返回 Promise），HTML 由扩展自己负责转义，
+ *       其中取值的控件不要求 name；ctx = { stepType, contentConfig }
+ *   collect(holder) → 字符串（空串表示不保存该项），holder 是包住 render 结果的元素
+ * 可选 available() → false 时该字段不出现（如对应功能未开通）。
+ * 同一步骤类型下 key 重复时后注册的替换先注册的。
+ */
+const stepContentFieldExtensions = {};
+
+function registerStepContentFieldExtension(stepType, field) {
+    if (!stepType || !field || !field.key) return;
+    const list = (stepContentFieldExtensions[stepType] || []).filter(f => f.key !== field.key);
+    list.push(field);
+    stepContentFieldExtensions[stepType] = list;
+}
+window.registerStepContentFieldExtension = registerStepContentFieldExtension;
+
+function availableStepContentFieldExtensions(stepType) {
+    return (stepContentFieldExtensions[stepType] || []).filter(f => {
+        try {
+            return typeof f.available !== 'function' || f.available();
+        } catch (e) {
+            return false;
+        }
+    });
+}
+
+function hasStepContentFieldExtension(stepType) {
+    return availableStepContentFieldExtensions(stepType).length > 0;
 }
 
 let pipelineStepDefCache = [];
@@ -220,6 +264,9 @@ async function buildStepContentFieldsHtml(stepType, contentConfig) {
         const required = field.required ? ' required' : '';
         const fieldMark = field.required ? REQUIRED_MARK : '';
         if (field.type === 'hint') {
+            if (field.hideWhenExtended && hasStepContentFieldExtension(stepType)) {
+                continue;
+            }
             parts.push(`
                 <div style="margin:8px 0 12px;padding:10px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#4b5563;line-height:1.5;">
                     ${escapeHtml(field.text || '')}
@@ -241,6 +288,19 @@ async function buildStepContentFieldsHtml(stepType, contentConfig) {
                     <small style="color:var(--text-3);">${t('stepdef.template.hint')}</small>
                 </div>
             `);
+            continue;
+        }
+        if (field.type === 'custom') {
+            if (typeof field.render === 'function') {
+                try {
+                    parts.push(`<div class="form-item step-content-custom" data-content-custom="${escapeHtml(field.key)}">`
+                        + (await field.render(contentConfig[field.key] != null ? String(contentConfig[field.key]) : '',
+                            { stepType, contentConfig }) || '')
+                        + '</div>');
+                } catch (e) {
+                    console.error('Render step content extension error:', field.key, e);
+                }
+            }
             continue;
         }
         if (field.type === 'hidden') {
@@ -377,9 +437,16 @@ function collectStepDefFormData(form) {
     const contentConfig = {};
     const fields = stepContentFields()[stepType] || [];
     for (const field of fields) {
-        const input = form.querySelector(`[name="content_${field.key}"]`);
-        if (!input) continue;
-        const val = (input.value || '').trim();
+        let val;
+        if (field.type === 'custom') {
+            const holder = form.querySelector(`[data-content-custom="${CSS.escape(field.key)}"]`);
+            if (!holder || typeof field.collect !== 'function') continue;
+            val = String(field.collect(holder) || '').trim();
+        } else {
+            const input = form.querySelector(`[name="content_${field.key}"]`);
+            if (!input) continue;
+            val = (input.value || '').trim();
+        }
         if (field.required && !val) {
             notify(t('stepdef.msg.fieldRequired', { field: field.label }));
             return null;

@@ -10,24 +10,31 @@ let mockServices = [];
 let pipelineStepCounter = 0;
 let pipelineParamCounter = 0;
 
+// 未登录时跳到登录页，带上当前地址（next），登录后回到原页面（如通知里的 Job 详情深链）
+function redirectToLogin() {
+    const here = window.location.pathname + window.location.search + window.location.hash;
+    const next = here && here !== '/' && !here.startsWith('/index.html') ? '?next=' + encodeURIComponent(here) : '';
+    window.location.href = '/index.html' + next;
+}
+
 // 检查登录状态；返回 true 表示已登录且可以继续初始化页面
 async function checkAuth() {
     try {
         const response = await fetch('/api/auth/user');
         if (!response.ok) {
-            window.location.href = '/index.html';
+            redirectToLogin();
             return false;
         }
         const user = await response.json();
         if (!user.authenticated) {
-            window.location.href = '/index.html';
+            redirectToLogin();
             return false;
         }
         await loadUserInfo(user);
         // 需要强制改密或强制绑定两步验证时其他 API 均被后端 403，不再继续初始化
         return !user.mustChangePassword && !(user.twoFactor && user.twoFactor.mustEnroll);
     } catch (error) {
-        window.location.href = '/index.html';
+        redirectToLogin();
         return false;
     }
 }
@@ -724,11 +731,34 @@ function reloadActiveSection() {
 window.reloadActiveSection = reloadActiveSection;
 
 // 模态框工具函数
-function showModal(title, content, onConfirm) {
+/** 打开通用弹窗前获得焦点的元素，关闭后把焦点还给它（弹窗开着时再次 showModal 换内容，不覆盖） */
+let modalReturnFocus = null;
+/** 当前弹窗在切换语言时的重绘回调（showModal 的 options.onLocaleChange） */
+let modalLocaleRefresh = null;
+
+function isGenericModalOpen() {
+    const container = document.getElementById('modalContainer');
+    return !!(container && container.querySelector('.modal-overlay[data-generic-modal]'));
+}
+
+/**
+ * 打开通用弹窗。
+ * @param {string} title 已转义的标题 HTML
+ * @param {string} content 已转义的内容 HTML
+ * @param {Function} [onConfirm] 点「确定」或在表单里回车时调用；不传则只有「取消」
+ * @param {Object} [options]
+ * @param {Function} [options.onLocaleChange] 弹窗开着时切换了语言就调用它，用新语言重绘（通常是再调一次 showModal）；
+ *   不传时切换语言不重绘。表单弹窗重绘会丢掉已填内容，一般只给只读的详情类弹窗传
+ */
+function showModal(title, content, onConfirm, options) {
     const modalContainer = document.getElementById('modalContainer');
+    if (!isGenericModalOpen()) {
+        const active = document.activeElement;
+        modalReturnFocus = active && active !== document.body ? active : null;
+    }
     modalContainer.innerHTML = `
-        <div class="modal-overlay" onclick="closeModal(event)">
-            <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-overlay" data-generic-modal onclick="closeModal(event)">
+            <div class="modal" role="dialog" aria-modal="true" tabindex="-1" onclick="event.stopPropagation()">
                 <div class="modal-header">
                     <h3>${/* html-safe: 约定：标题由调用方传入已转义的 HTML */ title}</h3>
                     <button class="modal-close" onclick="closeModal()">&times;</button>
@@ -745,7 +775,92 @@ function showModal(title, content, onConfirm) {
     `;
 
     window.currentModalConfirm = onConfirm;
+    modalLocaleRefresh = options && typeof options.onLocaleChange === 'function' ? options.onLocaleChange : null;
     bindModalForms(modalContainer, !!onConfirm);
+    resetModalDirtyState();
+    // 焦点移进弹窗，Tab 从弹窗里开始；调用方之后自己聚焦输入框的不受影响
+    const dialog = modalContainer.querySelector('.modal');
+    if (dialog && !dialog.contains(document.activeElement)) {
+        dialog.focus({ preventScroll: true });
+    }
+}
+
+/**
+ * Esc 关闭通用弹窗。叠在上面的确认框、下拉框、行操作菜单自己处理 Esc 时会 preventDefault
+ * 或在捕获阶段拦下，这里就不再关弹窗；两步验证等自建弹窗不带 data-generic-modal，不受影响。
+ */
+document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+    if (!isGenericModalOpen()) return;
+    event.preventDefault();
+    closeModalAfterDiscardConfirm();
+});
+
+// ---- Esc 关闭前的「未保存内容」确认 ----
+// 基线是表单控件的值快照：showModal 时记一次，用户第一次聚焦表单（还没改过）时再记一次，
+// 盖住打开后异步回填的下拉框、默认值。只有用户亲手改过（可信的 input / change）且当前值和基线不同才算有改动，
+// 代码回填、派发的事件不算；没有表单控件的只读弹窗永远不算有改动。
+const MODAL_FIELD_SELECTOR = 'input:not([type=button]):not([type=submit]):not([type=reset]):not([type=hidden]), select, textarea, [contenteditable=""], [contenteditable="true"]';
+let modalFieldBaseline = null;
+let modalUserEdited = false;
+/** 每次 showModal / closeModal 加一，确认框回来时弹窗已经换了内容就不再关 */
+let modalGeneration = 0;
+let modalDiscardAsking = false;
+
+function modalFieldSnapshot() {
+    const body = document.querySelector('#modalContainer .modal-overlay[data-generic-modal] .modal-body');
+    if (!body) return '';
+    return JSON.stringify(Array.from(body.querySelectorAll(MODAL_FIELD_SELECTOR), el => {
+        if (el.isContentEditable && !('value' in el)) return el.textContent;
+        if (el.type === 'checkbox' || el.type === 'radio') return el.checked;
+        if (el.multiple && el.options) return Array.from(el.selectedOptions, o => o.value);
+        return el.value;
+    }));
+}
+
+function resetModalDirtyState() {
+    modalGeneration++;
+    modalUserEdited = false;
+    modalFieldBaseline = isGenericModalOpen() ? modalFieldSnapshot() : null;
+}
+
+function isInGenericModalBody(target) {
+    return !!(target && target.closest && target.closest('#modalContainer .modal-overlay[data-generic-modal] .modal-body'));
+}
+
+document.addEventListener('focusin', event => {
+    if (event.isTrusted && !modalUserEdited && isInGenericModalBody(event.target) && event.target.matches(MODAL_FIELD_SELECTOR)) {
+        modalFieldBaseline = modalFieldSnapshot();
+    }
+}, true);
+['input', 'change'].forEach(type => document.addEventListener(type, event => {
+    if (event.isTrusted && isInGenericModalBody(event.target)) modalUserEdited = true;
+}, true));
+
+function isModalDirty() {
+    return modalUserEdited && modalFieldBaseline !== null && modalFieldSnapshot() !== modalFieldBaseline;
+}
+
+/** Esc 用：表单有未保存的改动先用 confirmDialog 确认，选「继续编辑」时弹窗和焦点不动 */
+async function closeModalAfterDiscardConfirm() {
+    if (!isModalDirty()) {
+        closeModal();
+        return;
+    }
+    if (modalDiscardAsking || typeof window.confirmDialog !== 'function') return;
+    modalDiscardAsking = true;
+    const generation = modalGeneration;
+    try {
+        const ok = await window.confirmDialog(t('common.discardChangesMessage'), {
+            title: t('common.discardChangesTitle'),
+            confirmText: t('common.discardChanges'),
+            cancelText: t('common.keepEditing'),
+            danger: true
+        });
+        if (ok && generation === modalGeneration && isGenericModalOpen()) closeModal();
+    } finally {
+        modalDiscardAsking = false;
+    }
 }
 
 /**
@@ -783,8 +898,17 @@ function closeModal(event) {
         window.stopPipelineStageLogPolling();
     }
     window.__pipelineStageLogContext = null;
+    const wasOpen = isGenericModalOpen();
     document.getElementById('modalContainer').innerHTML = '';
     window.currentModalConfirm = null;
+    modalLocaleRefresh = null;
+    resetModalDirtyState();
+    const returnTo = modalReturnFocus;
+    modalReturnFocus = null;
+    // 触发元素还在页面上才还焦点（列表重绘后原按钮已经没了）
+    if (wasOpen && returnTo && document.contains(returnTo) && typeof returnTo.focus === 'function') {
+        returnTo.focus({ preventScroll: true });
+    }
 }
 window.closeModal = closeModal;
 
@@ -840,6 +964,14 @@ window.onLocaleChange = function () {
     const sectionId = active ? active.id.replace(/-section$/, '') : '';
     if (sectionId) {
         document.title = (getSectionTitle(sectionId) || 'OPSFLOW') + ' - OPSFLOW';
+    }
+    // 开着的通用弹窗登记了重绘回调的，按新语言重绘
+    if (modalLocaleRefresh && isGenericModalOpen()) {
+        try {
+            modalLocaleRefresh();
+        } catch (e) {
+            console.warn('modal locale refresh failed', e);
+        }
     }
     // 动态渲染的列表（如扩展页面）可监听此事件按新语言重绘
     try {

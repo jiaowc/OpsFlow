@@ -140,6 +140,8 @@ class RequiredFieldsServiceTest {
                 stepDef("docker_build", config("dockerfileTemplateId", "3")))));
         assertEquals("docker push 命令不能为空", error(() -> service.create(stepDef("push_image", null))));
         assertEquals("Deployment 模版不能为空", error(() -> service.create(stepDef("render_template", config()))));
+        assertEquals("消息内容不能为空", error(() -> service.create(stepDef("notify", config("message", "  ")))));
+        assertEquals("消息内容不能为空", error(() -> service.create(stepDef("notify", null))));
         verify(mapper, never()).insert(any(PipelineStepDef.class));
 
         service.create(stepDef("build", config("buildCommand", "mvn package")));

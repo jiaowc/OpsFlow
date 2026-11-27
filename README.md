@@ -76,11 +76,11 @@ OpsFlow/
 只想先看看界面和功能时用这个。一个容器里同时跑 MySQL 和 OpsFlow，首次启动自动建表、写入默认数据并导入一份演示数据（示例项目、dev/test/prod 环境、示例服务、流水线视图）：
 
 ```bash
-docker run -d --name opsflow-allinone -p 8080:8080 -v opsflow-allinone-data:/data ghcr.io/jiaowc/opsflow-allinone:1.1.2
+docker run -d --name opsflow-allinone -p 8080:8080 -v opsflow-allinone-data:/data ghcr.io/jiaowc/opsflow-allinone:1.1.3
 # 首次启动约 1 分钟，打开 http://localhost:8080
 ```
 
-镜像支持 `linux/amd64` 和 `linux/arm64`。拉取不了 ghcr.io 时可以从源码自己构建：`docker build -f Dockerfile.allinone -t ghcr.io/jiaowc/opsflow-allinone:1.1.2 .`
+镜像支持 `linux/amd64` 和 `linux/arm64`。拉取不了 ghcr.io 时可以从源码自己构建：`docker build -f Dockerfile.allinone -t ghcr.io/jiaowc/opsflow-allinone:1.1.3 .`
 
 初始账号 **admin / admin**，这是公开的演示口令，**首次登录后请修改**（系统会强制要求改密）。
 

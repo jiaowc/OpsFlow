@@ -188,21 +188,38 @@ public class PipelineJobQueryService {
     }
 
     public PipelineViewDTO getStageView(Long anchorJobId, int page, int pageSize) {
+        return getStageView(anchorJobId, page, pageSize, null);
+    }
+
+    /**
+     * 阶段视图。
+     *
+     * @param anchorJobId 任务里任意一次构建的 ID，用来确定是哪个任务
+     * @param page        页码；传了 focusJobId 且页码 &lt;= 0 时，翻到 focusJobId 所在的那一页
+     * @param focusJobId  要标「当前」并高亮的那次构建（站内信、通知卡片的深链）；为空、不存在或不属于这个任务时，
+     *                    按原来的规则取运行中的构建，没有就取本页第一条
+     */
+    public PipelineViewDTO getStageView(Long anchorJobId, int page, int pageSize, Long focusJobId) {
         BuildJob anchor = buildJobMapper.selectById(anchorJobId);
         if (anchor == null) {
             throw new BusinessException("流水线任务不存在");
         }
         support.assertJobEnvAccessible(anchor);
 
-        page = Math.max(1, page);
         pageSize = normalizePageSize(pageSize);
+        BuildJob focus = resolveFocusJob(anchor, focusJobId);
+        if (focus != null && page <= 0) {
+            page = pageOfJob(anchor, focus, pageSize);
+        }
+        page = Math.max(1, page);
 
         QueryWrapper<BuildJob> countWrapper = support.buildTaskGroupWrapper(anchor);
         long total = buildJobMapper.selectCount(countWrapper);
 
         int offset = (page - 1) * pageSize;
         QueryWrapper<BuildJob> listWrapper = support.buildTaskGroupWrapper(anchor);
-        listWrapper.orderByDesc("create_time").last("LIMIT " + offset + ", " + pageSize);
+        // 同一时刻创建的构建按 ID 排，翻页和定位深链所在页用的是同一个顺序
+        listWrapper.orderByDesc("create_time").orderByDesc("id").last("LIMIT " + offset + ", " + pageSize);
         List<BuildJob> jobs = buildJobMapper.selectList(listWrapper);
 
         Map<Long, List<BuildJobStage>> stagesByJobId = loadStagesGrouped(jobs);
@@ -216,7 +233,7 @@ public class PipelineJobQueryService {
         view.setTaskName(anchor.getTaskName());
         view.setBranch(anchor.getBranch());
 
-        BuildJob highlightJob = jobs.stream()
+        BuildJob highlightJob = focus != null ? focus : jobs.stream()
             .filter(j -> BuildStatus.BUILDING.equals(j.getStatus()) || BuildStatus.DEPLOYING.equals(j.getStatus()))
             .findFirst()
             .orElse(jobs.isEmpty() ? anchor : jobs.get(0));
@@ -240,6 +257,35 @@ public class PipelineJobQueryService {
         }
 
         return view;
+    }
+
+    /** 深链指向的构建；不存在或不属于 anchor 所在的任务时返回 null（不能借深链看别的任务的构建） */
+    private BuildJob resolveFocusJob(BuildJob anchor, Long focusJobId) {
+        if (focusJobId == null) {
+            return null;
+        }
+        if (focusJobId.equals(anchor.getId())) {
+            return anchor;
+        }
+        BuildJob focus = buildJobMapper.selectById(focusJobId);
+        if (focus == null) {
+            return null;
+        }
+        QueryWrapper<BuildJob> sameTask = support.buildTaskGroupWrapper(anchor);
+        sameTask.eq("id", focusJobId);
+        return buildJobMapper.selectCount(sameTask) > 0 ? focus : null;
+    }
+
+    /** 按构建历史的排序（create_time 倒序、id 倒序）算出 job 落在第几页 */
+    private int pageOfJob(BuildJob anchor, BuildJob job, int pageSize) {
+        if (job.getCreateTime() == null || job.getId() == null) {
+            return 1;
+        }
+        QueryWrapper<BuildJob> newer = support.buildTaskGroupWrapper(anchor);
+        newer.and(w -> w.gt("create_time", job.getCreateTime())
+                .or(x -> x.eq("create_time", job.getCreateTime()).gt("id", job.getId())));
+        long before = buildJobMapper.selectCount(newer);
+        return (int) (before / pageSize) + 1;
     }
 
     public PipelineJobViewDTO toTaskView(BuildJob anchor, BuildJob latestBuild) {

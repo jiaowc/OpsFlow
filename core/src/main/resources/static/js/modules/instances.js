@@ -131,7 +131,7 @@ async function showPodEvents(pod) {
         }
         body.innerHTML = `
             <table class="data-table instance-table">
-                <thead><tr><th>${t('instances.col.time')}</th><th>${t('common.type')}</th><th>${t('instances.col.reason')}</th><th>${t('instances.col.count')}</th><th>${t('instances.col.message')}</th></tr></thead>
+                <thead><tr><th>${t('instances.col.time')}</th><th>${t('common.type')}</th><th>${t('instances.col.reason')}</th><th>${t('instances.col.count')}</th><th class="col-wrap">${t('instances.col.message')}</th></tr></thead>
                 <tbody>${events.map(e => `
                     <tr>
                         <td class="instance-muted">${escapeHtml(formatInstanceTime(e.time))}</td>

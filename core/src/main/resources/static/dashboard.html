@@ -288,13 +288,13 @@
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 180px;" data-i18n="projects.form.name">项目名称</th>
-                                    <th data-i18n="common.description">描述</th>
-                                    <th style="width: 150px;" data-i18n="projects.form.owner">负责人</th>
-                                    <th style="width: 100px;" data-i18n="projects.table.myRole">我的角色</th>
-                                    <th style="width: 80px;" data-i18n="projects.members">成员</th>
-                                    <th style="width: 80px;" data-i18n="projects.table.services">服务</th>
-                                    <th style="width: 200px;" data-i18n="common.actions">操作</th>
+                                    <th data-i18n="projects.form.name">项目名称</th>
+                                    <th class="col-wrap" data-i18n="common.description">描述</th>
+                                    <th data-i18n="projects.form.owner">负责人</th>
+                                    <th data-i18n="projects.table.myRole">我的角色</th>
+                                    <th data-i18n="projects.members">成员</th>
+                                    <th data-i18n="projects.table.services">服务</th>
+                                    <th class="col-actions" data-i18n="common.actions">操作</th>
                                 </tr>
                             </thead>
                             <tbody id="projectList"></tbody>
@@ -327,15 +327,15 @@
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 120px;" data-i18n="services.form.project">所属项目</th>
+                                    <th data-i18n="services.form.project">所属项目</th>
                                     <th data-i18n="services.form.name">服务名称</th>
-                                    <th style="width: 90px;" data-i18n="services.form.type">服务类型</th>
-                                    <th style="width: 90px;" data-i18n="services.form.component">组件</th>
-                                    <th style="width: 90px;" data-i18n="services.table.externalPort">对外端口</th>
-                                    <th data-i18n="services.table.gitRepo">Git仓库</th>
-                                    <th style="width: 130px;" data-i18n="services.form.owner">负责人</th>
-                                    <th style="width: 80px;" data-i18n="common.status">状态</th>
-                                    <th style="width: 150px;" data-i18n="common.actions">操作</th>
+                                    <th data-i18n="services.form.type">服务类型</th>
+                                    <th data-i18n="services.form.component">组件</th>
+                                    <th data-i18n="services.table.externalPort">对外端口</th>
+                                    <th class="col-truncate" data-i18n="services.table.gitRepo">Git仓库</th>
+                                    <th data-i18n="services.form.owner">负责人</th>
+                                    <th data-i18n="common.status">状态</th>
+                                    <th class="col-actions" data-i18n="common.actions">操作</th>
                                 </tr>
                             </thead>
                             <tbody id="serviceList">
@@ -357,12 +357,12 @@
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 120px;" data-i18n="environments.form.name">环境名称</th>
-                                    <th data-i18n="environments.table.clusterAddress">集群地址</th>
+                                    <th data-i18n="environments.form.name">环境名称</th>
+                                    <th class="col-truncate" data-i18n="environments.table.clusterAddress">集群地址</th>
                                     <th data-i18n="environments.table.namespace">命名空间</th>
-                                    <th style="width: 100px;" data-i18n="environments.form.type">环境类型</th>
-                                    <th style="width: 80px;" data-i18n="common.status">状态</th>
-                                    <th style="width: 120px;" data-i18n="common.actions">操作</th>
+                                    <th data-i18n="environments.form.type">环境类型</th>
+                                    <th data-i18n="common.status">状态</th>
+                                    <th class="col-actions" data-i18n="common.actions">操作</th>
                                 </tr>
                             </thead>
                             <tbody id="envList">
@@ -387,14 +387,14 @@
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 160px;" data-i18n="clusters.form.name">集群名称</th>
-                                    <th data-i18n="clusters.form.server">集群地址</th>
-                                    <th style="width: 160px;">Kubeconfig</th>
-                                    <th data-i18n="clusters.table.linkedEnvs">关联环境</th>
-                                    <th style="width: 80px;" data-i18n="clusters.table.envCount">环境数</th>
-                                    <th style="width: 100px;" data-i18n="common.status">状态</th>
-                                    <th data-i18n="clusters.form.description">说明</th>
-                                    <th style="width: 240px;" data-i18n="common.actions">操作</th>
+                                    <th data-i18n="clusters.form.name">集群名称</th>
+                                    <th class="col-truncate" data-i18n="clusters.form.server">集群地址</th>
+                                    <th>Kubeconfig</th>
+                                    <th class="col-wrap" data-i18n="clusters.table.linkedEnvs">关联环境</th>
+                                    <th data-i18n="clusters.table.envCount">环境数</th>
+                                    <th data-i18n="common.status">状态</th>
+                                    <th class="col-wrap" data-i18n="clusters.form.description">说明</th>
+                                    <th class="col-actions" data-i18n="common.actions">操作</th>
                                 </tr>
                             </thead>
                             <tbody id="clusterList">
@@ -423,10 +423,10 @@
                                     <th data-i18n="nodes.form.type">节点类型</th>
                                     <th data-i18n="nodes.form.labels">标签</th>
                                     <th data-i18n="nodes.table.sshAddress">SSH地址</th>
-                                    <th data-i18n="nodes.form.workDir">远程工作目录</th>
+                                    <th class="col-truncate" data-i18n="nodes.form.workDir">远程工作目录</th>
                                     <th data-i18n="nodes.form.authType">认证方式</th>
                                     <th data-i18n="common.status">状态</th>
-                                    <th data-i18n="common.actions">操作</th>
+                                    <th class="col-actions" data-i18n="common.actions">操作</th>
                                 </tr>
                             </thead>
                             <tbody id="nodeList">
@@ -463,10 +463,10 @@
                                         <th data-i18n="users.form.source">来源</th>
                                         <th data-i18n="users.form.email">邮箱</th>
                                         <th data-i18n="users.form.phone">手机号</th>
-                                        <th data-i18n="users.form.roles">角色</th>
+                                        <th class="col-wrap" data-i18n="users.form.roles">角色</th>
                                         <th class="user-two-factor-col" data-i18n="users.col.twoFactor">两步验证</th>
                                         <th data-i18n="common.status">状态</th>
-                                        <th data-i18n="common.actions">操作</th>
+                                        <th class="col-actions" data-i18n="common.actions">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody id="userList">
@@ -487,10 +487,10 @@
                                     <tr>
                                         <th data-i18n="users.role.name">角色名称</th>
                                         <th data-i18n="users.role.code">角色代码</th>
-                                        <th data-i18n="common.description">描述</th>
+                                        <th class="col-wrap" data-i18n="common.description">描述</th>
                                         <th data-i18n="users.role.permissionCount">权限数量</th>
                                         <th data-i18n="common.status">状态</th>
-                                        <th data-i18n="common.actions">操作</th>
+                                        <th class="col-actions" data-i18n="common.actions">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody id="roleList">
@@ -511,9 +511,9 @@
                                     <tr>
                                         <th data-i18n="users.permission.name">权限名称</th>
                                         <th data-i18n="users.permission.code">权限代码</th>
-                                        <th data-i18n="common.description">描述</th>
+                                        <th class="col-wrap" data-i18n="common.description">描述</th>
                                         <th data-i18n="common.status">状态</th>
-                                        <th data-i18n="common.actions">操作</th>
+                                        <th class="col-actions" data-i18n="common.actions">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody id="permissionList">
@@ -553,9 +553,9 @@
                                                                             <th data-i18n="stepdef.form.type">步骤类型</th>
                                                                             <th data-i18n="stepdef.form.phase">阶段</th>
                                                                             <th data-i18n="stepdef.table.timeout">超时(秒)</th>
-                                                                            <th data-i18n="common.description">描述</th>
+                                                                            <th class="col-wrap" data-i18n="common.description">描述</th>
                                                                             <th data-i18n="common.status">状态</th>
-                                                                            <th data-i18n="common.actions">操作</th>
+                                                                            <th class="col-actions" data-i18n="common.actions">操作</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody id="stepDefList"></tbody>
@@ -571,11 +571,11 @@
                                                                 <table class="data-table">
                                                                     <thead>
                                                                         <tr>
-                                                                            <th style="width: 140px;" data-i18n="system.pipeline.name">模版名称</th>
-                                                                            <th style="width: 80px;" data-i18n="common.type">类型</th>
-                                                                            <th data-i18n="system.pipeline.column">流水线</th>
-                                                                            <th style="width: 80px;" data-i18n="common.status">状态</th>
-                                                                            <th style="width: 160px;" data-i18n="common.actions">操作</th>
+                                                                            <th data-i18n="system.pipeline.name">模版名称</th>
+                                                                            <th data-i18n="common.type">类型</th>
+                                                                            <th class="col-wrap" data-i18n="system.pipeline.column">流水线</th>
+                                                                            <th data-i18n="common.status">状态</th>
+                                                                            <th class="col-actions" data-i18n="common.actions">操作</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody id="pipelineList"></tbody>
@@ -600,10 +600,10 @@
                                                                                 <thead>
                                                                                     <tr>
                                                                                         <th data-i18n="template.form.name">模版名称</th>
-                                                                                        <th data-i18n="common.description">描述</th>
+                                                                                        <th class="col-wrap" data-i18n="common.description">描述</th>
                                                                                         <th data-i18n="template.form.baseImage">基础镜像</th>
                                                                                         <th data-i18n="common.status">状态</th>
-                                                                                        <th data-i18n="common.actions">操作</th>
+                                                                                        <th class="col-actions" data-i18n="common.actions">操作</th>
                                                                                     </tr>
                                                                                 </thead>
                                                                                 <tbody id="dockerfileTemplateList">
@@ -624,9 +624,9 @@
                                                                                 <thead>
                                                                                     <tr>
                                                                                         <th data-i18n="template.form.name">模版名称</th>
-                                                                                        <th data-i18n="common.description">描述</th>
+                                                                                        <th class="col-wrap" data-i18n="common.description">描述</th>
                                                                                         <th data-i18n="common.status">状态</th>
-                                                                                        <th data-i18n="common.actions">操作</th>
+                                                                                        <th class="col-actions" data-i18n="common.actions">操作</th>
                                                                                     </tr>
                                                                                 </thead>
                                                                                 <tbody id="deploymentTemplateList">
@@ -647,10 +647,10 @@
                                                                                 <thead>
                                                                                     <tr>
                                                                                         <th data-i18n="template.form.name">模版名称</th>
-                                                                                        <th data-i18n="common.description">描述</th>
+                                                                                        <th class="col-wrap" data-i18n="common.description">描述</th>
                                                                                         <th data-i18n="template.form.serviceType">服务类型</th>
                                                                                         <th data-i18n="common.status">状态</th>
-                                                                                        <th data-i18n="common.actions">操作</th>
+                                                                                        <th class="col-actions" data-i18n="common.actions">操作</th>
                                                                                     </tr>
                                                                                 </thead>
                                                                                 <tbody id="serviceTemplateList">
@@ -676,9 +676,9 @@
                                                                         <tr>
                                                                             <th data-i18n="pipeline.view.name">视图名称</th>
                                                                             <th data-i18n="pipeline.view.linkedEnv">关联环境</th>
-                                                                            <th data-i18n="pipeline.view.roles">可见角色</th>
-                                                                            <th data-i18n="common.description">描述</th>
-                                                                            <th data-i18n="common.actions">操作</th>
+                                                                            <th class="col-wrap" data-i18n="pipeline.view.roles">可见角色</th>
+                                                                            <th class="col-wrap" data-i18n="common.description">描述</th>
+                                                                            <th class="col-actions" data-i18n="common.actions">操作</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody id="pipelineViewList"></tbody>
@@ -714,10 +714,10 @@
                                                                     <thead>
                                                                         <tr>
                                                                             <th data-i18n="keychain.form.name">钥匙名称</th>
-                                                                            <th style="width: 120px;" data-i18n="keychain.form.type">凭证类型</th>
-                                                                            <th data-i18n="common.description">描述</th>
-                                                                            <th style="width: 80px;" data-i18n="common.status">状态</th>
-                                                                            <th style="width: 160px;" data-i18n="common.actions">操作</th>
+                                                                            <th data-i18n="keychain.form.type">凭证类型</th>
+                                                                            <th class="col-wrap" data-i18n="common.description">描述</th>
+                                                                            <th data-i18n="common.status">状态</th>
+                                                                            <th class="col-actions" data-i18n="common.actions">操作</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody id="credentialList"></tbody>
@@ -735,10 +735,10 @@
                                                                         <tr>
                                                                             <th data-i18n="system.component.name">组件名称</th>
                                                                             <th data-i18n="system.component.type">组件类型</th>
-                                                                            <th data-i18n="system.component.url">访问地址</th>
+                                                                            <th class="col-truncate" data-i18n="system.component.url">访问地址</th>
                                                                             <th data-i18n="keychain.component.authType">认证类型</th>
                                                                             <th data-i18n="common.status">状态</th>
-                                                                            <th data-i18n="common.actions">操作</th>
+                                                                            <th class="col-actions" data-i18n="common.actions">操作</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody id="componentList">

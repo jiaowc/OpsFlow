@@ -65,7 +65,8 @@ public class InboxMessageServiceImpl implements InboxMessageService {
         msg.setMsgType("pipeline");
         msg.setBizType(BIZ_BUILD_JOB);
         msg.setBizId(buildJobId);
-        msg.setLinkPath("/pipeline");
+        // 站内信点开直接到这次 Job 的详情（前端 pipeline.js 识别 ?job=）
+        msg.setLinkPath(StringUtils.hasText(buildJobId) ? "/pipeline?job=" + buildJobId.trim() : "/pipeline");
         msg.setReadFlag(0);
         msg.setCreateTime(now);
         msg.setUpdateTime(now);

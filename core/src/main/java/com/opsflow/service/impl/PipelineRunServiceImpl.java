@@ -166,6 +166,11 @@ public class PipelineRunServiceImpl implements PipelineRunService {
     }
 
     @Override
+    public PipelineViewDTO getStageView(Long anchorJobId, int page, int pageSize, Long focusJobId) {
+        return queryService.getStageView(anchorJobId, page, pageSize, focusJobId);
+    }
+
+    @Override
     public List<PipelineStageDTO> getBuildStages(Long buildJobId) {
         return queryService.getBuildStages(buildJobId);
     }

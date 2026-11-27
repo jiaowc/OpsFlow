@@ -63,19 +63,42 @@ function renderNodeList(nodes) {
                 <td>${escapeHtml(nodeTypeText)}</td>
                 <td>${escapeHtml(node.label || '-')}</td>
                 <td title="${escapeHtml(node.hostKeyFingerprint ? t('nodes.hostKey.fingerprint', { fingerprint: node.hostKeyFingerprint }) : t('nodes.hostKey.none'))}">${escapeHtml(sshAddress)}${node.hostKeyFingerprint ? ' <span style="color:#059669;font-size:12px;">🔒</span>' : ''}</td>
-                <td style="font-size:12px;max-width:180px;word-break:break-all;" title="${escapeHtml(workDir)}">${escapeHtml(workDir)}</td>
+                <td style="font-size:12px;" title="${escapeHtml(workDir)}">${escapeHtml(workDir)}</td>
                 <td>${authTypeText}</td>
                 <td><span style="color: ${node.status === NODE_STATUS_ONLINE ? '#059669' : '#dc2626'};">${escapeHtml(nodeStatusText(node.status === NODE_STATUS_ONLINE ? NODE_STATUS_ONLINE : NODE_STATUS_OFFLINE))}</span></td>
-                <td>
-                    ${(hasPermission('node:manage') && (node.nodeType === 'build' || node.nodeType === 'deploy')) ? `<button class="btn-secondary" onclick="checkNodeEnvironment(${node.id}, ${escapeHtml(JSON.stringify(node.name || ''))}, ${escapeHtml(JSON.stringify(node.nodeType || ''))})" style="margin-right:6px;">${t('nodes.check.button')}</button>` : ''}
-                    ${hasPermission('node:manage') && node.hostKeyFingerprint ? `<button class="btn-secondary" onclick="resetNodeHostKey(${node.id})" style="margin-right:6px;" title="${t('nodes.hostKey.resetHint')}">${t('nodes.hostKey.reset')}</button>` : ''}
-                    ${hasPermission('node:manage') ? `<button class="btn-edit" onclick="editNode(${node.id})">${t('common.modify')}</button>
-                    <button class="btn-danger" onclick="deleteNode(${node.id})">${t('common.delete')}</button>` : ''}
-                </td>
+                <td>${/* html-safe: 函数内已转义 */ renderNodeRowActionsHtml(node)}</td>
             </tr>
         `;
     }).join('');
 }
+
+/**
+ * 节点行的操作：检测环境、修改直接显示，重置主机密钥和删除收进「更多」菜单，操作列始终一行。
+ * 删除和重置仍走各自的确认弹窗。
+ */
+function renderNodeRowActionsHtml(node) {
+    if (!hasPermission('node:manage')) return '<span style="color:#9ca3af;">-</span>';
+    const id = Number(node.id);
+    const canCheck = node.nodeType === 'build' || node.nodeType === 'deploy';
+    const checkHtml = canCheck
+        ? `<button class="btn-secondary" onclick="checkNodeEnvironment(${id}, ${escapeHtml(JSON.stringify(node.name || ''))}, ${escapeHtml(JSON.stringify(node.nodeType || ''))})">${escapeHtml(t('nodes.check.button'))}</button>`
+        : '';
+    return `<div class="table-actions">
+        ${/* html-safe: 上面已转义 */ checkHtml}
+        <button class="btn-edit" onclick="editNode(${id})">${escapeHtml(t('common.modify'))}</button>
+        ${/* html-safe: 写死的函数名和数字参数 */ rowMoreButtonHtml(`toggleNodeRowMenu(this, ${id}, ${node.hostKeyFingerprint ? 1 : 0})`, true)}
+    </div>`;
+}
+
+function toggleNodeRowMenu(trigger, id, hasHostKey) {
+    const items = [];
+    if (hasHostKey) {
+        items.push({ label: t('nodes.hostKey.reset'), fn: 'resetNodeHostKey', args: [id] });
+    }
+    items.push({ label: t('common.delete'), fn: 'deleteNode', args: [id], tone: 'danger', separated: items.length > 0 });
+    toggleRowActionMenu(trigger, items);
+}
+window.toggleNodeRowMenu = toggleNodeRowMenu;
 
 // 显示添加节点模态框
 function showCreateNodeModal() {
@@ -497,8 +520,8 @@ function renderNodeEnvCheckResult(result) {
                         <th>${t('nodes.check.col.item')}</th>
                         <th>${t('common.type')}</th>
                         <th>${t('nodes.check.col.result')}</th>
-                        <th>${t('nodes.check.col.output')}</th>
-                        <th>${t('nodes.check.col.note')}</th>
+                        <th class="col-wrap">${t('nodes.check.col.output')}</th>
+                        <th class="col-wrap">${t('nodes.check.col.note')}</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>

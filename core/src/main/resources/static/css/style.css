@@ -1917,7 +1917,6 @@ td .btn-success {
     font-weight: 600;
     color: var(--text-3);
     font-size: var(--fs-sm);
-    white-space: nowrap;
     border-bottom: 1px solid var(--border);
 }
 
@@ -1935,6 +1934,250 @@ td .btn-success {
 
 .data-table tbody tr:hover {
     background: var(--bg-subtle);
+}
+
+/* ============================================
+   列表表格的列宽与换行规则（所有列表页共用）
+   - 单元格默认不换行：编号、名称、集群、环境、用户、状态、操作这类短内容按内容宽度显示，不从中间断开
+   - 表头不写死宽度，短列 width: 1% 收到内容宽，剩余宽度留给可换行的文本列
+   - 描述、地址、模块、审批链这类长文本列在表头加 col-wrap，整列允许换行（URL 也能断开）
+   - 表格放不下时 .table-container 横向滚动，不挤压列
+   ============================================ */
+.data-table td {
+    white-space: nowrap;
+}
+
+/* 表头一律不折行：每列宽度至少等于表头文字宽度（英文 Remote working directory、Timeout (s) 也在一行） */
+.data-table th {
+    white-space: nowrap;
+}
+
+.data-table th:not(.col-wrap):not(.col-truncate) {
+    width: 1%;
+}
+
+/* 有地址列、没有可换行文本列的表（服务、环境、节点等）：短列不收缩，剩余宽度按内容比例摊到各列，
+   不全部留给地址列。表里有 col-grow（页面自己给省略列定了百分比宽度，例如上线任务的任务名、审批链）时不适用 */
+.data-table:has(> thead > tr > th.col-truncate):not(:has(> thead > tr > th:is(.col-wrap, .col-grow))) > thead > tr > th:not(.col-truncate) {
+    width: auto;
+}
+
+.data-table th.col-wrap {
+    min-width: 160px;
+}
+
+.data-table:has(> thead > tr > th:nth-child(1).col-wrap) > tbody > tr > td:nth-child(1),
+.data-table:has(> thead > tr > th:nth-child(2).col-wrap) > tbody > tr > td:nth-child(2),
+.data-table:has(> thead > tr > th:nth-child(3).col-wrap) > tbody > tr > td:nth-child(3),
+.data-table:has(> thead > tr > th:nth-child(4).col-wrap) > tbody > tr > td:nth-child(4),
+.data-table:has(> thead > tr > th:nth-child(5).col-wrap) > tbody > tr > td:nth-child(5),
+.data-table:has(> thead > tr > th:nth-child(6).col-wrap) > tbody > tr > td:nth-child(6),
+.data-table:has(> thead > tr > th:nth-child(7).col-wrap) > tbody > tr > td:nth-child(7),
+.data-table:has(> thead > tr > th:nth-child(8).col-wrap) > tbody > tr > td:nth-child(8),
+.data-table:has(> thead > tr > th:nth-child(9).col-wrap) > tbody > tr > td:nth-child(9),
+.data-table:has(> thead > tr > th:nth-child(10).col-wrap) > tbody > tr > td:nth-child(10),
+.data-table td.cell-wrap {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* 地址类列（Git 仓库、集群地址、访问地址、Webhook）：表头加 col-truncate，整列单行显示、超出省略，
+   完整地址放在 title 里。单元格 max-width: 0 让长 URL 不参与列宽计算、不会把表格撑宽 */
+.data-table th.col-truncate {
+    min-width: 160px;
+}
+
+.data-table:has(> thead > tr > th:nth-child(1).col-truncate) > tbody > tr > td:nth-child(1),
+.data-table:has(> thead > tr > th:nth-child(2).col-truncate) > tbody > tr > td:nth-child(2),
+.data-table:has(> thead > tr > th:nth-child(3).col-truncate) > tbody > tr > td:nth-child(3),
+.data-table:has(> thead > tr > th:nth-child(4).col-truncate) > tbody > tr > td:nth-child(4),
+.data-table:has(> thead > tr > th:nth-child(5).col-truncate) > tbody > tr > td:nth-child(5),
+.data-table:has(> thead > tr > th:nth-child(6).col-truncate) > tbody > tr > td:nth-child(6),
+.data-table:has(> thead > tr > th:nth-child(7).col-truncate) > tbody > tr > td:nth-child(7),
+.data-table:has(> thead > tr > th:nth-child(8).col-truncate) > tbody > tr > td:nth-child(8),
+.data-table:has(> thead > tr > th:nth-child(9).col-truncate) > tbody > tr > td:nth-child(9),
+.data-table:has(> thead > tr > th:nth-child(10).col-truncate) > tbody > tr > td:nth-child(10) {
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 单元格里分成两行显示的（例如集群名 + 地址），每一行各自省略 */
+.data-table:has(> thead > tr > th:nth-child(1).col-truncate) > tbody > tr > td:nth-child(1) > *,
+.data-table:has(> thead > tr > th:nth-child(2).col-truncate) > tbody > tr > td:nth-child(2) > *,
+.data-table:has(> thead > tr > th:nth-child(3).col-truncate) > tbody > tr > td:nth-child(3) > *,
+.data-table:has(> thead > tr > th:nth-child(4).col-truncate) > tbody > tr > td:nth-child(4) > *,
+.data-table:has(> thead > tr > th:nth-child(5).col-truncate) > tbody > tr > td:nth-child(5) > *,
+.data-table:has(> thead > tr > th:nth-child(6).col-truncate) > tbody > tr > td:nth-child(6) > *,
+.data-table:has(> thead > tr > th:nth-child(7).col-truncate) > tbody > tr > td:nth-child(7) > *,
+.data-table:has(> thead > tr > th:nth-child(8).col-truncate) > tbody > tr > td:nth-child(8) > *,
+.data-table:has(> thead > tr > th:nth-child(9).col-truncate) > tbody > tr > td:nth-child(9) > *,
+.data-table:has(> thead > tr > th:nth-child(10).col-truncate) > tbody > tr > td:nth-child(10) > * {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 标签、徽章、胶囊（角色、状态、环境、审批节点等）在任何列里都不在内部折行；多个标签之间可以换行 */
+.data-table td :is([class*="badge"], [class*="-tag"], [class*="pill"], [class*="chip"], .status-tag, .cluster-status) {
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+
+/* 操作列：按钮始终在一行 */
+.data-table td:has(> .table-actions),
+.data-table td:last-child:has(> button) {
+    white-space: nowrap;
+}
+
+/* 操作列：表头加 col-actions 后固定在表格右侧。表格放不下而横向滚动时，前面的列从它下面滚过，
+   操作按钮始终完整可见；左侧阴影提示还有内容 */
+.data-table th.col-actions:last-child,
+.data-table:has(> thead > tr > th.col-actions:last-child) > tbody > tr > td:last-child:not([colspan]) {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    white-space: nowrap;
+    box-shadow: inset 1px 0 0 var(--border-soft), -8px 0 8px -8px rgba(15, 23, 42, 0.18);
+}
+
+.data-table th.col-actions:last-child {
+    background: var(--bg-subtle);
+}
+
+.data-table:has(> thead > tr > th.col-actions:last-child) > tbody > tr > td:last-child:not([colspan]) {
+    background: var(--bg-card);
+}
+
+.data-table:has(> thead > tr > th.col-actions:last-child) > tbody > tr:hover > td:last-child:not([colspan]) {
+    background: var(--bg-subtle);
+}
+
+/* 行内文字按钮（详情、拒绝等）和「更多」菜单，见 utils.js 的 toggleRowActionMenu */
+.row-link {
+    padding: 3px 6px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--primary);
+    font-size: var(--fs-xs);
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.row-link:hover {
+    background: var(--primary-soft);
+}
+
+.row-link.is-danger {
+    color: var(--danger);
+}
+
+.row-link.is-danger:hover {
+    background: var(--danger-soft);
+}
+
+.row-more,
+.row-more-placeholder {
+    flex: none;
+    width: 26px;
+    height: 26px;
+}
+
+.row-more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    color: var(--text-3);
+    cursor: pointer;
+}
+
+.row-more:hover,
+.row-more[aria-expanded="true"] {
+    border-color: var(--border-strong);
+    background: var(--bg-subtle);
+    color: var(--text-1);
+}
+
+.row-link:focus-visible,
+.row-more:focus-visible,
+.row-menu-item:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--primary-ring);
+}
+
+/* 「更多」菜单：挂在 body 上，固定定位 */
+.row-menu {
+    position: fixed;
+    z-index: 1100;
+    min-width: 148px;
+    max-width: 260px;
+    padding: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+}
+
+.row-menu-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    width: 100%;
+    padding: 7px 10px;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.row-menu-item:hover:not([aria-disabled="true"]),
+.row-menu-item:focus-visible {
+    background: var(--bg-subtle);
+}
+
+.row-menu-item.is-danger {
+    color: var(--danger);
+}
+
+.row-menu-item.is-danger:hover:not([aria-disabled="true"]) {
+    background: var(--danger-soft);
+}
+
+.row-menu-item[aria-disabled="true"] {
+    color: var(--text-4);
+    cursor: not-allowed;
+}
+
+.row-menu-reason {
+    font-size: 11px;
+    color: var(--text-4);
+    white-space: normal;
+}
+
+.row-menu-sep {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--border-soft);
+}
+
+/* 超长的短标识（例如很长的服务名）：单行省略，完整内容放在 title 里 */
+.data-table .cell-ellipsis {
+    display: block;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .pipeline-job-actions .btn-rollback {
@@ -2003,6 +2246,11 @@ td .btn-success {
 
 .pipeline-jobs-table th.pipeline-col-stages {
     min-width: 260px;
+}
+
+/* 阶段列是伸缩列，不参与公共规则里短列 width: 1% 的收缩 */
+.pipeline-jobs-table .data-table th.pipeline-col-stages {
+    width: auto;
 }
 
 /* 操作列收缩到按钮宽度，多出来的空间都留给阶段列 */
@@ -2145,6 +2393,11 @@ td .btn-success {
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: var(--shadow-lg);
+}
+
+/* 弹窗打开时焦点落在弹窗本身（便于 Tab 和 Esc），不画焦点框 */
+.modal:focus {
+    outline: none;
 }
 
 .modal-header {
