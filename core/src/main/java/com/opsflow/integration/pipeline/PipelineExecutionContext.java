@@ -1,8 +1,14 @@
 package com.opsflow.integration.pipeline;
 
+import lombok.AccessLevel;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.ToString;
 
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Pipeline执行上下文
@@ -69,13 +75,64 @@ public class PipelineExecutionContext {
     }
 
     /**
+     * 步骤线程（及其创建的读输出线程）绑定的是哪个上下文的哪一代步骤日志
+     */
+    private static final InheritableThreadLocal<StepLogBinding> STEP_LOG_BINDING = new InheritableThreadLocal<>();
+
+    /**
+     * 步骤日志的代次。步骤超时被放弃时加一，之后被放弃的步骤线程再写的日志一律丢弃，
+     * 不会在阶段结束后重新打开日志文件，也不会混进下一个阶段的日志。
+     */
+    @Getter(AccessLevel.NONE)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private final AtomicLong stepLogGeneration = new AtomicLong();
+
+    /**
+     * 让 {@code task} 以当前这一代步骤日志的身份运行：之后 {@link #abandonStepLog()} 了，
+     * 它和它创建的线程再调用 {@link #emitLog} 都不会写进阶段日志。
+     */
+    public <T> Callable<T> bindToStepLog(Callable<T> task) {
+        StepLogBinding binding = new StepLogBinding(this, stepLogGeneration.get());
+        return () -> {
+            STEP_LOG_BINDING.set(binding);
+            try {
+                return task.call();
+            } finally {
+                STEP_LOG_BINDING.remove();
+            }
+        };
+    }
+
+    /**
+     * 放弃当前步骤（如已超时）：它此后写的日志不再记录
+     */
+    public void abandonStepLog() {
+        stepLogGeneration.incrementAndGet();
+    }
+
+    /**
      * 向当前阶段追加实时日志
      */
     public void emitLog(String chunk) {
         if (stageListener == null || currentStepOrder == null || chunk == null || chunk.isEmpty()) {
             return;
         }
+        StepLogBinding binding = STEP_LOG_BINDING.get();
+        if (binding != null && binding.context == this && binding.generation != stepLogGeneration.get()) {
+            return;
+        }
         stageListener.onStageLog(currentStepOrder, chunk);
+    }
+
+    private static final class StepLogBinding {
+        private final PipelineExecutionContext context;
+        private final long generation;
+
+        private StepLogBinding(PipelineExecutionContext context, long generation) {
+            this.context = context;
+            this.generation = generation;
+        }
     }
     
     /**

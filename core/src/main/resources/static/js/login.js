@@ -233,9 +233,28 @@ function updateTwoFactorHint() {
         : t('login.twoFactor.hint', { username: twoFactorStep.username });
 }
 
-// 切换语言时 applyI18n 只刷新 data-i18n 元素；带账号名的提示单独重写
+// 社区版源码入口：只在版本接口明确返回社区版时显示
+let loginVersionInfo = null;
+(async function loadLoginSourceNotice() {
+    if (!window.OpsFlowSourceNotice) {
+        return;
+    }
+    loginVersionInfo = await OpsFlowSourceNotice.fetchVersionInfo();
+    OpsFlowSourceNotice.render(document.getElementById('loginSourceNotice'), loginVersionInfo);
+})();
+
+// 切换语言时 applyI18n 只刷新 data-i18n 元素；带账号名的提示、源码入口单独重写
 window.onLocaleChange = function() {
     if (!document.getElementById('twoFactorForm').hidden) {
         updateTwoFactorHint();
+    }
+    if (window.OpsFlowSourceNotice) {
+        OpsFlowSourceNotice.render(document.getElementById('loginSourceNotice'), loginVersionInfo);
+    }
+    // 和控制台一致：扩展（如企业品牌）监听此事件，在 applyI18n 重置文案后重新应用
+    try {
+        window.dispatchEvent(new CustomEvent('opsflow:localechange'));
+    } catch (e) {
+        console.warn('localechange event failed', e);
     }
 };

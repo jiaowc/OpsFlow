@@ -42,7 +42,7 @@ SPRING_PROFILES_ACTIVE=dev ./scripts/deploy/restart.sh --docker
 
 | 项 | 默认 | 覆盖 |
 |---|---|---|
-| 镜像名 | `opsflow:1.1.1` | `OPSFLOW_DOCKER_IMAGE` |
+| 镜像名 | `opsflow:1.1.2` | `OPSFLOW_DOCKER_IMAGE` |
 | 容器名 | `opsflow` | `OPSFLOW_DOCKER_CONTAINER` |
 | 端口 | `8080` | `OPSFLOW_PORT` |
 

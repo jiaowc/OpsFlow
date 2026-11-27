@@ -1,6 +1,7 @@
 package com.opsflow.service.impl;
 
 import com.opsflow.service.AppVersionService;
+import com.opsflow.spi.EditionInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,10 @@ public class AppVersionServiceImpl implements AppVersionService {
     @Autowired(required = false)
     private BuildProperties buildProperties;
 
+    /** 社区版 / 企业版；取不到时不返回 edition，前端按「不显示源码入口」处理 */
+    @Autowired(required = false)
+    private EditionInfo editionInfo;
+
     @Override
     public Map<String, Object> getVersionInfo() {
         Map<String, Object> info = new LinkedHashMap<>();
@@ -29,6 +34,11 @@ public class AppVersionServiceImpl implements AppVersionService {
         info.put("version", getVersion());
         info.put("artifact", resolveArtifact());
         info.put("buildTime", resolveBuildTime());
+        // 免登录接口：只给版本名（community / enterprise），不带任何 License 详情
+        String edition = resolveEdition();
+        if (edition != null) {
+            info.put("edition", edition);
+        }
         return info;
     }
 
@@ -44,6 +54,18 @@ public class AppVersionServiceImpl implements AppVersionService {
             return pkg.getImplementationVersion().trim();
         }
         return FALLBACK_VERSION;
+    }
+
+    private String resolveEdition() {
+        if (editionInfo == null) {
+            return null;
+        }
+        try {
+            String edition = editionInfo.edition();
+            return edition != null && !edition.trim().isEmpty() ? edition.trim() : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private String resolveName() {

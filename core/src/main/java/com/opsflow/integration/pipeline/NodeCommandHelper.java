@@ -15,7 +15,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * 在构建节点（SSH）或本地执行命令
@@ -45,6 +47,11 @@ public class NodeCommandHelper {
      * 本机执行时单行输出的最大字节数，超过即强制切分（与 SSH 执行的上限一致）
      */
     static final int MAX_LINE_BYTES = 64 * 1024;
+
+    /**
+     * 本机命令超时或被中断、进程已杀掉后，最多再等多久把管道里剩下的输出读完
+     */
+    static final long OUTPUT_DRAIN_MS = 2000;
 
     @Autowired
     private BuildNodeMapper buildNodeMapper;
@@ -251,15 +258,28 @@ public class NodeCommandHelper {
 
             int waitTimeoutMs = commandTimeoutMs > 0 ? commandTimeoutMs : 60000;
             long deadline = System.currentTimeMillis() + waitTimeoutMs;
-            while (process.isAlive() && System.currentTimeMillis() < deadline) {
-                Thread.sleep(100);
+            boolean interrupted = false;
+            try {
+                while (process.isAlive() && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(100);
+                }
+            } catch (InterruptedException e) {
+                // 步骤超时或任务被停止：线程被中断，命令也要跟着停下，不能留在后台继续跑
+                interrupted = true;
             }
-            if (process.isAlive()) {
-                process.destroyForcibly();
+            if (interrupted || process.isAlive()) {
+                destroyProcessTree(process);
+                // 超时前已经打印的内容可能还在管道里，读完再返回
+                joinQuietly(outputReader, OUTPUT_DRAIN_MS);
                 result.setSuccess(false);
                 result.setExitCode(-1);
                 result.setOutput(output.toString());
-                result.setErrorMessage("命令执行超时（" + (waitTimeoutMs / 1000) + "秒）");
+                result.setErrorMessage(interrupted
+                    ? "命令执行被中断"
+                    : "命令执行超时（" + (waitTimeoutMs / 1000) + "秒）");
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
                 return result;
             }
 
@@ -273,10 +293,37 @@ public class NodeCommandHelper {
             }
         } catch (Exception e) {
             log.error("本地命令执行失败", e);
+            if (process != null && process.isAlive()) {
+                destroyProcessTree(process);
+            }
             result.setSuccess(false);
             result.setErrorMessage("本地命令执行失败: " + e.getMessage());
         }
         return result;
+    }
+
+    /**
+     * 杀掉命令进程及其所有子孙进程。只杀 /bin/sh 时，它启动的子进程（sleep、mvn、docker 等）
+     * 会被托管给 init 继续运行，并一直占着输出管道。
+     */
+    static void destroyProcessTree(Process process) {
+        // 先记下子孙进程：父进程一死，它们就不再挂在这棵树上了
+        List<ProcessHandle> descendants = process.descendants().collect(Collectors.toList());
+        process.destroyForcibly();
+        for (ProcessHandle descendant : descendants) {
+            descendant.destroyForcibly();
+        }
+    }
+
+    private static void joinQuietly(Thread thread, long millis) {
+        if (thread == null) {
+            return;
+        }
+        try {
+            thread.join(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

@@ -60,6 +60,10 @@ async function loadAppVersion() {
         const version = info.version || 'unknown';
         const name = info.name || 'OpsFlow';
         textEl.textContent = name + ' v' + version;
+        // 社区版用「OpsFlow 社区版 vX · AGPLv3 · 源码」代替版本号；企业版照旧只显示版本号
+        const showSource = !!window.OpsFlowSourceNotice
+            && OpsFlowSourceNotice.render(document.getElementById('appSourceNotice'), info);
+        textEl.hidden = showSource;
         if (footerEl) {
             const tips = [];
             if (info.buildTime) {
@@ -72,6 +76,10 @@ async function loadAppVersion() {
         }
     } catch (e) {
         textEl.textContent = 'OpsFlow';
+        textEl.hidden = false;
+        if (window.OpsFlowSourceNotice) {
+            OpsFlowSourceNotice.render(document.getElementById('appSourceNotice'), null);
+        }
     }
 }
 window.loadAppVersion = loadAppVersion;

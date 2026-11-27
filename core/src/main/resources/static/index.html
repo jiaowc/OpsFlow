@@ -7,21 +7,42 @@
     <link rel="stylesheet" href="/css/style.css">
     <script src="/js/i18n/i18n.js"></script>
 </head>
-<body>
-    <div class="login-container">
-        <div class="login-box">
-            <div class="login-lang">
-                <label for="localeSwitcher" data-i18n="header.language">语言</label>
-                <select id="localeSwitcher" onchange="onLocaleSwitcherChange(this)">
-                    <option value="zh" data-i18n-skip>中文</option>
-                    <option value="en">English</option>
-                </select>
-            </div>
-            <div class="login-header brand-header">
-                <img data-brand-logo class="brand-logo brand-logo-login" alt="" hidden>
-                <h1 data-brand-text data-i18n="login.title">OPSFLOW</h1>
-            </div>
+<body class="login-page">
+    <!-- 左栏：和控制台侧栏同一底色；品牌（企业版按 data-brand-* 替换）、标语和流水线示意 -->
+    <aside class="login-brand">
+        <div class="login-brand-head brand-header">
+            <img data-brand-logo class="brand-logo brand-logo-login" alt="" hidden>
+            <h1 data-brand-text data-i18n="login.title">OPSFLOW</h1>
+        </div>
+        <div class="login-brand-body">
+            <p class="login-lead">
+                <span data-i18n="login.lead.line1">从代码提交到上线，</span>
+                <span data-i18n="login.lead.line2">一条流水线走完。</span>
+            </p>
+            <p class="login-lead-sub" data-i18n="login.leadSub">构建、部署和发布记录集中在一处，每一步都能追溯。</p>
+            <!-- 纯装饰的流水线示意，读屏跳过 -->
+            <ol class="login-flow" aria-hidden="true">
+                <li><span data-i18n="login.flow.checkout">拉取代码</span><span class="login-flow-time">00:04</span></li>
+                <li><span data-i18n="login.flow.build">构建镜像</span><span class="login-flow-time">01:12</span></li>
+                <li><span data-i18n="login.flow.push">推送仓库</span><span class="login-flow-time">00:18</span></li>
+                <li class="is-running"><span data-i18n="login.flow.deploy">部署到测试环境</span><span class="login-flow-time" data-i18n="login.flow.running">进行中</span></li>
+            </ol>
+        </div>
+    </aside>
+
+    <!-- 右栏：控制台内容区底色，语言切换在右上，表单卡片居中 -->
+    <main class="login-main">
+        <div class="login-lang">
+            <label for="localeSwitcher" data-i18n="header.language">语言</label>
+            <select id="localeSwitcher" onchange="onLocaleSwitcherChange(this)">
+                <option value="zh" data-i18n-skip>中文</option>
+                <option value="en">English</option>
+            </select>
+        </div>
+        <div class="login-card">
             <form id="loginForm" class="login-form">
+                <h2 class="login-card-title" data-i18n="login.cardTitle">登录</h2>
+                <p class="login-card-hint" data-i18n="login.cardHint">使用账号密码登录控制台</p>
                 <div class="form-group">
                     <label for="username"><span data-i18n="login.username">用户名</span><span class="required-mark" aria-hidden="true">*</span></label>
                     <input type="text" id="username" name="username" required
@@ -56,7 +77,11 @@
                 <div id="twoFactorError" class="error-msg" role="alert"></div>
             </form>
         </div>
-    </div>
+    </main>
+
+    <!-- 社区版源码入口：只有一个节点，桌面在左栏底部、手机在表单下方（见 style.css 的 grid 区域） -->
+    <p class="source-notice login-source-notice" id="loginSourceNotice" hidden></p>
+    <script src="/js/source-notice.js"></script>
     <script src="/js/login.js"></script>
 </body>
 </html>

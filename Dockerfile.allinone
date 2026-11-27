@@ -1,7 +1,7 @@
 # OpsFlow 体验镜像（all-in-one）：一个容器内同时运行 MySQL 8.0 和 OpsFlow，启动即带默认数据和演示数据。
 #
-#   docker build -f Dockerfile.allinone -t ghcr.io/jiaowc/opsflow-allinone:1.1.1 .
-#   docker run -d --name opsflow-allinone -p 8080:8080 ghcr.io/jiaowc/opsflow-allinone:1.1.1
+#   docker build -f Dockerfile.allinone -t ghcr.io/jiaowc/opsflow-allinone:1.1.2 .
+#   docker run -d --name opsflow-allinone -p 8080:8080 ghcr.io/jiaowc/opsflow-allinone:1.1.2
 # 打 v* tag 时由 CI 构建双架构并发布（.github/workflows/ci.yml）
 #   浏览器打开 http://localhost:8080 ，初始账号 admin / admin（首次登录会被要求修改密码）
 #
@@ -44,6 +44,7 @@ LABEL maintainer="OpsFlow" \
       description="OpsFlow 体验镜像：内置 MySQL 与演示数据" \
       org.opencontainers.image.title="opsflow-allinone" \
       org.opencontainers.image.description="OpsFlow 体验镜像：内置 MySQL 与演示数据，仅用于体验和演示" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.source="https://github.com/jiaowc/OpsFlow"
 
 # mysql 底镜像没有设置 LANG，JVM 会按 ASCII 输出，中文日志变成问号

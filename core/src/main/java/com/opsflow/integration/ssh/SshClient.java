@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -55,6 +56,14 @@ public class SshClient {
      */
     public static final int TIMEOUT_EXIT_CODE = 124;
 
+    /**
+     * 终止远端命令时，等终止脚本跑完的最长时间（脚本本身先 TERM，最多等 3 秒再 KILL）
+     */
+    static final int STOP_REMOTE_TIMEOUT_MS = 10000;
+
+    /** 终止脚本退出码：没找到记录的进程号（命令还没来得及写，或远端 /tmp 不可写） */
+    static final int STOP_NO_PID_EXIT_CODE = 3;
+
     @Autowired(required = false)
     private BuildNodeMapper buildNodeMapper;
 
@@ -87,6 +96,8 @@ public class SshClient {
         CommandOutputSink outSink = null;
         CommandOutputSink errSink = null;
         TofuHostKeyRepository hostKeys = null;
+        String pidFile = null;
+        boolean interrupted = false;
         try {
             String validationError = validateNodeCredentials(node);
             if (validationError != null) {
@@ -132,7 +143,8 @@ public class SshClient {
             rememberHostKey(node, hostKeys);
 
             channel = (ChannelExec) session.openChannel("exec");
-            channel.setCommand("export LANG=C.UTF-8 2>/dev/null; " + command);
+            pidFile = remotePidFile();
+            channel.setCommand(recordSessionId(pidFile) + "export LANG=C.UTF-8 2>/dev/null; " + command);
             // 输出留在内存里的部分有上限，失控的大输出只保留开头和结尾
             BoundedOutputBuffer outBuf = new BoundedOutputBuffer(keepHeadBytes, keepTailBytes);
             BoundedOutputBuffer errBuf = new BoundedOutputBuffer(keepHeadBytes, keepTailBytes);
@@ -151,14 +163,21 @@ public class SshClient {
 
             int waitTimeoutMs = commandTimeoutMs > 0 ? commandTimeoutMs : DEFAULT_COMMAND_TIMEOUT_MS;
             long deadline = System.currentTimeMillis() + waitTimeoutMs;
-            while (!channel.isClosed() && listenerFailure.get() == null
-                    && System.currentTimeMillis() < deadline) {
-                Thread.sleep(WAIT_POLL_MS);
+            try {
+                while (!channel.isClosed() && listenerFailure.get() == null
+                        && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(WAIT_POLL_MS);
+                }
+            } catch (InterruptedException e) {
+                // 步骤超时或任务被停止：线程被中断。远端命令也要停，返回前恢复中断标记
+                interrupted = true;
             }
 
             boolean closed = channel.isClosed();
+            String stopNote = null;
             if (!closed) {
-                // 先断开，读线程不再送数据进来，再收尾
+                // 不再等它了：先在节点上终止整个会话里的进程（断开 exec 通道不会让远端命令停下），再断开
+                stopNote = stopRemoteCommand(session, pidFile, node);
                 channel.disconnect();
             }
             outSink.finish();
@@ -170,11 +189,11 @@ public class SshClient {
 
             if (!closed) {
                 String partial = combineOutput(outBuf, errBuf);
-                SshCommandResult timeout = SshCommandResult.fail(
-                    "命令执行超时（" + (waitTimeoutMs / 1000) + "秒）"
-                        + (partial.isEmpty() ? "" : "\n--- 超时前已捕获输出 ---\n" + partial));
-                timeout.setOutput(partial);
-                return timeout;
+                String reason = interrupted ? "命令执行被中断" : "命令执行超时（" + (waitTimeoutMs / 1000) + "秒）";
+                SshCommandResult stopped = SshCommandResult.fail(reason + "，" + stopNote
+                        + (partial.isEmpty() ? "" : "\n--- 已捕获的输出 ---\n" + partial));
+                stopped.setOutput(partial);
+                return stopped;
             }
 
             int exitCode = channel.getExitStatus();
@@ -214,6 +233,85 @@ public class SshClient {
             }
             if (errSink != null) {
                 errSink.discard();
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /** 远端记录会话号的文件；名字随机，别人猜不到，不会被预先放置的符号链接利用 */
+    static String remotePidFile() {
+        return "/tmp/.opsflow-cmd-" + UUID.randomUUID() + ".pid";
+    }
+
+    /**
+     * 命令最前面把当前 shell 的 PID 写进 {@code pidFile}。sshd 执行 exec 请求时会为命令新建会话，
+     * 这个 shell 就是会话首进程，PID 即会话号；命令派生的进程（包括 GNU timeout 另建的进程组）都在这个会话里。
+     * 命令正常结束时删除文件。
+     */
+    static String recordSessionId(String pidFile) {
+        String q = "'" + pidFile + "'";
+        return "(umask 077; echo $$ > " + q + ") 2>/dev/null; trap \"rm -f " + q + "\" EXIT; ";
+    }
+
+    /**
+     * 终止脚本：按记录的会话号扫 /proc，先 TERM 会话里的所有进程，最多等 3 秒仍有存活的再 KILL。
+     * 只用 POSIX sh 内置命令和 /proc（节点上不一定有 pkill / ps；dash 的 kill 不支持按进程组发信号）。
+     * 退出码 {@link #STOP_NO_PID_EXIT_CODE} 表示没找到进程号。
+     */
+    static String stopScript(String pidFile) {
+        String q = "'" + pidFile + "'";
+        return "P=$(cat " + q + " 2>/dev/null); rm -f " + q + "\n"
+            + "case \"$P\" in ''|*[!0-9]*) exit " + STOP_NO_PID_EXIT_CODE + ";; esac\n"
+            + "s() { n=0; for d in /proc/[0-9]*; do read -r st < \"$d/stat\" 2>/dev/null || continue; "
+            + "set -- ${st##*) }; [ \"$4\" = \"$P\" ] && [ \"$1\" != Z ] || continue; n=$((n+1)); "
+            + "[ \"$SIG\" = 0 ] || kill -s \"$SIG\" \"${d#/proc/}\" 2>/dev/null; done; [ \"$n\" -gt 0 ]; }\n"
+            + "SIG=TERM; s || exit 0\n"
+            + "i=0; while [ \"$i\" -lt 6 ]; do sleep 0.5 2>/dev/null || sleep 1; SIG=0; s || exit 0; i=$((i+1)); done\n"
+            + "SIG=KILL; s; exit 0\n";
+    }
+
+    /**
+     * 另开一个 exec 通道终止远端命令，返回给用户看的说明。失败只记日志、不抛异常，不能让步骤卡在这里。
+     */
+    private String stopRemoteCommand(Session session, String pidFile, BuildNode node) {
+        ChannelExec stop = null;
+        try {
+            if (session == null || !session.isConnected()) {
+                return "与节点的连接已断开，节点上的命令可能仍在运行";
+            }
+            stop = (ChannelExec) session.openChannel("exec");
+            stop.setCommand(stopScript(pidFile));
+            stop.setInputStream(null);
+            stop.connect(CONNECT_TIMEOUT_MS);
+            long deadline = System.currentTimeMillis() + STOP_REMOTE_TIMEOUT_MS;
+            while (!stop.isClosed() && System.currentTimeMillis() < deadline) {
+                Thread.sleep(WAIT_POLL_MS);
+            }
+            if (!stop.isClosed()) {
+                log.warn("终止节点上的命令超时: {}@{}", node.getUsername(), node.getHost());
+                return "终止节点上的命令超时，命令可能仍在运行";
+            }
+            int code = stop.getExitStatus();
+            if (code == 0) {
+                return "已在节点上终止";
+            }
+            if (code == STOP_NO_PID_EXIT_CODE) {
+                log.warn("节点上没有找到命令的进程号，无法终止: {}@{}", node.getUsername(), node.getHost());
+                return "没有找到节点上命令的进程号，命令可能仍在运行";
+            }
+            log.warn("终止节点上的命令失败: {}@{} exit={}", node.getUsername(), node.getHost(), code);
+            return "终止节点上的命令失败（退出码 " + code + "），命令可能仍在运行";
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "终止节点上的命令时再次被中断，命令可能仍在运行";
+        } catch (Exception e) {
+            log.warn("终止节点上的命令失败: {}@{} - {}", node.getUsername(), node.getHost(), e.getMessage());
+            return "终止节点上的命令失败（" + e.getMessage() + "），命令可能仍在运行";
+        } finally {
+            if (stop != null && stop.isConnected()) {
+                stop.disconnect();
             }
         }
     }
