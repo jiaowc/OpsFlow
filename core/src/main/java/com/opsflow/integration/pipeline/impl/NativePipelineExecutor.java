@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -33,6 +34,11 @@ public class NativePipelineExecutor implements PipelineExecutor {
      * 等待步骤结果期间发送阶段心跳的间隔，需远小于僵死任务的判定阈值（10 分钟）
      */
     static final long STAGE_HEARTBEAT_INTERVAL_MS = 30000;
+
+    /**
+     * 步骤超时被中断后，最多等它多久收尾
+     */
+    static final long ABANDONED_STEP_GRACE_MS = 5000;
     
     @Autowired
     private List<StepExecutor> stepExecutors;
@@ -330,12 +336,22 @@ public class NativePipelineExecutor implements PipelineExecutor {
      */
     private StepExecutionResult executeStepWithTimeout(StepExecutor executor, PipelineStepDTO step,
             Map<String, String> stepParams, PipelineExecutionContext context, int timeoutSeconds) {
+        AtomicBoolean started = new AtomicBoolean();
+        CountDownLatch finished = new CountDownLatch(1);
+        Callable<StepExecutionResult> task = () -> {
+            started.set(true);
+            try {
+                return executor.execute(step.getStepType(), stepParams, context);
+            } finally {
+                finished.countDown();
+            }
+        };
         Future<StepExecutionResult> future = stepExecutorPool.submit(
-            () -> executor.execute(step.getStepType(), stepParams, context));
+            context != null ? context.bindToStepLog(task) : task);
         try {
             return awaitWithHeartbeat(future, timeoutSeconds, context, STAGE_HEARTBEAT_INTERVAL_MS);
         } catch (TimeoutException e) {
-            future.cancel(true);
+            stopAbandonedStep(future, started, finished, context);
             StepExecutionResult timeoutResult = new StepExecutionResult();
             timeoutResult.setSuccess(false);
             String msg = String.format("步骤执行超时（%d秒）: %s", timeoutSeconds, step.getStepName());
@@ -358,6 +374,7 @@ public class NativePipelineExecutor implements PipelineExecutor {
             log.error("步骤 [{}] 执行异常", step.getStepName(), cause);
             return errorResult;
         } catch (InterruptedException e) {
+            stopAbandonedStep(future, started, finished, context);
             Thread.currentThread().interrupt();
             StepExecutionResult errorResult = new StepExecutionResult();
             errorResult.setSuccess(false);
@@ -369,6 +386,33 @@ public class NativePipelineExecutor implements PipelineExecutor {
         }
     }
     
+    /**
+     * 中断已超时（或不再等待）的步骤，并稍等它收尾：本机命令会随中断杀掉整棵进程树后返回，
+     * 它最后写的「退出码」等日志排在超时说明之前。之后放弃这一代步骤日志，
+     * 迟迟不响应中断的步骤再写的内容不会重新打开已关闭的日志文件，也不会混进下一阶段。
+     */
+    private static void stopAbandonedStep(Future<StepExecutionResult> future, AtomicBoolean started,
+            CountDownLatch finished, PipelineExecutionContext context) {
+        future.cancel(true);
+        if (started.get()) {
+            boolean wasInterrupted = Thread.interrupted();
+            try {
+                if (!finished.await(ABANDONED_STEP_GRACE_MS, TimeUnit.MILLISECONDS)) {
+                    log.warn("步骤被中断后 {}ms 仍未结束，后续输出不再写入阶段日志", ABANDONED_STEP_GRACE_MS);
+                }
+            } catch (InterruptedException ie) {
+                wasInterrupted = true;
+            } finally {
+                if (wasInterrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        if (context != null) {
+            context.abandonStepLog();
+        }
+    }
+
     @Override
     public void cancel(String executionId) {
         PipelineExecutionStatus status = executionStatusMap.get(executionId);

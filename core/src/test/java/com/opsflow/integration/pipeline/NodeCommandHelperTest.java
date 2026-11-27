@@ -1,10 +1,17 @@
 package com.opsflow.integration.pipeline;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -12,6 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeCommandHelperTest {
+
+    @TempDir
+    Path tempDir;
 
     @Test
     void heredocWrapsContentWithQuotedDelimiter() {
@@ -252,5 +262,65 @@ class NodeCommandHelperTest {
 
         assertEquals(Arrays.asList("构建成功"), lines);
         assertEquals("构建成功\n", result.getOutput());
+    }
+
+    @Test
+    void runLocalTimeoutKillsTheChildProcessesToo() throws Exception {
+        // 只杀最外层的 sh 的话，它启动的子 shell 会继续跑完，然后创建标记文件
+        Path marker = tempDir.resolve("still-running");
+        long start = System.nanoTime();
+        NodeCommandHelper.CommandResult result = new NodeCommandHelper()
+                .runLocal("echo started; " + childThatTouchesLater(marker), null, 1000, line -> { });
+
+        assertFalse(result.isSuccess());
+        assertEquals(-1, result.getExitCode());
+        assertTrue(result.getErrorMessage().contains("超时"), result.getErrorMessage());
+        assertEquals("started\n", result.getOutput());
+        assertMarkerNeverAppears(marker, start);
+    }
+
+    @Test
+    void runLocalStopsTheCommandWhenTheStepThreadIsInterrupted() throws Exception {
+        // 步骤超时时执行器会中断步骤线程：命令要跟着停下，已经打印的内容要保留，中断标记要还给调用方
+        Path marker = tempDir.resolve("still-running");
+        CountDownLatch printed = new CountDownLatch(1);
+        AtomicReference<NodeCommandHelper.CommandResult> result = new AtomicReference<>();
+        AtomicBoolean interruptKept = new AtomicBoolean();
+        long start = System.nanoTime();
+        Thread step = new Thread(() -> {
+            result.set(new NodeCommandHelper().runLocal("echo started; " + childThatTouchesLater(marker),
+                    null, 60000, line -> printed.countDown()));
+            interruptKept.set(Thread.currentThread().isInterrupted());
+        });
+        step.start();
+        assertTrue(printed.await(30, TimeUnit.SECONDS), "命令一直没有输出");
+        step.interrupt();
+        step.join(10000);
+
+        assertFalse(step.isAlive(), "被中断后 runLocal 应尽快返回");
+        assertTrue(interruptKept.get());
+        assertFalse(result.get().isSuccess());
+        assertEquals(-1, result.get().getExitCode());
+        assertEquals("命令执行被中断", result.get().getErrorMessage());
+        assertEquals("started\n", result.get().getOutput());
+        assertMarkerNeverAppears(marker, start);
+    }
+
+    /**
+     * 由子进程（不是最外层的 sh）在 2 秒后创建标记文件。
+     * 后面跟一条 true，免得 sh 把最后一条命令直接 exec 成自己，那样就不是子进程了。
+     */
+    private static String childThatTouchesLater(Path marker) {
+        return "sh -c \"sleep 2; touch '" + marker + "'\"; true";
+    }
+
+    /** 命令里的子进程若没被杀掉，开始后约 2 秒就会创建标记文件；多等一会儿确认它一直没出现 */
+    private static void assertMarkerNeverAppears(Path marker, long startNanos) throws InterruptedException {
+        long waitUntil = startNanos + TimeUnit.MILLISECONDS.toNanos(2800);
+        while (System.nanoTime() < waitUntil) {
+            assertFalse(Files.exists(marker), "命令没有被杀掉，仍在后台运行");
+            Thread.sleep(100);
+        }
+        assertFalse(Files.exists(marker), "命令没有被杀掉，仍在后台运行");
     }
 }

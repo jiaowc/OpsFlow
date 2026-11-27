@@ -12,7 +12,7 @@
 
 三种方式用的是同一个程序，库结构也相同。体验完想正式使用时，按 ② 或 ③ 新部署一套即可，体验镜像里的演示数据不需要迁移。
 
-镜像由公开仓库的 CI 在打 `v*` tag 时自动构建和发布，都支持 `linux/amd64` 和 `linux/arm64`。标签有 `1.1.1`、`1.1` 和 `latest`，正式环境建议固定到具体版本（如 `1.1.1`）：
+镜像由公开仓库的 CI 在打 `v*` tag 时自动构建和发布，都支持 `linux/amd64` 和 `linux/arm64`。标签有 `1.1.2`、`1.1` 和 `latest`，正式环境建议固定到具体版本（如 `1.1.2`）：
 
 | 镜像 | 用途 |
 |---|---|
@@ -27,7 +27,7 @@
 
 ```bash
 docker run -d --name opsflow-allinone -p 8080:8080 \
-  -v opsflow-allinone-data:/data ghcr.io/jiaowc/opsflow-allinone:1.1.1
+  -v opsflow-allinone-data:/data ghcr.io/jiaowc/opsflow-allinone:1.1.2
 ```
 
 首次启动约 1 分钟（初始化数据库、建表、导入演示数据），`docker logs -f opsflow-allinone` 可以看进度。浏览器打开 `http://localhost:8080`，初始账号 **admin / admin**。这是公开的演示口令，首次登录时系统会强制要求修改（新密码至少 8 位）。
@@ -43,7 +43,7 @@ docker compose -f docker-compose.allinone.yml up -d
 拉取不了 ghcr.io，或想用当前源码构建时：
 
 ```bash
-docker build -f Dockerfile.allinone -t ghcr.io/jiaowc/opsflow-allinone:1.1.1 .
+docker build -f Dockerfile.allinone -t ghcr.io/jiaowc/opsflow-allinone:1.1.2 .
 ```
 
 ### 带了哪些数据
@@ -105,7 +105,7 @@ cp .env.example .env          # 生产环境务必修改里面的密码
 
 浏览器打开 `http://localhost:8080`，初始账号 **admin / admin**，首次登录会被要求修改密码。
 
-不想在本机编译时，在 `.env` 里设置 `OPSFLOW_DOCKER_IMAGE=ghcr.io/jiaowc/opsflow:1.1.1`，然后用发布的镜像启动：
+不想在本机编译时，在 `.env` 里设置 `OPSFLOW_DOCKER_IMAGE=ghcr.io/jiaowc/opsflow:1.1.2`，然后用发布的镜像启动：
 
 ```bash
 docker compose pull opsflow
@@ -130,7 +130,7 @@ docker compose up -d --no-build
 | `JAVA_OPTS` | JVM 参数 | `-Xms256m -Xmx512m` |
 | `OPSFLOW_WEBHOOK_SECRET` | Git Webhook 密钥，空则关闭 Webhook | 空 |
 | `OPSFLOW_SECRET_KEY` | 凭据加密主密钥（Base64 编码的 32 字节，`openssl rand -base64 32` 生成）；空则首次启动自动生成 `./data/secret.key` | 空 |
-| `OPSFLOW_DOCKER_IMAGE` | 应用镜像名和标签 | `opsflow:1.1.1`（本机构建） |
+| `OPSFLOW_DOCKER_IMAGE` | 应用镜像名和标签 | `opsflow:1.1.2`（本机构建） |
 
 应用的数据库连接统一用 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD`。全栈 Compose 会自动注入指向 `mysql` 容器的地址，不需要自己填。
 
@@ -191,7 +191,7 @@ DB_PASSWORD=你的密码
 # 等价于：docker compose -f docker-compose.app.yml up -d --build
 ```
 
-同样可以在 `.env` 里设置 `OPSFLOW_DOCKER_IMAGE=ghcr.io/jiaowc/opsflow:1.1.1`，用发布的镜像代替本机构建。
+同样可以在 `.env` 里设置 `OPSFLOW_DOCKER_IMAGE=ghcr.io/jiaowc/opsflow:1.1.2`，用发布的镜像代替本机构建。
 
 ### 2b. 直接运行 jar
 
@@ -243,7 +243,7 @@ SPRING_PROFILES_ACTIVE=prod ./scripts/deploy/restart.sh
 
   ```bash
   curl -fsS http://127.0.0.1:8080/api/health
-  # {"status":"UP","version":"1.1.1","checks":{"app":"UP","database":"UP"},...}
+  # {"status":"UP","version":"1.1.2","checks":{"app":"UP","database":"UP"},...}
   ```
 
   镜像和 Compose 里已经用它做健康检查，负载均衡和监控也可以直接用。

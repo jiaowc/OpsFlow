@@ -44,7 +44,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${OPSFLOW_DOCKER_IMAGE:-opsflow:1.1.1}
+    image: ${OPSFLOW_DOCKER_IMAGE:-opsflow:1.1.2}
     container_name: opsflow
     restart: unless-stopped
     depends_on:

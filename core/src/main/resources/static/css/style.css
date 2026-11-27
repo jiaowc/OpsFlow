@@ -17,9 +17,10 @@
     --primary-soft: #eef0ff;
     --primary-soft-border: #d0d4fb;
     --primary-ring: rgba(91, 92, 224, 0.16);
-    --login-grad-from: #7a82f0;
-    --login-grad-via: #5b5ce0;
-    --login-grad-to: #4a4bc9;
+    /* 侧栏渐变的上下色标和侧栏小字色（侧栏和登录页左栏共用） */
+    --sidebar-top: #e4e8ff;
+    --sidebar-bottom: #cfd5f7;
+    --sidebar-notice: #7b82b8;
 
     /* 语义色 */
     --success: #16a34a;
@@ -96,47 +97,170 @@ input[type="radio"] {
     accent-color: var(--primary);
 }
 
-/* 登录页面背景：与控制台主色同色相 */
-body:has(.login-container) {
-    background: linear-gradient(145deg, var(--login-grad-from) 0%, var(--login-grad-via) 52%, var(--login-grad-to) 100%);
+/* 登录页：左栏沿用控制台侧栏，右栏是内容区 + 表单卡片 */
+body.login-page {
+    display: grid;
+    grid-template-columns: minmax(340px, 38%) 1fr;
+    grid-template-rows: 1fr auto;
+    grid-template-areas:
+        "brand main"
+        "notice main";
+    min-height: 100vh;
+    position: relative;
+}
+
+/* 左栏背景单独画在第一列，品牌区和源码入口叠在上面 */
+body.login-page::before {
+    content: '';
+    grid-column: 1;
+    grid-row: 1 / -1;
+    background: linear-gradient(180deg, var(--sidebar-top) 0%, var(--bg-sidebar) 48%, var(--sidebar-bottom) 100%);
+    border-right: 1px solid var(--bg-sidebar-border);
+}
+
+.login-brand {
+    grid-area: brand;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 32px 40px 0;
+}
+
+.login-brand-head {
+    min-height: 40px;
+}
+
+.login-brand-head h1 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text-1);
+}
+
+.login-brand-head .brand-logo-login {
+    width: 36px;
+    height: 36px;
+}
+
+.login-brand-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 400px;
+    padding: 24px 0;
+}
+
+.login-lead {
+    font-size: 22px;
+    line-height: 1.5;
+    font-weight: 600;
+    color: var(--text-1);
+}
+
+.login-lead span {
+    display: block;
+}
+
+.login-lead-sub {
+    margin-top: 8px;
+    font-size: var(--fs-sm);
+    line-height: 1.7;
+    color: var(--text-3);
+}
+
+/* 流水线示意（aria-hidden）：竖排步骤，圆点 + 连线，最后一步进行中 */
+.login-flow {
+    margin-top: 32px;
+    padding: 0;
+    list-style: none;
+}
+
+.login-flow li {
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 12px;
+    padding: 9px 12px 9px 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
 }
 
-/* 登录页面样式 */
-.login-container {
-    width: 100%;
-    max-width: 400px;
-    padding: 20px;
+.login-flow li::before {
+    content: '';
+    flex: none;
+    width: 10px;
+    height: 10px;
+    margin-left: 5px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
 }
 
-.login-box {
-    background: white;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    padding: 40px;
+.login-flow li + li::after {
+    content: '';
+    position: absolute;
+    left: 9px;
+    top: -9px;
+    width: 2px;
+    height: 18px;
+    background: var(--bg-sidebar-border);
 }
 
-.login-header {
-    text-align: center;
-    margin-bottom: 30px;
+.login-flow-time {
+    margin-left: auto;
+    font-size: var(--fs-xs);
+    color: var(--sidebar-notice);
+    font-variant-numeric: tabular-nums;
 }
 
-.login-header h1 {
-    font-size: 36px;
+.login-flow li.is-running {
+    color: var(--text-1);
+    font-weight: 500;
+}
+
+.login-flow li.is-running::before {
+    background: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-ring);
+}
+
+.login-flow li.is-running .login-flow-time {
     color: var(--primary);
-    margin-bottom: 10px;
+}
+
+.login-main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 20px 32px 32px;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 380px;
+    margin: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 32px 32px 20px;
+}
+
+.login-card-title {
+    font-size: 20px;
     font-weight: 600;
+    color: var(--text-1);
 }
 
-.login-header p {
+.login-card-hint {
+    margin: 6px 0 24px;
+    font-size: var(--fs-sm);
     color: var(--text-3);
-    font-size: 14px;
 }
 
-.login-form {
-    margin-top: 30px;
+.login-card .login-step-title {
+    font-size: 20px;
 }
 
 .form-group {
@@ -423,7 +547,7 @@ body:has(.login-container) {
 .sidebar {
     width: clamp(208px, 16vw, 240px);
     flex: 0 0 clamp(208px, 16vw, 240px);
-    background: linear-gradient(180deg, #e4e8ff 0%, var(--bg-sidebar) 48%, #cfd5f7 100%);
+    background: linear-gradient(180deg, var(--sidebar-top) 0%, var(--bg-sidebar) 48%, var(--sidebar-bottom) 100%);
     border-right: 1px solid var(--bg-sidebar-border);
     overflow: hidden;
     display: flex;
@@ -447,11 +571,38 @@ body:has(.login-container) {
 .sidebar-version {
     display: block;
     font-size: 12px;
-    color: #7b82b8;
+    color: var(--sidebar-notice);
     letter-spacing: 0.02em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* 社区版源码入口（AGPLv3）：登录页在左栏底部（手机在表单下方），登录后在侧栏底部版本号下方 */
+.source-notice a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+.sidebar-source-notice {
+    display: block;
+    font-size: 11px;
+    color: var(--sidebar-notice);
+    line-height: 1.5;
+}
+
+.sidebar-version[hidden],
+.sidebar-source-notice[hidden],
+.login-source-notice[hidden] {
+    display: none;
+}
+
+.login-source-notice {
+    grid-area: notice;
+    margin: 0;
+    padding: 24px 40px 28px;
+    font-size: 12px;
+    color: var(--sidebar-notice);
 }
 
 /* 窄屏（菜单在页面上方展开）：分组分割线保持原样，线上 17px、线下 3px */
@@ -509,7 +660,7 @@ body:has(.login-container) {
     padding: 8px 20px 6px;
     font-size: 12px;
     font-weight: 600;
-    color: #7b82b8;
+    color: var(--sidebar-notice);
     letter-spacing: 0.04em;
 }
 
@@ -3250,6 +3401,10 @@ td .btn-success {
     display: block;
 }
 
+.brand-logo[hidden] {
+    display: none;
+}
+
 .brand-logo-login {
     max-height: 56px;
     max-width: 220px;
@@ -3260,7 +3415,7 @@ td .btn-success {
     max-width: 160px;
 }
 
-.brand-text-with-logo {
+.brand-header-dashboard .brand-text-with-logo {
     font-size: 18px !important;
     font-weight: 600;
 }
@@ -3271,7 +3426,6 @@ td .btn-success {
     justify-content: flex-end;
     align-items: center;
     gap: 8px;
-    margin-bottom: 12px;
     font-size: 13px;
     color: var(--text-2, #4b5563);
 }
@@ -4000,4 +4154,112 @@ td .btn-success {
     display: flex;
     justify-content: space-between;
     gap: 12px;
+}
+
+/* 登录页窄屏：左栏变成顶部横带，流水线缩成一行四个点，表单不套卡片 */
+@media (max-width: 860px) {
+    body.login-page {
+        grid-template-columns: minmax(0, 1fr);
+        /* 源码入口紧跟在表单下方，多出的高度留在最底部 */
+        grid-template-rows: auto auto 1fr;
+        grid-template-areas:
+            "brand"
+            "main"
+            "notice";
+    }
+
+    body.login-page::before {
+        grid-row: 1;
+        border-right: none;
+        border-bottom: 1px solid var(--bg-sidebar-border);
+    }
+
+    .login-brand {
+        padding: 16px 16px 18px;
+    }
+
+    .login-brand-head {
+        padding-right: 112px;
+    }
+
+    .login-brand-head h1 {
+        font-size: 16px;
+    }
+
+    .login-brand-body {
+        margin-top: 14px;
+        padding: 0;
+    }
+
+    .login-lead {
+        font-size: 16px;
+    }
+
+    .login-lead-sub {
+        display: none;
+    }
+
+    .login-flow {
+        display: flex;
+        align-items: center;
+        margin-top: 12px;
+    }
+
+    .login-flow li {
+        flex: 1;
+        padding: 0;
+        font-size: 0;
+    }
+
+    .login-flow li:last-child {
+        flex: none;
+    }
+
+    .login-flow li::before {
+        margin-left: 0;
+    }
+
+    .login-flow li + li::after,
+    .login-flow-time {
+        display: none;
+    }
+
+    .login-flow li:not(:last-child) {
+        background: linear-gradient(var(--bg-sidebar-border), var(--bg-sidebar-border)) no-repeat 12px 50% / calc(100% - 14px) 2px;
+    }
+
+    .login-main {
+        padding: 12px 16px 0;
+    }
+
+    .login-lang {
+        position: absolute;
+        top: 14px;
+        right: 16px;
+    }
+
+    /* 标签只对读屏可见 */
+    .login-lang label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .login-card {
+        max-width: none;
+        margin: 16px 0 0;
+        padding: 0;
+        background: transparent;
+        border: none;
+        box-shadow: none;
+    }
+
+    .login-source-notice {
+        align-self: start;
+        padding: 20px 16px 24px;
+        text-align: center;
+    }
 }

@@ -206,27 +206,32 @@ class PipelineStageLogEndToEndTest {
     @Test
     void timedOutStepKeepsWhatWasPrintedAndSaysItTimedOut() {
         PipelineExecutionResult result = run(
-                step(1, "build", "编译", 1, "buildCommand", "echo '已经输出的内容'; sleep 3"));
+                step(1, "build", "编译", 1, "buildCommand", "echo '已经输出的内容'; sleep 30"));
 
         assertFalse(result.getSuccess());
         BuildJobStage buildStage = stages.get(1);
         assertEquals("FAILURE", buildStage.getStatus());
         String log = readLikeThePage(buildStage);
         assertTrue(log.contains("已经输出的内容\n"), log);
-        assertTrue(log.contains("超时"), log);
         assertTrue(buildStage.getErrorMessage().contains("超时"), buildStage.getErrorMessage());
+        // 被中断的步骤在阶段结束前收完尾：错误说明是最后一行，之后不会再有内容写进来（也不会重新创建已关闭的日志文件）
+        String lastLine = log.substring(log.lastIndexOf('\n', log.length() - 2) + 1);
+        assertEquals("[错误] " + buildStage.getErrorMessage() + "\n", lastLine, log);
         assertEquals(0, stageLogStore.openLogCount());
     }
 
     @Test
     void outputIsReadableWhileTheStepIsStillRunning() throws Exception {
+        // 命令打印第一段后一直等，直到测试读到第一段、创建放行文件才继续，不靠固定的 sleep 时长
+        Path go = tempDir.resolve("go");
         CompletableFuture<PipelineExecutionResult> running = CompletableFuture.supplyAsync(() -> run(
-                step(1, "build", "编译", 60, "buildCommand", "echo '第一段输出'; sleep 2; echo '第二段输出'")));
+                step(1, "build", "编译", 60, "buildCommand",
+                        "echo '第一段输出'; while [ ! -f '" + go + "' ]; do sleep 0.05; done; echo '第二段输出'")));
 
-        // 步骤还在 sleep 时，页面轮询应该已经能读到第一段
+        // 步骤还在等待时，页面轮询应该已经能读到第一段
         BuildJobStage buildStage = stages.get(1);
         String partial = "";
-        long deadline = System.currentTimeMillis() + 1500;
+        long deadline = System.currentTimeMillis() + 30000;
         while (System.currentTimeMillis() < deadline && !partial.contains("\n第一段输出\n")) {
             Thread.sleep(50);
             if (buildStage.getLogPath() != null) {
@@ -239,6 +244,7 @@ class PipelineStageLogEndToEndTest {
         assertFalse(running.isDone());
         assertEquals("RUNNING", buildStage.getStatus());
 
+        java.nio.file.Files.createFile(go);
         assertTrue(running.get(30, TimeUnit.SECONDS).getSuccess());
         String log = readLikeThePage(buildStage);
         assertTrue(log.startsWith(partial), "执行中读到的内容应是最终日志的开头，页面才能按偏移量续读");
